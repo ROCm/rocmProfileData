@@ -11,7 +11,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='convert RPD to json for chrome tracing')
 parser.add_argument('input_rpd', type=str, help="input rpd db")
-parser.add_argument('output_json', type=str, help="chrone tracing json output")
+parser.add_argument('output_json', type=str, help="chrome tracing json output")
 parser.add_argument('--start', type=int, help="start timestamp")
 parser.add_argument('--end', type=int, help="end timestamp")
 args = parser.parse_args()
