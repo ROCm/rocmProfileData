@@ -6,4 +6,5 @@ module1 = Extension('hipMarker',
 setup (name = 'HipMarker',
        version = '1.0',
        description = 'User markers for hip',
+       py_modules = ['hipScopedMarker'],
        ext_modules = [module1])
