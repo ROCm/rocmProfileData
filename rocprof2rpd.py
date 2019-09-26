@@ -189,8 +189,50 @@ if args.hsa_input_file:
     connection.commit()
     infile.close()
 
-    connection.close()
+# Combine user marker pairs into ranges
+api_inserts = []
+string_inserts = []
+api_removes = []
+start_time = None
+start_id = None
+start_string = None
+for row in connection.execute('select rocpd_api.id, B.string, rocpd_api.start, pid, tid, apiName_id from rocpd_api INNER JOIN rocpd_string A on A.id=rocpd_api.apiname_id and A.string="USER_EVENT" INNER JOIN rocpd_string B on b.id = rocpd_api.args_id where B.string like "%;start;%" or B.string like "%;stop;%" order by B.string, rocpd_api.start'):
+    try:
+        print(row)
+        if (start_time == None): #State machine, state variable STATE 0
+            start_id = row[0]
+            start_string = row[1]
+            start_time = row[2]
+        else:                   #STATE 1
+            start_toks = start_string.strip('"').split(';')
+            stop_toks = row[1].strip('"').split(';')
+            if (start_toks[0] != stop_toks[0]):
+                print(f"Warning: mismatched user event tags {start_toks[0]} {stop_toks[0]}")
+            else:
+                try:
+                    api = strings[stop_toks[2]]
+                except:
+                    strings[stop_toks[2]] = string_id
+                    string_inserts.append((string_id, stop_toks[2]))
+                    print(f"{stop_toks[2]}")
+                    api = string_id
+                    string_id = string_id + 1
 
+                api_inserts.append((api_id, row[3], row[4], start_time, row[2], row[5], api))
+                api_id = api_id + 1
+                count = count + 1
+                api_removes.append((start_id, ))
+                api_removes.append((row[0], ))
+
+            start_time = None   # 1 -> 0
+    except:
+        pass
+
+connection.executemany("insert into rocpd_string(id, string) values (?,?)", string_inserts)
+connection.executemany("insert into rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", api_inserts)
+connection.executemany("delete from rocpd_api where id=?", api_removes)
+
+connection.commit()
 
 #Generate Schema Indexes
 #connection.execute("")
@@ -198,4 +240,4 @@ if args.hsa_input_file:
 #connection.execute("")
 #connection.execute("")
 
-
+connection.close()
