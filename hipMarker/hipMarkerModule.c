@@ -8,7 +8,8 @@ static PyObject *hipMarker_emitMarker(PyObject *self, PyObject *args)
 {
     const char *eventString = "";
     if (PyArg_ParseTuple(args, "s", &eventString)) {
-        roctracer_add_user_event(eventString);
+        //roctracer_add_user_event(eventString);
+        roctracer_mark(eventString);
         printf("MARKER: %s\n", eventString);
     }
     Py_INCREF(Py_None);

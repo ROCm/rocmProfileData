@@ -66,7 +66,7 @@ for row in connection.execute("select A.string as optype, B.string as descriptio
 
 for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000, (rocpd_api.end-rocpd_api.start) / 1000 from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeString)):
     try:
-        if row[0]=="USER_EVENT":
+        if row[0]=="MARK":
             if row[5] == 0:
                 outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"ph\":\"i\",\"s\":\"p\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], row[1].replace('"',''), row[4], row[1].replace('"','')))
             else:

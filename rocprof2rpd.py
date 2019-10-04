@@ -121,7 +121,7 @@ if args.ops_input_file:
             op_id = op_id + 1
             count = count + 1
         if (count % 100000 == 99999):
-            print(count+1)
+            #print(count+1)
             #print("--------------------------------------------------------------------------")
             #print(string_inserts)
             #print("++++")
@@ -196,9 +196,9 @@ api_removes = []
 start_time = None
 start_id = None
 start_string = None
-for row in connection.execute('select rocpd_api.id, B.string, rocpd_api.start, pid, tid, apiName_id from rocpd_api INNER JOIN rocpd_string A on A.id=rocpd_api.apiname_id and A.string="USER_EVENT" INNER JOIN rocpd_string B on b.id = rocpd_api.args_id where B.string like "%;start;%" or B.string like "%;stop;%" order by B.string, rocpd_api.start'):
+print(f"Collating user markers")
+for row in connection.execute('select rocpd_api.id, B.string, rocpd_api.start, pid, tid, apiName_id from rocpd_api INNER JOIN rocpd_string A on A.id=rocpd_api.apiname_id and A.string="MARK" INNER JOIN rocpd_string B on b.id = rocpd_api.args_id where B.string like "%;start;%" or B.string like "%;stop;%" order by B.string, rocpd_api.start'):
     try:
-        print(row)
         if (start_time == None): #State machine, state variable STATE 0
             start_id = row[0]
             start_string = row[1]
@@ -207,14 +207,15 @@ for row in connection.execute('select rocpd_api.id, B.string, rocpd_api.start, p
             start_toks = start_string.strip('"').split(';')
             stop_toks = row[1].strip('"').split(';')
             if (start_toks[0] != stop_toks[0]):
-                print(f"Warning: mismatched user event tags {start_toks[0]} {stop_toks[0]}")
+                print(f"Warning: mismatched user event tags {start_toks[0]} --- {stop_toks[0]}")
             else:
+                stop_toks[2] = stop_toks[2].rstrip(')')   # remove stray
                 try:
                     api = strings[stop_toks[2]]
                 except:
                     strings[stop_toks[2]] = string_id
                     string_inserts.append((string_id, stop_toks[2]))
-                    print(f"{stop_toks[2]}")
+                    #print(f"{stop_toks[2]}")
                     api = string_id
                     string_id = string_id + 1
 
