@@ -15,6 +15,7 @@ Notes:
 
 Installation:
 
-Acquire a current internal rocprofiler tarball.  There is no install location for this stuff so we will hardcode one.  Extract the package into: '/data/Downloads/rocprofiler_pkg'  Edit setup.py if you need a different location.
+This requires python3.x.
+This incarnation requires rocm2.9+.
 
 CC=/opt/rocm/bin/hipcc python3.6 setup.py install

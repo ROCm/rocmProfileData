@@ -2,8 +2,8 @@ from distutils.core import setup, Extension
 
 module1 = Extension('hipMarker',
                     sources = ['hipMarkerModule.c'],
-                    include_dirs=['/data/Downloads/rocprofiler_pkg/inc'],
-                    library_dirs=['/data/Downloads/rocprofiler_pkg/lib'],
+                    include_dirs=['/opt/rocm/rocprofiler/include', '/opt/rocm/roctracer/include'],
+                    library_dirs=['/opt/rocm/rocprofiler/lib', '/opt/rocm/roctracer/lib'],
                     libraries=['roctracer64']
 )
 
