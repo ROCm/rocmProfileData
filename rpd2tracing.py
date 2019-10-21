@@ -148,10 +148,13 @@ for row in connection.execute("SELECT rocpd_api.end/1000 as ts, B.string, '1'  F
         else:              #free
             m = exp2.match(row[1])
             if m:
-                size = sizes[m.group(1)]
-                sizes[m.group(1)] = 0
-                totalSize = totalSize - size;
-                outfile.write(',{"pid":"0","name":"Allocated Memory","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(row[0],totalSize))
+                try:    # Sometimes free addresses are not valid or listed
+                    size = sizes[m.group(1)]
+                    sizes[m.group(1)] = 0
+                    totalSize = totalSize - size;
+                    outfile.write(',{"pid":"0","name":"Allocated Memory","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(row[0],totalSize))
+                except KeyError:
+                    pass
     except ValueError:
         outfile.write("")
 if T_end > 0:
