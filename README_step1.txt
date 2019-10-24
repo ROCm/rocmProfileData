@@ -1,4 +1,4 @@
-Run you application under rocprofiler.  Use the one in this folder.  Rocm27 is current.
+Run you application under rocprofiler.  You will need a working rocprofiler that logs all required fields. (harder than it sounds)
 
 Use: 
 echo pmc: > in.txt

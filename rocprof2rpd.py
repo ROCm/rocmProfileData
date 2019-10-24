@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser(description='convert RPD to json for chrome tra
 parser.add_argument('--ops_input_file', type=str, help="hcc_ops_trace.txt from rocprofiler")
 parser.add_argument('--api_input_file', type=str, help="hip_api_trace.txt from rocprofiler")
 parser.add_argument('--hsa_input_file', type=str, help="hsa_api_trace.txt from rocprofiler")
+parser.add_argument('--roctx_input_file', type=str, help="roctx_trace.txt from rocprofiler")
 parser.add_argument('output_rpd', type=str, help="chrone tracing json output")
 args = parser.parse_args()
 
@@ -188,6 +189,63 @@ if args.hsa_input_file:
     connection.executemany("insert into rocpd_hsaApi(id, pid, tid, start, end, apiName_id, args_id, return) values (?,?,?,?,?,?,?,?)", hsa_inserts)
     connection.commit()
     infile.close()
+
+#---------------------------------------------
+# Roctx
+#---------------------------------------------
+
+if args.roctx_input_file:
+    print(f"Importing markers from {args.roctx_input_file}")
+    exp = re.compile("^(\d*)\s+(\d*):(\d*)\s+(\d+):\"(.*)\".*$")
+    infile = open(args.roctx_input_file, 'r', encoding="utf-8")
+    count = 0
+    stack = []
+    api_inserts = [] # rows to bulk insert
+    string_inserts = [] # rows to bulk insert
+    for line in infile:
+        m = exp.match(line)
+        if m:
+            try:
+                api = strings["MARK"]
+            except:
+                strings["MARK"] = string_id
+                string_inserts.append((string_id, "MARK"))
+                api = string_id
+                string_id = string_id + 1
+            try:
+                arg = strings[m.group(5)]
+            except:
+                strings[m.group(5)] = string_id
+                string_inserts.append((string_id, m.group(5)))
+                arg = string_id
+                string_id = string_id + 1
+
+            entryType = int(m.group(4))
+
+            if entryType == 0:        # instantaneous marker
+                api_inserts.append((api_id, m.group(2), m.group(3), m.group(1), m.group(1), api, arg))
+                api_id = api_id + 1
+                count = count + 1
+            if entryType == 1:
+                stack.append((m.group(1), arg))    
+
+            if entryType == 2:
+                entry = stack.pop()
+                api_inserts.append((api_id, m.group(2), m.group(3), entry[0], m.group(1), api, entry[1]))
+                api_id = api_id + 1
+                count = count + 1
+
+        if (count % 100000 == 99999):
+            connection.executemany("insert into rocpd_string(id, string) values (?,?)", string_inserts)
+            connection.executemany("insert into rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", api_inserts)
+            connection.commit()
+            api_inserts = []
+            string_inserts = []
+    connection.executemany("insert into rocpd_string(id, string) values (?,?)", string_inserts)
+    connection.executemany("insert into rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", api_inserts)
+    connection.commit()
+    infile.close()
+
 
 # Combine user marker pairs into ranges
 api_inserts = []
