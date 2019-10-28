@@ -206,10 +206,10 @@ if args.roctx_input_file:
         m = exp.match(line)
         if m:
             try:
-                api = strings["MARK"]
+                api = strings["UserMarker"]
             except:
-                strings["MARK"] = string_id
-                string_inserts.append((string_id, "MARK"))
+                strings["UserMarker"] = string_id
+                string_inserts.append((string_id, "UserMarker"))
                 api = string_id
                 string_id = string_id + 1
             try:
@@ -255,7 +255,7 @@ start_time = None
 start_id = None
 start_string = None
 print(f"Collating user markers")
-for row in connection.execute('select rocpd_api.id, B.string, rocpd_api.start, pid, tid, apiName_id from rocpd_api INNER JOIN rocpd_string A on A.id=rocpd_api.apiname_id and A.string="MARK" INNER JOIN rocpd_string B on b.id = rocpd_api.args_id where B.string like "%;start;%" or B.string like "%;stop;%" order by B.string, rocpd_api.start'):
+for row in connection.execute('select rocpd_api.id, B.string, rocpd_api.start, pid, tid, apiName_id from rocpd_api INNER JOIN rocpd_string A on A.id=rocpd_api.apiname_id and A.string="UserMarker" INNER JOIN rocpd_string B on b.id = rocpd_api.args_id where B.string like "%;start;%" or B.string like "%;stop;%" order by B.string, rocpd_api.start'):
     try:
         if (start_time == None): #State machine, state variable STATE 0
             start_id = row[0]

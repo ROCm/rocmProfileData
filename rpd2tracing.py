@@ -66,7 +66,7 @@ for row in connection.execute("select A.string as optype, B.string as descriptio
 
 for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000, (rocpd_api.end-rocpd_api.start) / 1000 from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeString)):
     try:
-        if row[0]=="MARK":
+        if row[0]=="UserMarker":
             if row[5] == 0:
                 outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"ph\":\"i\",\"s\":\"p\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], row[1].replace('"',''), row[4], row[1].replace('"','')))
             else:
@@ -159,6 +159,77 @@ for row in connection.execute("SELECT rocpd_api.end/1000 as ts, B.string, '1'  F
         outfile.write("")
 if T_end > 0:
     outfile.write(',{"pid":"0","name":"Allocated Memory","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(T_end,totalSize))
+
+#Create "faux calling stack frame" on gpu ops traceS
+stacks = {}          # Call stacks built from UserMarker entres.     Key is 'pid,tid'
+currentFrame = {}    #"Current GPU frame" (id, name, start, end).    Key is 'pid,tid'
+
+class GpuFrame:
+    def __init__(self):
+        self.id = 0
+        self.name = ''
+        self.start = 0
+        self.end = 0
+        self.gpus = []
+        self.totalOps = 0
+
+# FIXME: include 'start' (in ns) so we can ORDER BY it and break ties?
+for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 UNION ALL SELECT '1', end/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 UNION ALL SELECT '2', rocpd_api.start/1000, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000, rocpd_op.end/1000 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id ORDER BY start/1000 asc"):
+    try:
+        key = (row[2], row[3])    # Key is 'pid,tid'
+        if row[0] == '0':  # Frame start
+            if key not in stacks:
+                stacks[key] = []
+            stack = stacks[key].append((row[1], row[4]))
+            #print(f"new api frame: pid_tid={key} -> stack={stacks}")
+
+        elif row[0] == '1':  #Frame end
+            completed = stacks[key].pop()
+            #print(f"end api frame: pid_tid={key} -> stack={stacks}")
+
+        elif row[0] == '2':  # API + Op
+            if key in stacks and len(stacks[key]) > 0:
+                frame = stacks[key][-1]
+                #print(f"Op on {frame} ({len(stacks[key])})")
+                gpuFrame = None
+                if key not in currentFrame:    # First op under the current api frame
+                    gpuFrame = GpuFrame()
+                    gpuFrame.id = frame[0]
+                    gpuFrame.name = frame[1]
+                    gpuFrame.start = row[7]
+                    gpuFrame.end = row[8]
+                    gpuFrame.gpus.append((row[5], row[6]))
+                    gpuFrame.totalOps = 1
+                    #print(f"new frame: {gpuFrame.gpus}")
+                else:
+                    gpuFrame = currentFrame[key]
+                    if gpuFrame.id == frame[0] and gpuFrame.name == frame[1]:    # Another op under the same frame -> union them
+                        if row[7] < gpuFrame.start: gpuFrame.start = row[7]
+                        if row[8] > gpuFrame.end: gpuFrame.end = row[8] 
+                        if (row[5], row[6]) not in gpuFrame.gpus: gpuFrame.gpus.append((row[5], row[6]))
+                        gpuFrame.totalOps = gpuFrame.totalOps + 1
+
+                    else:    #This is a new frame - dump the last and make new
+                        gpuFrame = currentFrame[key]
+                        for dest in gpuFrame.gpus:
+                            #print(f"OUTPUT: dest={dest} time={gpuFrame.start} -> {gpuFrame.end} TotalOps={gpuFrame.totalOps}")
+                            outfile.write(',{"pid":"%s","tid":"%s","name":"%s","ts":"%s","dur":"%s","ph":"X","args":{"desc":"%s"}}\n'%(dest[0], dest[1], gpuFrame.name, gpuFrame.start, gpuFrame.end - gpuFrame.start, f"UserMarker frame: {gpuFrame.totalOps} ops"))
+                        currentFrame.pop(key)
+
+                        # make the first op under the new frame
+                        gpuFrame = GpuFrame()
+                        gpuFrame.id = frame[0]
+                        gpuFrame.name = frame[1]
+                        gpuFrame.start = row[7]
+                        gpuFrame.end = row[8]
+                        gpuFrame.gpus.append((row[5], row[6]))
+                        gpuFrame.totalOps = 1
+                        #print(f"new frame: {gpuFrame.gpus}")
+
+                currentFrame[key] = gpuFrame
+
+    except ValueError:
+        outfile.write("")
 
 outfile.write("]\n")
 outfile.close()
