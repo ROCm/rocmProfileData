@@ -181,16 +181,16 @@ for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as lab
             if key not in stacks:
                 stacks[key] = []
             stack = stacks[key].append((row[1], row[4]))
-            #print(f"new api frame: pid_tid={key} -> stack={stacks}")
+            #print(f"0: new api frame: pid_tid={key} -> stack={stacks}")
 
         elif row[0] == '1':  #Frame end
             completed = stacks[key].pop()
-            #print(f"end api frame: pid_tid={key} -> stack={stacks}")
+            #print(f"1: end api frame: pid_tid={key} -> stack={stacks}")
 
         elif row[0] == '2':  # API + Op
             if key in stacks and len(stacks[key]) > 0:
                 frame = stacks[key][-1]
-                #print(f"Op on {frame} ({len(stacks[key])})")
+                #print(f"2: Op on {frame} ({len(stacks[key])})")
                 gpuFrame = None
                 if key not in currentFrame:    # First op under the current api frame
                     gpuFrame = GpuFrame()
@@ -200,20 +200,24 @@ for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as lab
                     gpuFrame.end = row[8]
                     gpuFrame.gpus.append((row[5], row[6]))
                     gpuFrame.totalOps = 1
-                    #print(f"new frame: {gpuFrame.gpus}")
+                    #print(f"2a: new frame: {gpuFrame.gpus} {gpuFrame.start} {gpuFrame.end} {gpuFrame.end - gpuFrame.start}")
                 else:
                     gpuFrame = currentFrame[key]
-                    if gpuFrame.id == frame[0] and gpuFrame.name == frame[1]:    # Another op under the same frame -> union them
+                    # Another op under the same frame -> union them (but only if they are butt together)
+                    if gpuFrame.id == frame[0] and gpuFrame.name == frame[1] and (abs(row[7] - gpuFrame.end) < 20 or abs(gpuFrame.start - row[8]) < 20): 
+                    #if gpuFrame.id == frame[0] and gpuFrame.name == frame[1]:    # Another op under the same frame -> union them
+                    #if False:   # Turn off frame joining
                         if row[7] < gpuFrame.start: gpuFrame.start = row[7]
                         if row[8] > gpuFrame.end: gpuFrame.end = row[8] 
                         if (row[5], row[6]) not in gpuFrame.gpus: gpuFrame.gpus.append((row[5], row[6]))
                         gpuFrame.totalOps = gpuFrame.totalOps + 1
+                        #print(f"2c: union frame: {gpuFrame.gpus} {gpuFrame.start} {gpuFrame.end} {gpuFrame.end - gpuFrame.start}")
 
                     else:    #This is a new frame - dump the last and make new
                         gpuFrame = currentFrame[key]
                         for dest in gpuFrame.gpus:
-                            #print(f"OUTPUT: dest={dest} time={gpuFrame.start} -> {gpuFrame.end} TotalOps={gpuFrame.totalOps}")
-                            outfile.write(',{"pid":"%s","tid":"%s","name":"%s","ts":"%s","dur":"%s","ph":"X","args":{"desc":"%s"}}\n'%(dest[0], dest[1], gpuFrame.name, gpuFrame.start, gpuFrame.end - gpuFrame.start, f"UserMarker frame: {gpuFrame.totalOps} ops"))
+                            #print(f"2: OUTPUT: dest={dest} time={gpuFrame.start} -> {gpuFrame.end} Duration={gpuFrame.end - gpuFrame.start} TotalOps={gpuFrame.totalOps}")
+                            outfile.write(',{"pid":"%s","tid":"%s","name":"%s","ts":"%s","dur":"%s","ph":"X","args":{"desc":"%s"}}\n'%(dest[0], dest[1], gpuFrame.name, gpuFrame.start - 1, gpuFrame.end - gpuFrame.start + 1, f"UserMarker frame: {gpuFrame.totalOps} ops"))
                         currentFrame.pop(key)
 
                         # make the first op under the new frame
@@ -224,7 +228,7 @@ for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as lab
                         gpuFrame.end = row[8]
                         gpuFrame.gpus.append((row[5], row[6]))
                         gpuFrame.totalOps = 1
-                        #print(f"new frame: {gpuFrame.gpus}")
+                        #print(f"2b: new frame: {gpuFrame.gpus} {gpuFrame.start} {gpuFrame.end} {gpuFrame.end - gpuFrame.start}")
 
                 currentFrame[key] = gpuFrame
 
