@@ -119,17 +119,17 @@ for gpuId in gpuIdsPresent:
         try:
            if idle and int(row[1]) > 0:
                idle = 0
-               outfile.write(",{\"pid\":\"0\",\"name\":\"Idle\",\"ph\":\"C\",\"ts\":%s,\"args\":{\"idle\":%s}}\n"%(row[0],idle))
+               outfile.write(',{"pid":"%s","name":"Idle","ph":"C","ts":%s,"args":{"idle":%s}}\n'%(gpuId, row[0], idle))
            if depth == 1 and int(row[1]) < 0:
                idle = 1
-               outfile.write(",{\"pid\":\"0\",\"name\":\"Idle\",\"ph\":\"C\",\"ts\":%s,\"args\":{\"idle\":%s}}\n"%(row[0],idle))
+               outfile.write(',{"pid":"%s","name":"Idle","ph":"C","ts":%s,"args":{"idle":%s}}\n'%(gpuId, row[0], idle))
            depth = depth + int(row[1])
-           outfile.write(",{\"pid\":\"0\",\"name\":\"QueueDepth\",\"ph\":\"C\",\"ts\":%s,\"args\":{\"depth\":%s}}\n"%(row[0],depth))
+           outfile.write(',{"pid":"%s","name":"QueueDepth","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(gpuId, row[0], depth))
         except ValueError:
             outfile.write("")
 if T_end > 0:
-            outfile.write(",{\"pid\":\"0\",\"name\":\"Idle\",\"ph\":\"C\",\"ts\":%s,\"args\":{\"idle\":%s}}\n"%(T_end,idle))
-            outfile.write(",{\"pid\":\"0\",\"name\":\"QueueDepth\",\"ph\":\"C\",\"ts\":%s,\"args\":{\"depth\":%s}}\n"%(T_end,depth))
+            outfile.write(',{"pid":"%s","name":"Idle","ph":"C","ts":%s,"args":{"idle":%s}}\n'%(gpuId, T_end, idle))
+            outfile.write(',{"pid":"%s","name":"QueueDepth","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(gpuId, T_end, depth))
 
 #Create the (global) memory counter
 sizes = {}    # address -> size
