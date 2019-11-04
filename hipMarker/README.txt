@@ -2,15 +2,14 @@ This is a module to add ranged and "impulse" user markers directly from python.
 
 Usage examples:
 
-    import hipMarker
     from hipScopedMarker import hipScopedMarker
 
-    hipMarker.emitMarker("This is a single event with no duration")
+    hipScopedMarker.emitMarker("This is a single event with no duration")
     with hipScopedMarker("This is a range"):
         pass	# this block's duration is logged
 
 Notes:
-    The current backend only supports instant events, so the hipScopedMarker emits two name-mangled events.  You can demangle these.  The rocprof2rpd.py importer does this automatically.
+    The current rocprofiler backend only logs push and pop events.  You have to assemble these calls into ranges if you are using the RocTX logs directly.  The rocprof2rpd.py importer does this automatically.
 
 
 Installation:
