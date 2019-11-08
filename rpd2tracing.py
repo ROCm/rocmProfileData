@@ -57,13 +57,25 @@ if args.end:
 
 print("Filter: %s"%(rangeString))
 
+# Output Ops
+'''
+# Hack for busted rocprofiler that can't populate kernel names
 for row in connection.execute("select A.string as optype, B.string as description, C.string as arg, gpuId, queueId, rocpd_op.start/1000, (rocpd_op.end-rocpd_op.start) / 1000 from rocpd_op LEFT JOIN rocpd_api_ops on op_id = rocpd_op.id INNER JOIN rocpd_api on api_id = rocpd_api.id INNER JOIN rocpd_string A on A.id = rocpd_op.opType_id INNER Join rocpd_string B on B.id = rocpd_op.description_id INNER JOIN rocpd_string C on C.id = rocpd_api.args_id %s"%(rangeString)):
     try:
         name = row[0] if len(row[2])==0 else row[2]
         outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[3], row[4], name, row[5], row[6], row[0]))
     except ValueError:
         outfile.write("")
+'''
 
+for row in connection.execute("select A.string as optype, B.string as description, gpuId, queueId, rocpd_op.start/1000, (rocpd_op.end-rocpd_op.start) / 1000 from rocpd_op INNER JOIN rocpd_string A on A.id = rocpd_op.opType_id INNER Join rocpd_string B on B.id = rocpd_op.description_id %s"%(rangeString)):
+    try:
+        name =  row[0] if len(row[1])==0 else row[1]
+        outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], name, row[4], row[5], row[0]))
+    except ValueError:
+        outfile.write("")
+
+#Output apis
 for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000, (rocpd_api.end-rocpd_api.start) / 1000 from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeString)):
     try:
         if row[0]=="UserMarker":
@@ -76,6 +88,7 @@ for row in connection.execute("select A.string as apiName, B.string as args, pid
     except ValueError:
         outfile.write("")
 
+#Output api->op linkage
 for row in connection.execute("select rocpd_api_ops.id, pid, tid, gpuId, queueId, rocpd_api.end/1000 - 2, rocpd_op.start/1000 from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id %s"%(rangeString)):
     try:
         outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"cat\":\"api_op\",\"name\":\"api_op\",\"ts\":\"%s\",\"id\":\"%s\",\"ph\":\"s\"}\n"%(row[1], row[2], row[5], row[0]))
