@@ -10,12 +10,12 @@ from datetime import datetime
 import argparse
 from os import path
 
-parser = argparse.ArgumentParser(description='convert RPD to json for chrome tracing')
+parser = argparse.ArgumentParser(description='convert rocprofiler output to an RPD database')
 parser.add_argument('--ops_input_file', type=str, help="hcc_ops_trace.txt from rocprofiler")
 parser.add_argument('--api_input_file', type=str, help="hip_api_trace.txt from rocprofiler")
 parser.add_argument('--hsa_input_file', type=str, help="hsa_api_trace.txt from rocprofiler")
 parser.add_argument('--roctx_input_file', type=str, help="roctx_trace.txt from rocprofiler")
-parser.add_argument('output_rpd', type=str, help="chrone tracing json output")
+parser.add_argument('output_rpd', type=str, help="new output file")
 args = parser.parse_args()
 
 if path.exists(args.output_rpd):
@@ -291,6 +291,24 @@ connection.executemany("insert into rocpd_string(id, string) values (?,?)", stri
 connection.executemany("insert into rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", api_inserts)
 connection.executemany("delete from rocpd_api where id=?", api_removes)
 
+connection.commit()
+
+# Work around an inadequacy if rocprofiler.
+# It does not know the name of running kernels.
+# Populate kernel names from args of the api that enqueued it
+
+print(f"Fixing missing kernel names")
+connection.execute("CREATE TABLE temp.opid_argid('opid' integer NOT NULL PRIMARY KEY, 'argid' integer NOT NULL)")
+connection.execute("INSERT INTO opid_argid SELECT rocpd_op.id, rocpd_api.args_id FROM rocpd_api_ops INNER JOIN rocpd_op ON rocpd_op.id = rocpd_api_ops.op_id INNER JOIN rocpd_api ON rocpd_api.id = rocpd_api_ops.api_id")
+connection.execute("UPDATE rocpd_op SET description_id = (SELECT argid FROM opid_argid WHERE opid=rocpd_op.id) WHERE rocpd_op.id IN (SELECT opid from opid_argid) AND rocpd_op.opType_id = (SELECT id from rocpd_string where string='hcCommandKernel' limit 1)")
+connection.execute("DROP TABLE temp.opid_argid")
+connection.commit()
+
+#Helpful Queries
+connection.execute("CREATE VIEW api AS SELECT rocpd_api.id,pid,tid,start,end,A.string AS apiName, B.string AS args FROM rocpd_api INNER JOIN rocpd_string A ON A.id = rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id = rocpd_api.args_id")
+connection.execute("CREATE VIEW op AS SELECT rocpd_op.id,gpuId,queueId,sequenceId,start,end,A.string AS description, B.string AS opType FROM rocpd_op INNER JOIN rocpd_string A ON A.id = rocpd_op.description_id INNER JOIN rocpd_string B ON B.id = rocpd_op.opType_id")
+connection.execute("CREATE VIEW top AS SELECT A.string as KernelName, count(A.string) as TotalCalls, sum(rocpd_op.end-rocpd_op.start) / 1000 as TotalDuration, (sum(rocpd_op.end-rocpd_op.start)/count(A.string)) / 1000 as Ave, sum(rocpd_op.end-rocpd_op.start) * 100.0 / (select sum(end-start) from rocpd_op) as Percentage FROM rocpd_api_ops INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id INNER JOIN rocpd_string A ON A.id = rocpd_op.description_id group by KernelName order by TotalDuration desc")
+connection.execute("CREATE VIEW busy AS select A.gpuId, GpuTime, WallTime, GpuTime*1.0/WallTime as Busy from (select gpuId, sum(end-start) as GpuTime from rocpd_op group by gpuId) A INNER JOIN (select max(end) - min(start) as WallTime from rocpd_op)")
 connection.commit()
 
 #Generate Schema Indexes
