@@ -140,7 +140,7 @@ for gpuId in gpuIdsPresent:
            outfile.write(',{"pid":"%s","name":"QueueDepth","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(gpuId, row[0], depth))
         except ValueError:
             outfile.write("")
-if T_end > 0:
+    if T_end > 0:
             outfile.write(',{"pid":"%s","name":"Idle","ph":"C","ts":%s,"args":{"idle":%s}}\n'%(gpuId, T_end, idle))
             outfile.write(',{"pid":"%s","name":"QueueDepth","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(gpuId, T_end, depth))
 

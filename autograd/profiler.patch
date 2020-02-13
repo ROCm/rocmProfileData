@@ -1,0 +1,94 @@
+diff --git a/torch/autograd/profiler.py b/torch/autograd/profiler.py
+index aa0d434..0318768 100644
+--- a/torch/autograd/profiler.py
++++ b/torch/autograd/profiler.py
+@@ -108,6 +108,77 @@ class EventList(list):
+         return build_table(
+             self, sort_by=sort_by, row_limit=row_limit, header=header, use_cuda=self._use_cuda)
+ 
++    def export_rpd(self, path):
++        """Exports an EventList as a Chrome tracing tools file.
++
++         Arguments:
++            path (str): Path where the trace will be written.
++        """
++        print("Exporting rpt...")
++        import sqlite3
++
++        # FIXME: remove old file if it exists
++
++        connection = sqlite3.connect(path)
++        connection.execute('CREATE TABLE IF NOT EXISTS "rocpd_string" ("id" integer NOT NULL PRIMARY KEY, "string" varchar(4096) NOT NULL)')
++        connection.execute('CREATE TABLE IF NOT EXISTS "rocpd_op" ("id" integer NOT NULL PRIMARY KEY, "gpuId" integer NOT NULL, "queueId" integer NOT NULL, "sequenceId" integer NOT NULL, "completionSignal" varchar(18) NOT NULL, "start" integer NOT NULL, "end" integer NOT NULL, "description_id" integer NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED, "opType_id" integer NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED)')
++        connection.execute('CREATE TABLE IF NOT EXISTS "rocpd_api" ("id" integer NOT NULL PRIMARY KEY, "pid" integer NOT NULL, "tid" integer NOT NULL, "start" integer NOT NULL, "end" integer NOT NULL, "apiName_id" integer NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED, "args_id" integer NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED)')
++        connection.execute('CREATE TABLE IF NOT EXISTS "rocpd_api_ops" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "api_id" integer NOT NULL REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "op_id" integer NOT NULL REFERENCES "rocpd_op" ("id") DEFERRABLE INITIALLY DEFERRED)')
++
++        #Set up primary keys
++        string_id = 1
++        op_id = 1
++        api_id = 1
++
++        # Dicts
++        strings = {}    # string -> id
++
++        # rows to bulk insert
++        string_inserts = []
++        api_inserts = []
++        op_inserts = []
++        api_ops_inserts = []
++
++        #empty string
++        empty = string_id
++        strings[""] = string_id
++        string_inserts.append((string_id, ""))
++        string_id = string_id + 1
++
++        for evt in self:
++            try:
++                name = strings[evt.name]
++            except:
++                strings[evt.name] = string_id
++                string_inserts.append((string_id, evt.name))
++                name = string_id
++                string_id = string_id + 1
++
++            api_inserts.append((api_id, 100, evt.thread, evt.cpu_interval.start * 1000, (evt.cpu_interval.start + evt.cpu_interval.elapsed_us()) * 1000, name, empty))
++
++            #---------------------
++            for k in evt.kernels:
++                try:
++                    kname = strings[k.name]
++                except:
++                    strings[k.name] = string_id
++                    string_inserts.append((string_id, k.name))
++                    kname = string_id
++                    string_id = string_id + 1
++
++                op_inserts.append((op_id, k.device, 0, k.interval.start * 1000, (k.interval.start + k.interval.elapsed_us()) * 1000, kname, empty))
++                api_ops_inserts.append((api_id, op_id))
++                op_id = op_id + 1
++            #---------------------
++            api_id = api_id + 1
++
++        connection.executemany("insert into rocpd_string(id, string) values (?,?)", string_inserts)
++        connection.executemany("insert into rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", api_inserts)
++        connection.executemany("insert into rocpd_op(id, gpuId, queueId, sequenceId, completionSignal,  start, end, description_id, opType_id) values (?,?,?,'','',?,?,?,?)", op_inserts)
++        connection.executemany("insert into rocpd_api_ops(api_id, op_id) values (?,?)", api_ops_inserts)
++        connection.commit()
++        connection.close()
++
+     def export_chrome_trace(self, path):
+         """Exports an EventList as a Chrome tracing tools file.
+ 
+@@ -308,6 +379,11 @@ class profile(object):
+             sort_by=sort_by, row_limit=row_limit, header=header)
+     table.__doc__ = EventList.table.__doc__
+ 
++    def export_rpd(self, path):
++        self._check_finish()
++        return self.function_events.export_rpd(path)
++    export_rpd.__doc__ = EventList.export_rpd.__doc__
++
+     def export_chrome_trace(self, path):
+         self._check_finish()
+         return self.function_events.export_chrome_trace(path)
