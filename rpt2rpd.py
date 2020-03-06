@@ -112,6 +112,7 @@ if args.input_rpt:
             connection.executemany("insert into rocpd_api_ops(api_id, op_id) values (?,?)", api_ops_inserts)
             connection.commit()
             api_inserts = []
+            op_inserts = []
             string_inserts = []
 
     connection.executemany("insert into rocpd_string(id, string) values (?,?)", string_inserts)

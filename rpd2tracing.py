@@ -217,7 +217,7 @@ for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as lab
                 else:
                     gpuFrame = currentFrame[key]
                     # Another op under the same frame -> union them (but only if they are butt together)
-                    if gpuFrame.id == frame[0] and gpuFrame.name == frame[1] and (abs(row[7] - gpuFrame.end) < 20 or abs(gpuFrame.start - row[8]) < 20): 
+                    if gpuFrame.id == frame[0] and gpuFrame.name == frame[1] and (abs(row[7] - gpuFrame.end) < 200 or abs(gpuFrame.start - row[8]) < 200): 
                     #if gpuFrame.id == frame[0] and gpuFrame.name == frame[1]:    # Another op under the same frame -> union them
                     #if False:   # Turn off frame joining
                         if row[7] < gpuFrame.start: gpuFrame.start = row[7]
