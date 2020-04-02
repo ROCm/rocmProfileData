@@ -301,6 +301,7 @@ print(f"Fixing missing kernel names")
 connection.execute("CREATE TABLE temp.opid_argid('opid' integer NOT NULL PRIMARY KEY, 'argid' integer NOT NULL)")
 connection.execute("INSERT INTO opid_argid SELECT rocpd_op.id, rocpd_api.args_id FROM rocpd_api_ops INNER JOIN rocpd_op ON rocpd_op.id = rocpd_api_ops.op_id INNER JOIN rocpd_api ON rocpd_api.id = rocpd_api_ops.api_id")
 connection.execute("UPDATE rocpd_op SET description_id = (SELECT argid FROM opid_argid WHERE opid=rocpd_op.id) WHERE rocpd_op.id IN (SELECT opid from opid_argid) AND rocpd_op.opType_id = (SELECT id from rocpd_string where string='hcCommandKernel' limit 1)")
+connection.execute("UPDATE rocpd_op SET description_id = (SELECT argid FROM opid_argid WHERE opid=rocpd_op.id) WHERE rocpd_op.id IN (SELECT opid from opid_argid) AND rocpd_op.opType_id = (SELECT id from rocpd_string where string='KernelExecution' limit 1)")
 connection.execute("DROP TABLE temp.opid_argid")
 connection.commit()
 
