@@ -6,7 +6,7 @@ To apply the patch (to an installation or src respectively):
 cd <path>/site-packages    (e.g. ~/.local/lib/python3.6/site-packages/)
   or
 cd <src-root>              (e.g. ~/pytorch/)
-git apply rpd_profile.patch
+git apply profiler.patch
 
 
 USAGE
