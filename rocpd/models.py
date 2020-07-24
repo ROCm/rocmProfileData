@@ -1,11 +1,9 @@
 from django.db import models
 
 
-
-class Version(models.Model):
-    version = models.CharField(max_length=64, default='0.99')
-    #class Meta:
-    #    db_table = 'version'
+class Metadata(models.Model):
+    tag = models.CharField(max_length=4096)
+    value = models.CharField(max_length=4096)
 
 class String(models.Model):
     string = models.CharField(max_length=4096)
