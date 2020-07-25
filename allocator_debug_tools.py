@@ -51,9 +51,9 @@ def deserializeApis(connection, srcApis):
                 name_id = string_id
                 string_id = string_id + 1
             api_inserts.append((api_id, row[1], row[2], row[3], row[4], name_id, row[5]))
-            api_id = api_id + 1
             if 'block' in args:
                 block_inserts.append((api_id, args['block']))
+            api_id = api_id + 1
             count = count + 1
         if (count % 100000 == 99999):
             commitRecords()
