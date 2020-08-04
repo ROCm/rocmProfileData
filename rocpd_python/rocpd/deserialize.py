@@ -15,8 +15,6 @@ import argparse
 from rocpd.importer import RocpdImportData
 
 def deserializeApis(imp, srcApis):
-    print(f"Deserializing apis in: {str(srcApis)[1:-1]}")
-
     count = 0
     api_inserts = []    # rows to bulk insert
     op_inserts = []     # rows to bulk insert
@@ -70,19 +68,13 @@ if __name__ == "__main__":
 
   parser = argparse.ArgumentParser(description='Promote roctx serialized ops to actual ops')
   parser.add_argument('input_rpd', type=str, help="input rpd db")
-  #parser.add_argument('--start', type=int, help="start timestamp")
-  #parser.add_argument('--end', type=int, help="end timestamp")
   args = parser.parse_args()
 
   connection = sqlite3.connect(args.input_rpd)
-
-  # Initialize data to current db state
-  # FIXME: Move all this someplace reusable
 
   importData = RocpdImportData()
   importData.resumeExisting(connection)	# load the current db state
 
   roctxApis = ["UserMarker"]
+  print(f"Deserializing apis in: {str(roctxApis)[1:-1]}")
   deserializeApis(importData, roctxApis)
-
-
