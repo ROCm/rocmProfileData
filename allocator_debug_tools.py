@@ -30,7 +30,7 @@ def deserializeApis(connection, srcApis):
         nonlocal block_inserts
         connection.executemany("insert into rocpd_string(id, string) values (?,?)", string_inserts)
         connection.executemany("insert into rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", api_inserts)
-        connection.executemany("insert into rocpd_api_block(api_ptr_id, block) values (?,?)", block_inserts)
+        connection.executemany("insert into rocpd_api_block(api_ptr_id, block, size, event) values (?,?,?,?)", block_inserts)
         connection.commit()
         api_inserts = []
         string_inserts = []
@@ -51,8 +51,11 @@ def deserializeApis(connection, srcApis):
                 name_id = string_id
                 string_id = string_id + 1
             api_inserts.append((api_id, row[1], row[2], row[3], row[4], name_id, row[5]))
-            if 'block' in args:
-                block_inserts.append((api_id, args['block']))
+            if 'event' in args: #event-lifecycle related api
+                block_inserts.append((api_id, args['block'], int(args['size']), args['event']))
+            else: #block-lifecycle related api
+                if 'block' in args:
+                    block_inserts.append((api_id, args['block'], int(args['size']), ""))
             api_id = api_id + 1
             count = count + 1
         if (count % 100000 == 99999):
@@ -118,8 +121,8 @@ if __name__ == "__main__":
   buildStringCache(connection)
   buildCurrentIds(connection)
 
-  connection.execute('CREATE TABLE IF NOT EXISTS "rocpd_api_block" ("api_ptr_id" integer NOT NULL PRIMARY KEY REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "block" varchar(18) NOT NULL)');
-  connection.execute('create view block_api as select A.*, C.string as blockApi, B.block as block from rocpd_api_block B join rocpd_api A on A.id = B.api_ptr_id join rocpd_string C on C.id = A.apiName_id')
+  connection.execute('CREATE TABLE IF NOT EXISTS "rocpd_api_block" ("api_ptr_id" integer NOT NULL PRIMARY KEY REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "block" varchar(18) NOT NULL, "size" integer NOT NULL, "event" varchar(18) NOT NULL)');
+  connection.execute('create view block_api as select A.*, C.string as blockApi, B.block as block, B.size as size, B.event as event from rocpd_api_block B join rocpd_api A on A.id = B.api_ptr_id join rocpd_string C on C.id = A.apiName_id')
   roctxApis = ["UserMarker"]
   deserializeApis(connection, roctxApis)
   deleteApis(connection, roctxApis)
