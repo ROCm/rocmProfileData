@@ -1,0 +1,20 @@
+521,524c521,524                                                                                                         
+<   rpd_output=$(echo $csv_output | sed -n "/\.rpd/p")                                                                  
+<   if [ -n "$rpd_output" ] ; then                                                                                      
+<     echo $OUTPUT_LIST                                                                                                 
+<     python3.6 -m rocpd.rocprofiler_import --input_dir $OUTPUT_LIST $rpd_output                                        
+---                                                                                                                     
+>   if [ "$GEN_STATS" = "1" ] ; then                                                                                    
+>     db_output=$(echo $csv_output | sed "s/\.csv/.db/")                                                                
+>     merge_output $OUTPUT_LIST                                                                                         
+>     python $BIN_DIR/tblextr.py $db_output $OUTPUT_LIST                                                                
+526,532c526                                                                                                             
+<     if [ "$GEN_STATS" = "1" ] ; then                                                                                  
+<       db_output=$(echo $csv_output | sed "s/\.csv/.db/")                                                              
+<       merge_output $OUTPUT_LIST                                                                                       
+<       python $BIN_DIR/tblextr.py $db_output $OUTPUT_LIST                                                              
+<     else                                                                                                              
+<       python $BIN_DIR/tblextr.py $csv_output $OUTPUT_LIST                                                             
+<     fi                                                                                                                
+---                                                                                                                     
+>     python $BIN_DIR/tblextr.py $csv_output $OUTPUT_LIST    
