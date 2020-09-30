@@ -90,7 +90,7 @@ def importHsa(imp, infile):
         nonlocal hsa_inserts
 
 def importRoctx(imp, infile):
-    exp = re.compile("^(\d*)\s+(\d*):(\d*)\s+(\d+):\"(.*)\".*$")
+    exp = re.compile("^(\d*)\s+(\d*):(\d*)\s+(\d+):\d+:\"(.*)\".*$")
     count = 0;
     stack = []
     api_inserts = [] # rows to bulk insert
