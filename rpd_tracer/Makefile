@@ -12,11 +12,19 @@ ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/roctracer/include/ -I/opt/rocm/inc
 
 CXX=$(HIPCC)
 
-rpd_tracer.so: rpd_tracer.o
-	$(CXX) -o $@ $< -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
+SRCS = rpd_tracer.cpp Table.cpp OpTable.cpp ApiTable.cpp
+OBJS = $(SRCS:.cpp=.o)
 
-rpd_tracer.o: rpd_tracer.cpp
-	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g
+MAIN = rpd_tracer.so
+
+$(MAIN): $(OBJS)
+	$(CXX) -o $@ $(OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
+
+.cpp.o:
+	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O0
+
+#rpd_tracer.o: rpd_tracer.cpp
+#	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g
 
 clean:
-	rm -f rpd_tracer.o rpd_tracer.so
+	rm -f *.o rpd_tracer.so
