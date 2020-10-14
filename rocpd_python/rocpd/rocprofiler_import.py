@@ -173,7 +173,12 @@ def populateKernelInfo(imp):
 
     for row in imp.connection.execute("select A.op_id, C.string from rocpd_api_ops A join rocpd_api B on B.id = A.api_id join rocpd_string C on C.id = B.args_id where B.apiName_id in (select id from rocpd_string where string in (%s))" % str(kernelApis)[1:-1]):
         args = {}
-        for line in row[1].split(','):
+        if ('kernel=' in row[1]):
+            input_line, kernel_line = row[1].split('kernel=')
+        else:
+            input_line = row[1]
+            kernel_line = None
+        for line in input_line.split(','):
             key, value = line.partition("=")[::2]
             args[key.strip()] = value.strip()
         gridx = args['gridDimX'] if 'gridDimX' in args else 0
@@ -184,7 +189,8 @@ def populateKernelInfo(imp):
         bdimz = args['blockDimZ'] if 'blockDimZ' in args else 0
         shmem = args['sharedMemBytes'] if 'sharedMemBytes' in args else 0
         prmem = 0
-        kernstring = args['kernel'] if 'kernel' in args else ''
+        #kernstring = args['kernel'] if 'kernel' in args else ''
+        kernstring = kernel_line if (kernel_line != None) else ''
         kargs = args['args'] if 'args' in args else ''
         aqfence = '';
         relfence = '';
