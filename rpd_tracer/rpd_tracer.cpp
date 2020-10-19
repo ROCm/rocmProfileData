@@ -55,19 +55,20 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
-//Schema
-const char *SCHEMA_STRING = "CREATE TEMPORARY TABLE \"temp_rocpd_string\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"string\" varchar(4096) NOT NULL)";
 
+#if 0
 sqlite3 *connection = NULL;
 sqlite3_stmt *apiInsert = NULL;
 sqlite3_stmt *apiInsertNoId = NULL;
 sqlite3_stmt *stringInsert = NULL;
+#endif
 
-const sqlite_int64 EMPTY_STRING_ID= 1;
+const sqlite_int64 EMPTY_STRING_ID = 1;
 
 
 
 // Table Recorders
+StringTable *s_stringTable = NULL;
 OpTable *s_opTable = NULL;
 ApiTable *s_apiTable = NULL;
 
@@ -83,8 +84,9 @@ void api_callback(
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
         //printf("ACTIVITY_DOMAIN_HIP_API cid = %d, phase = %d, cor_id = %lu\n", cid, data->phase, data->correlation_id);
-
-        // FIXME: get_create string_id for 'name' from stringTable
+        const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
+        sqlite3_int64 name_id = s_stringTable->getOrCreate(name);
+        char buff[4096];
 
         ApiTable::row row;
         row.pid = GetPid();
@@ -92,28 +94,83 @@ void api_callback(
         row.start = 0;
         row.end = 0;
         row.phase = data->phase;
-        row.apiName_id = EMPTY_STRING_ID;
+        row.apiName_id = name_id;
         row.args_id = EMPTY_STRING_ID;
         row.api_id = data->correlation_id;
 
         if (row.phase == 1)  // Log timestamp
             row.end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
 
-#if 0
-        switch (cid) {
-            case HIP_API_ID_hipMalloc:
-                //entry->ptr = *(data->args.hipMalloc.ptr);
-                break;
-            case HIP_API_ID_hipModuleLaunchKernel:
-                if (data->phase == 0) {
+        if (data->phase == ACTIVITY_API_PHASE_ENTER) {
+            switch (cid) {
+                case HIP_API_ID_hipMalloc:
+                    std::snprintf(buff, 4096, "size=0x%x",
+                        (uint32_t)(data->args.hipMalloc.size));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
+                    break;
+                case HIP_API_ID_hipModuleLaunchKernel:
+                    {
                     const hipFunction_t f = data->args.hipModuleLaunchKernel.f;
                     if (f != NULL) {
-                        printf("t_args=%d, id=%lu, kernel=%s\n", cid, data->correlation_id, cxx_demangle(hipKernelNameRef(f)));
+                        std::string kernelName(cxx_demangle(hipKernelNameRef(f)));
+                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                            data->args.hipModuleLaunchKernel.stream,
+                            kernelName.c_str());
+                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+						// Associate kernel name with op
+                        sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                        s_opTable->associateDescription(row.api_id, kernelName_id);
                     } }
-                break;
-            default:
-                break;
+                    break;
+                case HIP_API_ID_hipMemcpy:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
+                        data->args.hipMemcpy.dst,
+                        data->args.hipMemcpy.src,
+                        (uint32_t)(data->args.hipMemcpy.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpy.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
+                    break;
+                default:
+                    break;
+            }
         }
+        else {   // (data->phase == ACTIVITY_API_PHASE_???)
+
+        }
+#if 0
+  if (data->phase == ACTIVITY_API_PHASE_ENTER) {
+    switch (cid) {
+      case HIP_API_ID_hipMemcpy:
+        SPRINT("dst(%p) src(%p) size(0x%x) kind(%u)",
+          data->args.hipMemcpy.dst,
+          data->args.hipMemcpy.src,
+          (uint32_t)(data->args.hipMemcpy.sizeBytes),
+          (uint32_t)(data->args.hipMemcpy.kind));
+        break;
+      case HIP_API_ID_hipMalloc:
+        SPRINT("ptr(%p) size(0x%x)",
+          data->args.hipMalloc.ptr,
+          (uint32_t)(data->args.hipMalloc.size));
+        break;
+      case HIP_API_ID_hipFree:
+        SPRINT("ptr(%p)", data->args.hipFree.ptr);
+        break;
+      case HIP_API_ID_hipModuleLaunchKernel:
+        SPRINT("kernel(\"%s\") stream(%p)",
+          hipKernelNameRef(data->args.hipModuleLaunchKernel.f),
+          data->args.hipModuleLaunchKernel.stream);
+        break;
+      default:
+        break;
+    }
+  } else {
+    switch (cid) {
+      case HIP_API_ID_hipMalloc:
+        SPRINT("*ptr(0x%p)", *(data->args.hipMalloc.ptr));
+        break;
+      default:
+        break;
+    }
 #endif
 
         if (row.phase == 0) // Log timestamp
@@ -134,6 +191,8 @@ void api_callback(
 
 int count = 0;
 
+// FIXME - we want this
+#if 0
 void create_overhead_record(char *message, timestamp_t begin, timestamp_t end)
 {
     sqlite3_bind_text(stringInsert, 1, message, -1, SQLITE_STATIC);
@@ -155,7 +214,9 @@ void create_overhead_record(char *message, timestamp_t begin, timestamp_t end)
     sqlite3_reset(apiInsertNoId);
     //printf("  (%s): %lu    (%lu) \n", message, (end - begin) / 1000, sqlite3_last_insert_rowid(connection));
 }
+#endif
 
+#if 0
 void hip_activity_callback(const char* begin, const char* end, void* arg)
 {
 return;
@@ -196,42 +257,6 @@ return;
             sqlite3_reset(apiInsert);
         }
         }
-#if 0
-        else if (record->domain == ACTIVITY_DOMAIN_HCC_OPS) {
-            const char *name = roctracer_op_string(record->domain, record->op, record->kind);
-            int index = 0;
-            sqlite_int64 rowId = 0;
-            int ret = 0;
-//printf("op: %s\n", name);
-
-            //"insert into rocpd_string(string) values (?)"
-            sqlite3_bind_text(stringInsert, 1, name, -1, SQLITE_STATIC);
-            ret = sqlite3_step(stringInsert);
-            sqlite3_reset(stringInsert);
-            rowId = sqlite3_last_insert_rowid(connection);
-
-            // "insert into rocpd_op(gpuId, queueId, sequenceId, completionSignal, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)"
-            index = 1;
-            sqlite3_bind_int(opInsert, index++, record->device_id); // gpu
-            sqlite3_bind_int(opInsert, index++, record->queue_id);  // queue
-            sqlite3_bind_int(opInsert, index++, 0);                 // sequence
-            sqlite3_bind_text(opInsert, index++, "", -1, SQLITE_STATIC); // completion signal
-            sqlite3_bind_int64(opInsert, index++, record->begin_ns); // start
-            sqlite3_bind_int64(opInsert, index++, record->end_ns); // end
-            sqlite3_bind_int64(opInsert, index++, EMPTY_STRING_ID); // desc_id
-            sqlite3_bind_int64(opInsert, index++, rowId); // op_id
-
-            ret = sqlite3_step(opInsert);
-            sqlite3_reset(opInsert);
-
-            rowId = sqlite3_last_insert_rowid(connection);
-            index = 1;
-            sqlite3_bind_int64(apiOpInsert, index++, record->correlation_id);
-            sqlite3_bind_int64(apiOpInsert, index++, rowId);
-            ret = sqlite3_step(apiOpInsert);
-            sqlite3_reset(apiOpInsert);
-        }
-#endif
         roctracer_next_record(record, &record);
         ++batchSize;
     }
@@ -247,6 +272,7 @@ return;
     create_overhead_record("commit", cb_mid_time, cb_end_time);
     sqlite3_exec(connection, "END TRANSACTION", NULL, NULL, NULL);
 }
+#endif
 
 
 void hcc_activity_callback(const char* begin, const char* end, void* arg)
@@ -261,7 +287,7 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
         const char *name = roctracer_op_string(record->domain, record->op, record->kind);
 
         // FIXME: get_create string_id for 'name' from stringTable
-        sqlite3_int64 name_id = EMPTY_STRING_ID;
+        sqlite3_int64 name_id = s_stringTable->getOrCreate(name);
 
         OpTable::row row;
         row.gpuId = record->device_id;
@@ -281,7 +307,7 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
         ++batchSize;
     }
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
+    //printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
 
 #if 0
     // Make a tracer overhead record
@@ -336,7 +362,8 @@ void init_tracing() {
     // Log hcc
     roctracer_properties_t hcc_cb_properties;
     memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
-    hcc_cb_properties.buffer_size = 0x1000; //0x40000;
+    //hcc_cb_properties.buffer_size = 0x1000; //0x40000;
+    hcc_cb_properties.buffer_size = 0x40000;
     hcc_cb_properties.buffer_callback_fun = hcc_activity_callback;
     //roctracer_pool_t *hccPool;
     roctracer_open_pool_expl(&hcc_cb_properties, &hccPool);
@@ -379,28 +406,10 @@ void rpdInit()
 
     // Create table recorders
 
+    s_stringTable = new StringTable(filename);
     s_opTable = new OpTable(filename);
     s_apiTable = new ApiTable(filename);
 
-#if 0
-    int ret;
-
-    ret = sqlite3_exec(connection, SCHEMA_STRING, NULL, NULL, NULL);
-    printf("create: %d\n", ret);
-    ret = sqlite3_exec(connection, SCHEMA_API, NULL, NULL, NULL);
-    printf("create: %d\n", ret);
-    ret = sqlite3_exec(connection, SCHEMA_API_OPS, NULL, NULL, NULL);
-    printf("create: %d\n", ret);
-
-    ret = sqlite3_prepare_v2(connection, "insert into temp_rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", -1, &apiInsert, NULL); 
-    ret = sqlite3_prepare_v2(connection, "insert into temp_rocpd_string(string) values (?)", -1, &stringInsert, NULL);
-    ret = sqlite3_prepare_v2(connection, "insert into temp_rocpd_api(pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?)", -1, &apiInsertNoId, NULL);
-    printf("ret: %d %d\n", ret, SQLITE_OK);
-   
-    sqlite3_exec(connection, "insert into temp_rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (4000000000, 0, 0, 0, 0, 0, 0)", NULL, NULL, NULL);
-    sqlite3_exec(connection, "delete from temp_rocpd_api where id=4000000000", NULL, NULL, NULL);
-    printf("ret: %d %d\n", ret, SQLITE_OK);
-#endif
     printf("rpdInit()\n");
     init_tracing();
     start_tracing();
@@ -412,21 +421,13 @@ void rpdFinalize()
     stop_tracing();
 
     // Flush recorders
+    const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    s_stringTable->finalize();
     s_opTable->finalize();
     s_apiTable->finalize();
-
-#if 0
-    int ret;
-
-    const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    ret = sqlite3_exec(connection, "insert into rocpd_api select * from temp_rocpd_api", NULL, NULL, NULL);
-    printf("rocpd_api: %d\n", ret);
-    ret = sqlite3_exec(connection, "insert into rocpd_string select * from temp_rocpd_string where id != 1", NULL, NULL, NULL);
-    printf("rocpd_string: %d\n", ret);
     const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
 
-    sqlite3_close(connection);
-#endif
+    //sqlite3_close(connection);
 }
 

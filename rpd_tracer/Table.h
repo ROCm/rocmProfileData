@@ -29,7 +29,8 @@ public:
         sqlite3_int64 string_id;
     };
 
-    void insert(const row&);
+    //void insert(const row&);
+    sqlite3_int64 getOrCreate(std::string);
     void flush();
     void finalize();
 
@@ -86,6 +87,7 @@ public:
     };
 
     void insert(const row&);
+    void associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id);
     void flush();
     void finalize();
 

@@ -29,6 +29,7 @@ public:
 
     void work();                // work thread
     std::thread *worker;
+    bool done;
 
     ApiTable *p;
 };
@@ -49,10 +50,14 @@ ApiTable::ApiTable(const char *basefile)
     d->tail = 0;
 
     d->worker = NULL;
+    d->done = false;
+
+    d->worker = new std::thread(&ApiTablePrivate::work, d);
 }
 
 void ApiTable::insert(const ApiTable::row &row)
 {
+    std::unique_lock<std::mutex> lock(m_mutex);
 	if (row.phase == 0) {
        d->inFlight.insert({row.api_id, row});
        return;
@@ -60,7 +65,8 @@ void ApiTable::insert(const ApiTable::row &row)
 
     if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
-        d->writeRows();
+        m_wait.notify_one();  // make sure working is running
+        m_wait.wait(lock);
     }
 
     if (row.phase == 1) {
@@ -68,14 +74,13 @@ void ApiTable::insert(const ApiTable::row &row)
         if (d->inFlight.count(row.api_id) > 0) {
             ApiTable::row &r = d->inFlight[row.api_id];
             r.end = row.end;
-            d->rows[++d->head] = r;
+            d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
             d->inFlight.erase(row.api_id);
-            //printf("wrote: %lld\n", row.api_id);
         }
     }
 
     if ((d->head - d->tail) >= ApiTablePrivate::BATCHSIZE) {
-        d->writeRows();
+        m_wait.notify_one();
     }
 }
 
@@ -87,6 +92,12 @@ void ApiTable::flush()
 
 void ApiTable::finalize()
 {
+    std::unique_lock<std::mutex> lock(m_mutex);
+    d->done = true;
+    m_wait.notify_one();
+    lock.unlock();
+    d->worker->join();
+    delete d->worker;
     flush();
     int ret = 0;
     ret = sqlite3_exec(m_connection, "insert into rocpd_api select * from temp_rocpd_api", NULL, NULL, NULL);
@@ -96,7 +107,9 @@ void ApiTable::finalize()
 
 void ApiTablePrivate::writeRows()
 {
-    int i = 0;
+    int i = 1;
+
+    std::unique_lock<std::mutex> guard(p->m_mutex);
 
     if (head == tail)
         return;
@@ -107,7 +120,7 @@ void ApiTablePrivate::writeRows()
     while (i < BATCHSIZE && (head > tail + i)) {
         // insert rocpd_api
         int index = 1;
-        ApiTable::row &r = rows[tail + i];
+        ApiTable::row &r = rows[(tail + i) % BUFFERSIZE];
         sqlite3_bind_int(apiInsert, index++, r.api_id);
         sqlite3_bind_int(apiInsert, index++, r.pid);
         sqlite3_bind_int(apiInsert, index++, r.tid);
@@ -121,6 +134,8 @@ void ApiTablePrivate::writeRows()
     }
     tail = tail + i;
 
+    guard.unlock();
+
     const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
@@ -129,7 +144,17 @@ void ApiTablePrivate::writeRows()
 
 void ApiTablePrivate::work()
 {
+    std::unique_lock<std::mutex> lock(p->m_mutex);
 
+    while (done == false) {
+        while ((head - tail) >= ApiTablePrivate::BATCHSIZE) {
+            lock.unlock();
+            writeRows();
+            p->m_wait.notify_all();
+            lock.lock();
+        }
+        p->m_wait.wait(lock);
+    }
 }
 
 
