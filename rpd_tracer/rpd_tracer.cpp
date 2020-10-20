@@ -84,23 +84,33 @@ void api_callback(
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
         //printf("ACTIVITY_DOMAIN_HIP_API cid = %d, phase = %d, cor_id = %lu\n", cid, data->phase, data->correlation_id);
-        const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
-        sqlite3_int64 name_id = s_stringTable->getOrCreate(name);
-        char buff[4096];
 
+        if ((cid == HIP_API_ID_hipSetDevice) || (cid == HIP_API_ID_hipGetDevice))
+            return;
+        if ((cid == HIP_API_ID___hipPushCallConfiguration) || (cid == HIP_API_ID___hipPopCallConfiguration))
+            return;
+        //if (cid == HIP_API_ID_hipModuleLaunchKernel) 
+        if (cid == HIP_API_ID_hipLaunchKernel) 
+            return;
+
+        char buff[4096];
         ApiTable::row row;
-        row.pid = GetPid();
-        row.tid = GetTid();
-        row.start = 0;
-        row.end = 0;
+        if (data->phase == ACTIVITY_API_PHASE_ENTER) {
+            const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
+            sqlite3_int64 name_id = s_stringTable->getOrCreate(name);
+            row.pid = GetPid();
+            row.tid = GetTid();
+            row.start = 0;
+            row.end = 0;
+            row.apiName_id = name_id;
+            row.args_id = EMPTY_STRING_ID;
+        }
         row.phase = data->phase;
-        row.apiName_id = name_id;
-        row.args_id = EMPTY_STRING_ID;
         row.api_id = data->correlation_id;
 
         if (row.phase == 1)  // Log timestamp
             row.end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-
+#if 1
         if (data->phase == ACTIVITY_API_PHASE_ENTER) {
             switch (cid) {
                 case HIP_API_ID_hipMalloc:
@@ -108,7 +118,13 @@ void api_callback(
                         (uint32_t)(data->args.hipMalloc.size));
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
+                case HIP_API_ID_hipFree:
+                    std::snprintf(buff, 4096, "ptr=%p",
+                        data->args.hipFree.ptr);
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
+                    break;
                 case HIP_API_ID_hipModuleLaunchKernel:
+                case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
                     const hipFunction_t f = data->args.hipModuleLaunchKernel.f;
                     if (f != NULL) {
@@ -123,6 +139,8 @@ void api_callback(
                     } }
                     break;
                 case HIP_API_ID_hipMemcpy:
+                case HIP_API_ID_hipMemcpyAsync:
+                case HIP_API_ID_hipMemcpyWithStream:
                     std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
                         data->args.hipMemcpy.dst,
                         data->args.hipMemcpy.src,
@@ -134,43 +152,19 @@ void api_callback(
                     break;
             }
         }
-        else {   // (data->phase == ACTIVITY_API_PHASE_???)
-
-        }
+#endif
 #if 0
-  if (data->phase == ACTIVITY_API_PHASE_ENTER) {
-    switch (cid) {
-      case HIP_API_ID_hipMemcpy:
-        SPRINT("dst(%p) src(%p) size(0x%x) kind(%u)",
-          data->args.hipMemcpy.dst,
-          data->args.hipMemcpy.src,
-          (uint32_t)(data->args.hipMemcpy.sizeBytes),
-          (uint32_t)(data->args.hipMemcpy.kind));
-        break;
-      case HIP_API_ID_hipMalloc:
-        SPRINT("ptr(%p) size(0x%x)",
-          data->args.hipMalloc.ptr,
-          (uint32_t)(data->args.hipMalloc.size));
-        break;
-      case HIP_API_ID_hipFree:
-        SPRINT("ptr(%p)", data->args.hipFree.ptr);
-        break;
-      case HIP_API_ID_hipModuleLaunchKernel:
-        SPRINT("kernel(\"%s\") stream(%p)",
-          hipKernelNameRef(data->args.hipModuleLaunchKernel.f),
-          data->args.hipModuleLaunchKernel.stream);
-        break;
-      default:
-        break;
-    }
-  } else {
-    switch (cid) {
-      case HIP_API_ID_hipMalloc:
-        SPRINT("*ptr(0x%p)", *(data->args.hipMalloc.ptr));
-        break;
-      default:
-        break;
-    }
+        else {   // (data->phase == ACTIVITY_API_PHASE_???)
+            switch (cid) {
+                case HIP_API_ID_hipMalloc:
+                    std::snprintf(buff, 4096, "ptr=%p",
+                        data->args.hipMalloc.ptr);		// FIXME: needs to combine with 'start' args
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                break;
+            default:
+                    break;
+            }
+        }
 #endif
 
         if (row.phase == 0) // Log timestamp

@@ -118,7 +118,7 @@ void StringTablePrivate::writeRows()
 {
     int i = 1;
 
-    std::unique_lock<std::mutex> guard(p->m_mutex);
+    std::unique_lock<std::mutex> lock(p->m_mutex);
 
     if (head == tail)
         return;
@@ -126,20 +126,24 @@ void StringTablePrivate::writeRows()
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    while (i < BATCHSIZE && (head > tail + i)) {
+    int start = tail + 1;
+    int end = tail + BATCHSIZE;
+    end = (end > head) ? head : end;
+    lock.unlock();
+
+    for (i = start; i < end; ++i) {
         // insert rocpd_string
         int index = 1;
-        StringTable::row &r = rows[(tail + i) % StringTablePrivate::BUFFERSIZE];
+        StringTable::row &r = rows[i % BUFFERSIZE];
         //printf("%lld %s\n", r.string_id, r.string.c_str());
         sqlite3_bind_int64(stringInsert, index++, r.string_id);
         sqlite3_bind_text(stringInsert, index++, r.string.c_str(), -1, SQLITE_STATIC);	// FIXME SQLITE_TRANSIENT?
         int ret = sqlite3_step(stringInsert);
         sqlite3_reset(stringInsert);
-        ++i;
     }
-    tail = tail + i;
-
-    guard.unlock();
+    lock.lock();
+    tail = end;
+    lock.unlock();
 
     const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
