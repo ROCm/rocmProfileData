@@ -47,7 +47,7 @@ OpTable::OpTable(const char *basefile)
     ret = sqlite3_exec(m_connection, SCHEMA_API_OPS, NULL, NULL, NULL);
 
     // prepare queries to insert row
-    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(gpuId, queueId, sequenceId, completionSignal, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
+    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, completionSignal, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api_ops(api_id, op_id) values (?,?)", -1, &d->apiOpInsert, NULL);
     
     d->head = 0;	// last produced by insert()
@@ -100,7 +100,7 @@ void OpTable::finalize()
     int ret = 0;
     ret = sqlite3_exec(m_connection, "insert into rocpd_op select * from temp_rocpd_op", NULL, NULL, NULL);
     printf("rocpd_op: %d\n", ret);
-    ret = sqlite3_exec(m_connection, "insert into rocpd_api_ops select * from temp_rocpd_api_ops", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "insert into rocpd_api_ops (api_id, op_id) select api_id, op_id from temp_rocpd_api_ops", NULL, NULL, NULL);
     printf("rocpd_api_ops: %d\n", ret);
 }
 
@@ -129,22 +129,23 @@ void OpTablePrivate::writeRows()
             descriptions.erase(it);
         }
 
+        sqlite3_bind_int64(opInsert, index++, (tail + i) + p->m_idOffset);
         sqlite3_bind_int(opInsert, index++, r.gpuId);
         sqlite3_bind_int(opInsert, index++, r.queueId);
         sqlite3_bind_int(opInsert, index++, r.sequenceId);
         sqlite3_bind_text(opInsert, index++, "", -1, SQLITE_STATIC);
         sqlite3_bind_int64(opInsert, index++, r.start);
         sqlite3_bind_int64(opInsert, index++, r.end);
-        sqlite3_bind_int64(opInsert, index++, r.description_id);
-        sqlite3_bind_int64(opInsert, index++, r.opType_id);
+        sqlite3_bind_int64(opInsert, index++, r.description_id + p->m_idOffset);
+        sqlite3_bind_int64(opInsert, index++, r.opType_id + p->m_idOffset);
         int ret = sqlite3_step(opInsert);
         sqlite3_reset(opInsert);
 
         // Insert rocpd_api_ops
-        sqlite_int64 rowId = sqlite3_last_insert_rowid(p->m_connection);
+        //sqlite_int64 rowId = sqlite3_last_insert_rowid(p->m_connection);
         index = 1;
-        sqlite3_bind_int64(apiOpInsert, index++, r.api_id);
-        sqlite3_bind_int64(apiOpInsert, index++, rowId);
+        sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(r.api_id) + p->m_idOffset);
+        sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(tail + i) + p->m_idOffset);
         ret = sqlite3_step(apiOpInsert);
         sqlite3_reset(apiOpInsert);
         ++i;

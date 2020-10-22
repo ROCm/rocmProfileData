@@ -11,10 +11,13 @@ public:
     virtual void flush() = 0;
     virtual void finalize() = 0;
 
+    void setIdOffset(sqlite3_int64 offset);
+
 protected:
     sqlite3 *m_connection;
     std::mutex m_mutex;
     std::condition_variable m_wait;
+    sqlite3_int64 m_idOffset;
 };
 
 
@@ -99,3 +102,19 @@ private:
     friend class OpTablePrivate;
 };
 
+
+class MetadataTablePrivate;
+class MetadataTable: public Table
+{
+public:
+    MetadataTable(const char *basefile);
+
+    sqlite3_int64 sessionId();
+
+    void flush();
+    void finalize();
+
+private:
+    MetadataTablePrivate *d;
+    friend class MetadataTablePrivate;
+};

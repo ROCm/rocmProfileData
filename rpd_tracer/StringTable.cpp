@@ -138,7 +138,7 @@ void StringTablePrivate::writeRows()
         int index = 1;
         StringTable::row &r = rows[i % BUFFERSIZE];
         //printf("%lld %s\n", r.string_id, r.string.c_str());
-        sqlite3_bind_int64(stringInsert, index++, r.string_id);
+        sqlite3_bind_int64(stringInsert, index++, r.string_id + p->m_idOffset);
         sqlite3_bind_text(stringInsert, index++, r.string.c_str(), -1, SQLITE_STATIC);	// FIXME SQLITE_TRANSIENT?
         int ret = sqlite3_step(stringInsert);
         sqlite3_reset(stringInsert);

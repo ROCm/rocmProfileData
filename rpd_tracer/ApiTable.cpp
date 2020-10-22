@@ -174,13 +174,13 @@ void ApiTablePrivate::writeRows()
         // insert rocpd_api
         int index = 1;
         ApiTable::row &r = rows[i % BUFFERSIZE];
-        sqlite3_bind_int64(apiInsert, index++, r.api_id);
+        sqlite3_bind_int64(apiInsert, index++, r.api_id + p->m_idOffset);
         sqlite3_bind_int(apiInsert, index++, r.pid);
         sqlite3_bind_int(apiInsert, index++, r.tid);
         sqlite3_bind_int64(apiInsert, index++, r.start);
         sqlite3_bind_int64(apiInsert, index++, r.end);
-        sqlite3_bind_int64(apiInsert, index++, r.apiName_id);
-        sqlite3_bind_int64(apiInsert, index++, r.args_id);
+        sqlite3_bind_int64(apiInsert, index++, r.apiName_id + p->m_idOffset);
+        sqlite3_bind_int64(apiInsert, index++, r.args_id + p->m_idOffset);
         int ret = sqlite3_step(apiInsert);
         sqlite3_reset(apiInsert);
     }

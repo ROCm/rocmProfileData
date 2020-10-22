@@ -68,6 +68,7 @@ const sqlite_int64 EMPTY_STRING_ID = 1;
 
 
 // Table Recorders
+MetadataTable *s_metadataTable = NULL;
 StringTable *s_stringTable = NULL;
 OpTable *s_opTable = NULL;
 ApiTable *s_apiTable = NULL;
@@ -402,12 +403,9 @@ void stop_tracing() {
     roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
     roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HSA_OPS);
 
-    printf("flush -->\n");
     roctracer_flush_activity();
     roctracer_flush_activity_expl(hipPool);
     roctracer_flush_activity_expl(hccPool);
-    printf("<--\n");
-
 }
 
 
@@ -421,9 +419,17 @@ void rpdInit()
 
     // Create table recorders
 
+    s_metadataTable = new MetadataTable(filename);
     s_stringTable = new StringTable(filename);
     s_opTable = new OpTable(filename);
     s_apiTable = new ApiTable(filename);
+
+    // Offset primary keys so they do not collide between sessions
+    sqlite3_int64 offset = s_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
+    s_metadataTable->setIdOffset(offset);
+    s_stringTable->setIdOffset(offset);
+    s_opTable->setIdOffset(offset);
+    s_apiTable->setIdOffset(offset);
 
     printf("rpdInit()\n");
     init_tracing();
