@@ -29,6 +29,7 @@ public:
     void work();		// work thread
     std::thread *worker;
     bool done;
+    bool workerRunning;
     std::mutex cacheMutex;
 
     StringTable *p;
@@ -51,6 +52,7 @@ StringTable::StringTable(const char *basefile)
 
     d->worker = NULL;
     d->done = false;
+    d->workerRunning = true;
 
     d->worker = new std::thread(&StringTablePrivate::work, d);
 
@@ -87,7 +89,7 @@ void StringTablePrivate::insert(StringTable::row &row)
     rows[head % StringTablePrivate::BUFFERSIZE] = row;
 
     //printf("***insert: %lld %s\n", row.string_id, row.string.c_str());
-    if ((head - tail) >= StringTablePrivate::BATCHSIZE) {
+    if (workerRunning == false && (head - tail) >= StringTablePrivate::BATCHSIZE) {
         p->m_wait.notify_one();
     }
 }
@@ -162,6 +164,8 @@ void StringTablePrivate::work()
             p->m_wait.notify_all();
             lock.lock();
         }
+        workerRunning = false;
         p->m_wait.wait(lock);
+        workerRunning = true;
     }
 }

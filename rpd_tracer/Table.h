@@ -58,6 +58,9 @@ public:
     };
 
     void insert(const row&);
+    void insertRoctx(row&);
+    void pushRoctx(const row&);
+    void popRoctx(const row&);
     void flush();
     void finalize();
 

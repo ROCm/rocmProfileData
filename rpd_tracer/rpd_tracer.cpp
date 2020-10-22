@@ -171,15 +171,36 @@ void api_callback(
             row.start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         
         s_apiTable->insert(row);
-
     }
+
     if (domain == ACTIVITY_DOMAIN_ROCTX) {
         const roctx_api_data_t* data = (const roctx_api_data_t*)(callback_data);
-        const timestamp_t time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
 
-        uint32_t pid = GetPid();
-        uint32_t tid = GetTid();
-        //printf("t_roctx=%d, message=%s, ts=%lu, pid=%d, tid=%d\n", cid, data->args.message, time, pid, tid);
+        ApiTable::row row;
+        row.pid = GetPid();
+        row.tid = GetTid();
+        row.start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        row.end = row.start;
+        row.apiName_id = s_stringTable->getOrCreate(std::string("UserMarker"));   // FIXME: can cache
+        row.args_id = EMPTY_STRING_ID;
+        row.phase = 0;
+        row.api_id = 0;
+
+        switch (cid) {
+            case ROCTX_API_ID_roctxMarkA:
+                row.args_id = s_stringTable->getOrCreate(data->args.message);
+                s_apiTable->insertRoctx(row);
+                break;
+            case ROCTX_API_ID_roctxRangePushA:
+                row.args_id = s_stringTable->getOrCreate(data->args.message);
+                s_apiTable->pushRoctx(row);
+                break;
+            case ROCTX_API_ID_roctxRangePop:
+                s_apiTable->popRoctx(row);
+                break;
+            default:
+                break;
+        }
     }
 }
 

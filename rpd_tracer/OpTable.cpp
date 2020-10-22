@@ -30,6 +30,7 @@ public:
 
     void work();		// work thread
     std::thread *worker;
+    bool workerRunning;
     bool done;
 
     OpTable *p;
@@ -54,6 +55,7 @@ OpTable::OpTable(const char *basefile)
 
     d->worker = NULL;
     d->done = false;
+    d->workerRunning = true;
 
     d->worker = new std::thread(&OpTablePrivate::work, d);
 }
@@ -63,15 +65,13 @@ void OpTable::insert(const OpTable::row &row)
     std::unique_lock<std::mutex> lock(m_mutex);
     while (d->head - d->tail >= OpTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
-        //d->writeRows();	
         m_wait.notify_one();  // make sure working is running
         m_wait.wait(lock);
     }
 
     d->rows[(++d->head) % OpTablePrivate::BUFFERSIZE] = row;
 
-    if ((d->head - d->tail) >= OpTablePrivate::BATCHSIZE) {
-        //d->writeRows();
+    if (d->workerRunning == false && (d->head - d->tail) >= OpTablePrivate::BATCHSIZE) {
         m_wait.notify_one();
     }
 }
@@ -117,7 +117,7 @@ void OpTablePrivate::writeRows()
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    while (i < BATCHSIZE && (head > tail + i)) {
+    while (i < BATCHSIZE && (head > tail + i)) {	// FIXME: refactor like ApiTable?
         // insert rocpd_op
         int index = 1;
         OpTable::row &r = rows[(tail + i) % BUFFERSIZE];
@@ -170,6 +170,8 @@ void OpTablePrivate::work()
             p->m_wait.notify_all();
             lock.lock();
         }
+        workerRunning = false;
         p->m_wait.wait(lock);
+        workerRunning = true;
     }
 }

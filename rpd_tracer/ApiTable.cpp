@@ -1,5 +1,6 @@
 #include "Table.h"
 #include <thread>
+#include <deque>
 
 #include "hsa_rsrc_factory.h"
 
@@ -21,6 +22,7 @@ public:
     int count;
 
     std::map<sqlite3_int64, ApiTable::row> inFlight;
+    std::map<std::pair<sqlite3_int64, sqlite3_int64>, std::deque<ApiTable::row>> roctxStacks;
 
     sqlite3_stmt *apiInsert;
     sqlite3_stmt *apiInsertNoId;
@@ -29,6 +31,7 @@ public:
 
     void work();                // work thread
     std::thread *worker;
+    bool workerRunning;
     bool done;
 
     ApiTable *p;
@@ -51,6 +54,7 @@ ApiTable::ApiTable(const char *basefile)
 
     d->worker = NULL;
     d->done = false;
+    d->workerRunning = true;
 
     d->worker = new std::thread(&ApiTablePrivate::work, d);
 }
@@ -80,10 +84,52 @@ void ApiTable::insert(const ApiTable::row &row)
             d->inFlight.erase(it);
         }
     }
-return;
-    if ((d->head - d->tail) >= ApiTablePrivate::BATCHSIZE) {
+
+    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
         m_wait.notify_one();
+}
+
+static sqlite3_int64 roctx_id_hack = sqlite3_int64(1) << 31;
+
+void ApiTable::insertRoctx(ApiTable::row &row)
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+        m_wait.notify_one();
+        m_wait.wait(lock);
     }
+    row.api_id = ++roctx_id_hack;
+    d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = row;
+
+    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
+        m_wait.notify_one();
+}
+
+void ApiTable::pushRoctx(const ApiTable::row &row)
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    auto key = std::pair<sqlite3_int64, sqlite3_int64>(row.pid, row.tid);
+    auto &stack = d->roctxStacks[key];
+    stack.push_front(row);
+}
+
+void ApiTable::popRoctx(const ApiTable::row &row)
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+        m_wait.notify_one();
+        m_wait.wait(lock);
+    }
+    auto key = std::pair<sqlite3_int64, sqlite3_int64>(row.pid, row.tid);
+    auto &stack = d->roctxStacks[key];
+    ApiTable::row &r = stack.front();
+    r.end = row.end;
+    r.api_id = ++roctx_id_hack;
+    d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+    stack.pop_front();
+
+    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
+        m_wait.notify_one();
 }
 
 void ApiTable::flush()
@@ -128,7 +174,7 @@ void ApiTablePrivate::writeRows()
         // insert rocpd_api
         int index = 1;
         ApiTable::row &r = rows[i % BUFFERSIZE];
-        sqlite3_bind_int(apiInsert, index++, r.api_id);
+        sqlite3_bind_int64(apiInsert, index++, r.api_id);
         sqlite3_bind_int(apiInsert, index++, r.pid);
         sqlite3_bind_int(apiInsert, index++, r.tid);
         sqlite3_bind_int64(apiInsert, index++, r.start);
@@ -159,7 +205,9 @@ void ApiTablePrivate::work()
             p->m_wait.notify_all();
             lock.lock();
         }
+        workerRunning = false;
         p->m_wait.wait(lock);
+        workerRunning = true;
     }
 }
 
