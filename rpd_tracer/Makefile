@@ -12,7 +12,7 @@ ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/roctracer/include/ -I/opt/rocm/inc
 
 CXX=$(HIPCC)
 
-SRCS = rpd_tracer.cpp Table.cpp OpTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp
+SRCS = rpd_tracer.cpp Table.cpp OpTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 MAIN = rpd_tracer.so

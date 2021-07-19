@@ -172,7 +172,8 @@ void OpTablePrivate::work()
             lock.lock();
         }
         workerRunning = false;
-        p->m_wait.wait(lock);
+        if (done == false)
+            p->m_wait.wait(lock);
         workerRunning = true;
     }
 }

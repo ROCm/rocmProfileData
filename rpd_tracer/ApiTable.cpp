@@ -170,7 +170,7 @@ void ApiTablePrivate::writeRows()
     end = (end > head) ? head : end;
     lock.unlock();
 
-    for (i = start; i < end; ++i) {
+    for (i = start; i <= end; ++i) {
         // insert rocpd_api
         int index = 1;
         ApiTable::row &r = rows[i % BUFFERSIZE];
@@ -206,7 +206,8 @@ void ApiTablePrivate::work()
             lock.lock();
         }
         workerRunning = false;
-        p->m_wait.wait(lock);
+        if (done == false)
+          p->m_wait.wait(lock);
         workerRunning = true;
     }
 }

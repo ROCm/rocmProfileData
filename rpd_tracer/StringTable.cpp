@@ -111,7 +111,9 @@ void StringTable::finalize()
 
     flush();
     int ret = 0;
-    ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string where id != 1", NULL, NULL, NULL);
+    // FIXME: to empty string or not to empty string?  multi-session issue?
+    //ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string where id != 1", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string", NULL, NULL, NULL);
     printf("rocpd_string: %d\n", ret);
 }
 
@@ -133,7 +135,7 @@ void StringTablePrivate::writeRows()
     end = (end > head) ? head : end;
     lock.unlock();
 
-    for (i = start; i < end; ++i) {
+    for (i = start; i <= end; ++i) {
         // insert rocpd_string
         int index = 1;
         StringTable::row &r = rows[i % BUFFERSIZE];
@@ -165,7 +167,8 @@ void StringTablePrivate::work()
             lock.lock();
         }
         workerRunning = false;
-        p->m_wait.wait(lock);
+        if (done == false)
+            p->m_wait.wait(lock);
         workerRunning = true;
     }
 }

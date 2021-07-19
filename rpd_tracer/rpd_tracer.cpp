@@ -20,6 +20,7 @@
 #include <sqlite3.h>
 
 #include "Table.h"
+#include "ApiIdList.h"
 
 
 static void rpdInit() __attribute__((constructor));
@@ -72,6 +73,8 @@ MetadataTable *s_metadataTable = NULL;
 StringTable *s_stringTable = NULL;
 OpTable *s_opTable = NULL;
 ApiTable *s_apiTable = NULL;
+// API list
+ApiIdList *s_apiList = NULL;
 
 
 
@@ -83,16 +86,11 @@ void api_callback(
 {
     //printf("  api_callback\n");
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
+        if (s_apiList->contains(cid) == false)
+            return;
+
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
         //printf("ACTIVITY_DOMAIN_HIP_API cid = %d, phase = %d, cor_id = %lu\n", cid, data->phase, data->correlation_id);
-
-        if ((cid == HIP_API_ID_hipSetDevice) || (cid == HIP_API_ID_hipGetDevice))
-            return;
-        if ((cid == HIP_API_ID___hipPushCallConfiguration) || (cid == HIP_API_ID___hipPopCallConfiguration))
-            return;
-        //if (cid == HIP_API_ID_hipModuleLaunchKernel) 
-        if (cid == HIP_API_ID_hipLaunchKernel) 
-            return;
 
         char buff[4096];
         ApiTable::row row;
@@ -124,6 +122,21 @@ void api_callback(
                         data->args.hipFree.ptr);
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
+
+                case HIP_API_ID_hipLaunchKernel:
+                case HIP_API_ID_hipExtLaunchKernel:
+                    {
+                        std::string kernelName = hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream);
+                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                            data->args.hipModuleLaunchKernel.stream,
+                            kernelName.c_str());
+                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                                                // Associate kernel name with op
+                        sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                        s_opTable->associateDescription(row.api_id, kernelName_id);
+                    }
+                    break;
+                case HIP_API_ID_hipHccModuleLaunchKernel:
                 case HIP_API_ID_hipModuleLaunchKernel:
                 case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
@@ -323,7 +336,7 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
         ++batchSize;
     }
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    //printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
+    printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
 
 #if 0
     // Make a tracer overhead record
@@ -430,6 +443,22 @@ void rpdInit()
     s_stringTable->setIdOffset(offset);
     s_opTable->setIdOffset(offset);
     s_apiTable->setIdOffset(offset);
+
+    // Pick some apis to ignore
+    s_apiList = new ApiIdList();
+    s_apiList->setInvertMode(true);  // Omit the specified api
+    s_apiList->add("hipGetDevice");
+    s_apiList->add("hipSetDevice");
+    s_apiList->add("hipGetLastError");
+    s_apiList->add("__hipPushCallConfiguration");
+    s_apiList->add("__hipPopCallConfiguration");
+    s_apiList->add("hipCtxSetCurrent");
+    s_apiList->add("hipEventRecord");
+    s_apiList->add("hipEventQuery");
+    s_apiList->add("hipGetDeviceProperties");
+    s_apiList->add("hipPeekAtLastError");
+    s_apiList->add("hipModuleGetFunction");
+    s_apiList->add("hipEventCreateWithFlags");
 
     printf("rpdInit()\n");
     init_tracing();
