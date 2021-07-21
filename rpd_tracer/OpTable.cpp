@@ -19,6 +19,7 @@ public:
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<OpTable::row, BUFFERSIZE> rows; // Circular buffer
     std::map<sqlite3_int64, sqlite3_int64> descriptions;
+    std::mutex m_descriptionLock;
     int head;
     int tail;
     int count;
@@ -78,7 +79,9 @@ void OpTable::insert(const OpTable::row &row)
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)
 {
-    std::lock_guard<std::mutex> guard(m_mutex);
+    // FIXME: double buffer this?
+    // writeRows uses this structure heavily, intermittently.  May matter
+    std::lock_guard<std::mutex> guard(d->m_descriptionLock);
     d->descriptions[api_id] = string_id;
 }
 
@@ -123,10 +126,13 @@ void OpTablePrivate::writeRows()
         OpTable::row &r = rows[(tail + i) % BUFFERSIZE];
 
         // check for description override
-        auto it = descriptions.find(r.api_id);
-        if (it != descriptions.end()) {
-            r.description_id = it->second;
-            descriptions.erase(it);
+        {
+            std::lock_guard<std::mutex> guard(m_descriptionLock);
+            auto it = descriptions.find(r.api_id);
+            if (it != descriptions.end()) {
+                r.description_id = it->second;
+                descriptions.erase(it);
+            }
         }
 
         sqlite3_bind_int64(opInsert, index++, (tail + i) + p->m_idOffset);

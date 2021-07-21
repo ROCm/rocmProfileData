@@ -63,7 +63,6 @@ void MetadataTablePrivate::createSession()
     sqlite3_int64 sessionId = -1;
     char *error_msg;
     ret = sqlite3_exec(p->m_connection, "SELECT value FROM rocpd_metadata WHERE tag = 'session_count'", &sessionCallback, &sessionId, &error_msg);
-    printf("ret = %d\n", ret);
     if (sessionId == -1) {
         sessionId = 0;
         ret = sqlite3_exec(p->m_connection, "INSERT into rocpd_metadata(tag, value) VALUES ('session_count', 1)", NULL, NULL, &error_msg);
@@ -73,7 +72,6 @@ void MetadataTablePrivate::createSession()
         char buff[4096];
         std::snprintf(buff, 4096, "UPDATE rocpd_metadata SET value = '%lld' WHERE tag = 'session_count'", sessionId + 1);
         ret = sqlite3_exec(p->m_connection, buff, NULL, NULL, &error_msg);
-    printf("else ret = %d\n", ret);
     }
 
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);

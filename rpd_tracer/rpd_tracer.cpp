@@ -24,7 +24,13 @@
 
 
 static void rpdInit() __attribute__((constructor));
-static void rpdFinalize() __attribute__((destructor));
+//static void rpdFinalize() __attribute__((destructor));
+// FIXME: can we avoid shutdown corruption?
+// Other rocm libraries crashing on unload
+// libsqlite unloading before we are done using it
+// Current workaround: register an onexit function when first activity is delivered back
+//                     this let's us unload first, or close to.
+void rpdFinalize();
 
 void init_tracing();
 void start_tracing();
@@ -122,7 +128,6 @@ void api_callback(
                         data->args.hipFree.ptr);
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
-
                 case HIP_API_ID_hipLaunchKernel:
                 case HIP_API_ID_hipExtLaunchKernel:
                     {
@@ -303,6 +308,7 @@ return;
 }
 #endif
 
+std::once_flag register_once;
 
 void hcc_activity_callback(const char* begin, const char* end, void* arg)
 {
@@ -346,6 +352,8 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
     create_overhead_record("commit", cb_mid_time, cb_end_time);
     sqlite3_exec(connection, "END TRANSACTION", NULL, NULL, NULL);
 #endif
+    std::call_once(register_once, atexit, rpdFinalize);
+    //atexit(rpdFinalize);
 }
 
 
@@ -467,7 +475,7 @@ void rpdInit()
 
 void rpdFinalize()
 {
-    //printf("rpdFinalize\n");
+    printf("+++++++++++++++++++  rpdFinalize\n");
     stop_tracing();
 
     // Flush recorders
