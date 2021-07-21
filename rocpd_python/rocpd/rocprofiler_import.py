@@ -16,7 +16,7 @@ from rocpd.importer import RocpdImportData
 
 
 def importOps(imp, infile):
-    exp = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+):(\d*).*$")
+    exp = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+):(\d*):(\d*).*$")
     count = 0;
     op_inserts = [] # rows to bulk insert
     api_ops_inserts = [] # rows to bulk insert
@@ -49,8 +49,8 @@ def importOps(imp, infile):
 
 
 def importApis(imp, infile):
-    exp =    re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\).*$")
-    expfix = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\)( kernel=.*)$")
+    exp =    re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\)\s+:.*$")
+    expfix = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\)( kernel=.*)\s+:(\d*)$")
     count = 0
     api_inserts = [] # rows to bulk insert
 
