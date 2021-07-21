@@ -1,6 +1,12 @@
 Use rocprof2rpd.py to convert the rocprofiler file to an rpd file:
 'python3.6 rocprof2rpd.py --ops_input_file hcc_ops_trace.txt --api_input_file hip_api_trace.txt myCoolProfile.rpd'
 
+To use the python library rocpd_python, navigate to the rocpd_python folder and install the library
+
+python3.6 setup.py install
+python3.6 -m rocpd.rocprofiler_import --ops_input_file hcc_ops_trace.txt --api_input_file hip_api_trace.txt myCoolProfile.rpd
+
+
 Generate json from your profile:
 'python3.6 rpd2tracing.py myCoolProfile.rpd trace.json'
 

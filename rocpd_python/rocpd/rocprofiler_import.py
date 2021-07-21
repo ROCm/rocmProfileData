@@ -16,7 +16,7 @@ from rocpd.importer import RocpdImportData
 
 
 def importOps(imp, infile):
-    exp = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+):(\d*).*$")
+    exp = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+):(\d*):(\d*).*$")
     count = 0;
     op_inserts = [] # rows to bulk insert
     api_ops_inserts = [] # rows to bulk insert
@@ -49,8 +49,8 @@ def importOps(imp, infile):
 
 
 def importApis(imp, infile):
-    exp =    re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\).*$")
-    expfix = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\)( kernel=.*)$")
+    exp =    re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\)\s+:.*$")
+    expfix = re.compile("^(\d*):(\d*)\s+(\d*):(\d*)\s+(\w+)\((.*)\)( kernel=.*)\s+:(\d*)$")
     count = 0
     api_inserts = [] # rows to bulk insert
 
@@ -90,7 +90,7 @@ def importHsa(imp, infile):
         nonlocal hsa_inserts
 
 def importRoctx(imp, infile):
-    exp = re.compile("^(\d*)\s+(\d*):(\d*)\s+(\d+):\"(.*)\".*$")
+    exp = re.compile("^(\d*)\s+(\d*):(\d*)\s+(\d+):\d+:\"(.*)\".*$")
     count = 0;
     stack = []
     api_inserts = [] # rows to bulk insert
@@ -173,7 +173,12 @@ def populateKernelInfo(imp):
 
     for row in imp.connection.execute("select A.op_id, C.string from rocpd_api_ops A join rocpd_api B on B.id = A.api_id join rocpd_string C on C.id = B.args_id where B.apiName_id in (select id from rocpd_string where string in (%s))" % str(kernelApis)[1:-1]):
         args = {}
-        for line in row[1].split(','):
+        if ('kernel=' in row[1]):
+            input_line, kernel_line = row[1].split('kernel=')
+        else:
+            input_line = row[1]
+            kernel_line = None
+        for line in input_line.split(','):
             key, value = line.partition("=")[::2]
             args[key.strip()] = value.strip()
         gridx = args['gridDimX'] if 'gridDimX' in args else 0
@@ -184,7 +189,8 @@ def populateKernelInfo(imp):
         bdimz = args['blockDimZ'] if 'blockDimZ' in args else 0
         shmem = args['sharedMemBytes'] if 'sharedMemBytes' in args else 0
         prmem = 0
-        kernstring = args['kernel'] if 'kernel' in args else ''
+        #kernstring = args['kernel'] if 'kernel' in args else ''
+        kernstring = kernel_line if (kernel_line != None) else ''
         kargs = args['args'] if 'args' in args else ''
         aqfence = '';
         relfence = '';
