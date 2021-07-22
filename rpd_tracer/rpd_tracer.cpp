@@ -96,8 +96,8 @@ void api_callback(
 {
     //printf("  api_callback\n");
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
-        if (s_apiList->contains(cid) == false)
-            return;
+        //if (s_apiList->contains(cid) == false)
+        //    return;
 
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
         //printf("ACTIVITY_DOMAIN_HIP_API cid = %d, phase = %d, cor_id = %lu\n", cid, data->phase, data->correlation_id);
@@ -371,7 +371,24 @@ void init_tracing() {
 
     // Enable API callbacks
     roctracer_enable_domain_callback(ACTIVITY_DOMAIN_HIP_API, api_callback, NULL);
+    roctracer_disable_op_callback(ACTIVITY_DOMAIN_HIP_API, HIP_API_ID_hipGetDevice);
     roctracer_enable_domain_callback(ACTIVITY_DOMAIN_ROCTX, api_callback, NULL);
+
+    if (s_apiList->invertMode() == true) {
+        // exclusion list - enable entire domain and turn off things in list
+        roctracer_enable_domain_callback(ACTIVITY_DOMAIN_HIP_API, api_callback, NULL);
+        const std::unordered_map<uint32_t, uint32_t> &filter = s_apiList->filterList();
+        for (auto it = filter.begin(); it != filter.end(); ++it) {
+            roctracer_disable_op_callback(ACTIVITY_DOMAIN_HIP_API, it->first);
+        }
+    }
+    else {
+        // inclusion list - only enable things in the list
+        const std::unordered_map<uint32_t, uint32_t> &filter = s_apiList->filterList();
+        for (auto it = filter.begin(); it != filter.end(); ++it) {
+            roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, it->first, api_callback, NULL);
+        }
+    }
 
 #if 1 
     // Work around a roctracer bug.  Must have a default pool or crash at exit
