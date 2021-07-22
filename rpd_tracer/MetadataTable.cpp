@@ -66,7 +66,6 @@ void MetadataTablePrivate::createSession()
     if (sessionId == -1) {
         sessionId = 0;
         ret = sqlite3_exec(p->m_connection, "INSERT into rocpd_metadata(tag, value) VALUES ('session_count', 1)", NULL, NULL, &error_msg);
-    printf("if ret = %d\n", ret);
     }
     else {
         char buff[4096];
@@ -76,7 +75,7 @@ void MetadataTablePrivate::createSession()
 
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
 
-    printf("---------------- %lld\n", sessionId);
+    printf("Opening session: %lld\n", sessionId);
     fflush(stdout);
 
     this->sessionId = sessionId;

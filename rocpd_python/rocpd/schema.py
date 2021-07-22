@@ -6,6 +6,8 @@
 #
 
 import os
+import sqlite3
+import argparse
 from pathlib import Path
 
 class RocpdSchema:
@@ -38,5 +40,16 @@ class RocpdSchema:
         connection.executescript(self.utilitySchema)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='convert rocprofiler output to an RPD database')
+    parser.add_argument('--create', type=str, help="filename in create empty db")
+    args = parser.parse_args()
+
     schema = RocpdSchema()
-    print(schema.tableSchema)
+
+    if args.create:
+        print(f"Creating empty rpd: {args.create}")
+        connection = sqlite3.connect(args.create)
+        schema.writeSchema(connection)
+        connection.commit()
+    else:
+        print(schema.tableSchema)

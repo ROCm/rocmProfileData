@@ -434,7 +434,9 @@ void rpdInit()
 {
     printf("rpd_tracer, because\n");
 
-    const char *filename = "./trace.rpd";
+    char *filename = getenv("RPDT_FILENAME");
+    if (filename == NULL)
+        filename = "./trace.rpd";
 
     //sqlite3_open("./trace.rpd", &connection);
 
