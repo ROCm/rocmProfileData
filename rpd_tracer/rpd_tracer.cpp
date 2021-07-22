@@ -345,7 +345,7 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
         ++batchSize;
     }
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
+    //printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
 
 #if 0
     // Make a tracer overhead record
@@ -413,12 +413,12 @@ void init_tracing() {
 }
 
 void start_tracing() {
-    printf("# START ############################# %d\n", GetTid());
+    //printf("# START ############################# %d\n", GetTid());
     roctracer_start();
 }
 
 void stop_tracing() {
-    printf("# STOP #############################\n");
+    //printf("# STOP #############################\n");
     roctracer_stop();
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_ROCTX);
@@ -434,7 +434,7 @@ void stop_tracing() {
 
 void rpdInit()
 {
-    printf("rpd_tracer, because\n");
+    //printf("rpd_tracer, because\n");
 
     char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
@@ -472,7 +472,7 @@ void rpdInit()
     s_apiList->add("hipModuleGetFunction");
     s_apiList->add("hipEventCreateWithFlags");
 
-    printf("rpdInit()\n");
+    //printf("rpdInit()\n");
     init_tracing();
     start_tracing();
 }
@@ -485,7 +485,7 @@ void rpdFinalize()
     std::lock_guard<std::mutex> guard(finalizeMutex);
     if (doFinalize == true) {
         doFinalize = false;
-        printf("+++++++++++++++++++  rpdFinalize\n");
+        //printf("+++++++++++++++++++  rpdFinalize\n");
         stop_tracing();
 
         // Flush recorders

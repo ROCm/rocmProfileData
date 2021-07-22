@@ -28,7 +28,6 @@ int sessionCallback(void *data, int argc, char **argv, char **colName)
 {
     sqlite3_int64 &sessionId = *(sqlite3_int64*)data;
     sessionId = atoll(argv[0]);
-    printf("sessionCallback: %lld\n", sessionId);
     fflush(stdout);
     return 0;
 }
@@ -75,7 +74,7 @@ void MetadataTablePrivate::createSession()
 
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
 
-    printf("Opening session: %lld\n", sessionId);
+    //printf("Opening session: %lld\n", sessionId);
     fflush(stdout);
 
     this->sessionId = sessionId;
