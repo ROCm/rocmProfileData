@@ -24,18 +24,22 @@
 
 
 static void rpdInit() __attribute__((constructor));
-//static void rpdFinalize() __attribute__((destructor));
+static void rpdFinalize() __attribute__((destructor));
 // FIXME: can we avoid shutdown corruption?
 // Other rocm libraries crashing on unload
 // libsqlite unloading before we are done using it
 // Current workaround: register an onexit function when first activity is delivered back
 //                     this let's us unload first, or close to.
+// New workaround: register 3 times, only finalize once.  see register_once
+
 void rpdFinalize();
 
 void init_tracing();
 void start_tracing();
 void stop_tracing();
 
+std::once_flag register_once;
+std::once_flag registerAgain_once;
 
 typedef uint64_t timestamp_t;
 
@@ -221,6 +225,7 @@ void api_callback(
                 break;
         }
     }
+    std::call_once(register_once, atexit, rpdFinalize);
 }
 
 int count = 0;
@@ -308,8 +313,6 @@ return;
 }
 #endif
 
-std::once_flag register_once;
-
 void hcc_activity_callback(const char* begin, const char* end, void* arg)
 {
     const roctracer_record_t* record = (const roctracer_record_t*)(begin);
@@ -352,8 +355,7 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
     create_overhead_record("commit", cb_mid_time, cb_end_time);
     sqlite3_exec(connection, "END TRANSACTION", NULL, NULL, NULL);
 #endif
-    std::call_once(register_once, atexit, rpdFinalize);
-    //atexit(rpdFinalize);
+    std::call_once(registerAgain_once, atexit, rpdFinalize);
 }
 
 
@@ -475,19 +477,26 @@ void rpdInit()
     start_tracing();
 }
 
+static bool doFinalize = true;
+std::mutex finalizeMutex;
+
 void rpdFinalize()
 {
-    printf("+++++++++++++++++++  rpdFinalize\n");
-    stop_tracing();
+    std::lock_guard<std::mutex> guard(finalizeMutex);
+    if (doFinalize == true) {
+        doFinalize = false;
+        printf("+++++++++++++++++++  rpdFinalize\n");
+        stop_tracing();
 
-    // Flush recorders
-    const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    s_stringTable->finalize();
-    s_opTable->finalize();
-    s_apiTable->finalize();
-    const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
+        // Flush recorders
+        const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        s_stringTable->finalize();
+        s_opTable->finalize();
+        s_apiTable->finalize();
+        const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
 
-    //sqlite3_close(connection);
+        //sqlite3_close(connection);
+    }
 }
 
