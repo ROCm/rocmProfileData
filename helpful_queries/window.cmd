@@ -23,3 +23,6 @@ DELETE FROM rocpd_api WHERE start > (SELECT end FROM api WHERE apiname = "UserMa
 --# Ops
 DELETE FROM rocpd_op WHERE start < (SELECT start FROM api WHERE apiname = "UserMarker" and args = "start_profile");
 DELETE FROM rocpd_op WHERE start > (SELECT end FROM api WHERE apiname = "UserMarker" and args = "end_profile");
+
+--# Cleanup
+VACUUM
