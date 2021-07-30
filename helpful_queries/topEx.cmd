@@ -1,5 +1,5 @@
 --#
---# TopEx - Output 'top' apis and ops, exclusive.
+--# TopEx - Output 'top' apis (host/CPU) and ops (GPU), exclusive.
 --#   Time from nested calls is only attributed to the callee, not the caller.
 --#
 
