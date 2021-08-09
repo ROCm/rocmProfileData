@@ -1,0 +1,3 @@
+[submodule "rtg_tracer"]
+	path = rtg_tracer
+	url = https://github.com/jeffdaily/rocm-timeline-generator
