@@ -120,7 +120,11 @@ void OpTablePrivate::writeRows()
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    while (i < BATCHSIZE && (head > tail + i)) {	// FIXME: refactor like ApiTable?
+    int start = tail + 1;
+    int end = tail + BATCHSIZE;
+    end = (end > head) ? head : end;
+
+    for (i = start; i <= end; ++i) {
         // insert rocpd_op
         int index = 1;
         OpTable::row &r = rows[(tail + i) % BUFFERSIZE];
@@ -154,7 +158,6 @@ void OpTablePrivate::writeRows()
         sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(tail + i) + p->m_idOffset);
         ret = sqlite3_step(apiOpInsert);
         sqlite3_reset(apiOpInsert);
-        ++i;
     }
     tail = tail + i;
 
