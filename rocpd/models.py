@@ -47,8 +47,8 @@ class KernelOp(Op):
     workgroupX = models.IntegerField(default=0)
     workgroupY = models.IntegerField(default=0)
     workgroupZ = models.IntegerField(default=0)
-    groupSegementSize = models.IntegerField(default=0)
-    privateSegementSize = models.IntegerField(default=0)
+    groupSegmentSize = models.IntegerField(default=0)
+    privateSegmentSize = models.IntegerField(default=0)
     codeObject = models.ForeignKey(KernelCodeObject, on_delete=models.PROTECT)
     kernelName = models.ForeignKey(String, on_delete=models.PROTECT)
     kernelArgAddress = models.CharField(max_length=18)  #64 bit int
