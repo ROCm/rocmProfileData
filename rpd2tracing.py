@@ -14,6 +14,7 @@ parser.add_argument('input_rpd', type=str, help="input rpd db")
 parser.add_argument('output_json', type=str, help="chrome tracing json output")
 parser.add_argument('--start', type=int, help="start timestamp")
 parser.add_argument('--end', type=int, help="end timestamp")
+parser.add_argument('--format', type=str, default="array", help="chome trace format, array or object")
 args = parser.parse_args()
 
 print(args)
@@ -21,7 +22,10 @@ print(args)
 connection = sqlite3.connect(args.input_rpd)
 
 outfile = open(args.output_json, 'w', encoding="utf-8")
-    
+
+if args.format == "object":
+    outfile.write("{\"traceEvents\": ")
+
 outfile.write("[ {}\n");
 
 for row in connection.execute("select distinct gpuId from rocpd_op"):
@@ -250,5 +254,9 @@ for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as lab
         outfile.write("")
 
 outfile.write("]\n")
+
+if args.format == "object":
+    outfile.write("} \n")
+
 outfile.close()
 connection.close()
