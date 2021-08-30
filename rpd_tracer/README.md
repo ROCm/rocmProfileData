@@ -58,4 +58,8 @@ This is a tracer that can attach to any process and record hip apis, ops, and ro
                 exit(1);
             }
         ```
+    5) You can run the function you linked via `dlsym` as (following the example in above step):
+        ```
+        init_tracing();
+        ```
 <b>Note:</b> You can utilize `nm -gd <PATH_TO_rpd_tracer.so>` to find out symbol names in your library.
