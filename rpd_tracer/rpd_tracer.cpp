@@ -99,6 +99,9 @@ void api_callback(
         //if (s_apiList->contains(cid) == false)
         //    return;
 
+        //#define HIP_PROF_HIP_API_STRING 1
+        //hipApiString(cid, data);
+
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
         //printf("ACTIVITY_DOMAIN_HIP_API cid = %d, phase = %d, cor_id = %lu\n", cid, data->phase, data->correlation_id);
 
@@ -132,34 +135,87 @@ void api_callback(
                         data->args.hipFree.ptr);
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
-                case HIP_API_ID_hipLaunchKernel:
-                case HIP_API_ID_hipExtLaunchKernel:
+
+                case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice:
+                case HIP_API_ID_hipExtLaunchMultiKernelMultiDevice:
                     {
-                        std::string kernelName = hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream);
+                        hipLaunchParams &params = data->args.hipLaunchCooperativeKernelMultiDevice.launchParamsList__val;
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.func, params.stream));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            data->args.hipModuleLaunchKernel.stream,
+                            data->params.stream,
                             kernelName.c_str());
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
-                                                // Associate kernel name with op
-                        sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        s_opTable->associateDescription(row.api_id, kernelName_id);
+
+                        // Associate kernel name with op
+                        OpTable::kernelRow krow;
+                        krow.gridX = params.gridDim.x;
+                        krow.gridY = params.gridDim.y;
+                        krow.gridZ = params.gridDim.z;
+                        krow.workGroupX = params.blockDim.x;
+                        krow.workgroupY = params.blockDim.y;
+                        krow.workgroupZ = params.blockDim.z;
+                        krow.groupSegmentSize = params.sharedMem;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName = s_stringTable->getOrCreate(kernelName);
+                        //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                        //s_opTable->associateDescription(row.api_id, kernelName_id);
+                        s_opTable->associateKernel(row.api_id, krow);
+                    }
+                    break;
+
+                case HIP_API_ID_hipLaunchKernel:
+                case HIP_API_ID_hipExtLaunchKernel:
+                case HIP_API_ID_hipLaunchCooperativeKernel:	// Should work here
+                    {
+                        hipLaunchKernel &params = data->args.hipLaunchKernel;
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.function_address, data->args.hipLaunchKernel.stream));
+                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                            params.stream,
+                            kernelName.c_str());
+                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+
+                        // Associate kernel name with op
+                        OpTable::kernelRow krow;
+                        krow.gridX = params.numBlocks.x;
+                        krow.gridY = params.numBlocks.y;
+                        krow.gridZ = params.numBlocks.z;
+                        krow.workGroupX = params.dimBlocks.x;
+                        krow.workgroupY = params.dimBlocks.y;
+                        krow.workgroupZ = params.dimBlocks.z;
+                        krow.groupSegmentSize = params.sharedMemBytes;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName = s_stringTable->getOrCreate(kernelName);
+                        //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                        //s_opTable->associateDescription(row.api_id, kernelName_id);
+                        s_opTable->associateKernel(row.api_id, krow);
                     }
                     break;
                 case HIP_API_ID_hipHccModuleLaunchKernel:
                 case HIP_API_ID_hipModuleLaunchKernel:
                 case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
-                    const hipFunction_t f = data->args.hipModuleLaunchKernel.f;
-                    if (f != NULL) {
-                        std::string kernelName(cxx_demangle(hipKernelNameRef(f)));
+                        hipModuleLaunchKernel &params = data->args.hipModuleLaunchKernel;
+                        std::string kernelName(cxx_demangle(hipKernelNameRef(params.f)));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            data->args.hipModuleLaunchKernel.stream,
+                            params.stream,
                             kernelName.c_str());
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
-						// Associate kernel name with op
-                        sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        s_opTable->associateDescription(row.api_id, kernelName_id);
-                    } }
+
+                        // Associate kernel name with op
+                        OpTable::kernelRow krow;
+                        krow.gridX = params.gridDimX;
+                        krow.gridY = params.gridDimY;
+                        krow.gridZ = params.gridDimZ;
+                        krow.workGroupX = params.blockDimX;
+                        krow.workgroupY = params.blockDimY;
+                        krow.workgroupZ = params.blockDimZ;
+                        krow.groupSegmentSize = params.sharedMemBytes;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName = s_stringTable->getOrCreate(kernelName);
+                        //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                        //s_opTable->associateDescription(row.api_id, kernelName_id);
+                        s_opTable->associateKernel(row.api_id, krow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpy:
                 case HIP_API_ID_hipMemcpyAsync:
@@ -359,7 +415,6 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
 }
 
 
-roctracer_pool_t *hipPool;
 roctracer_pool_t *hccPool;
 
 void init_tracing() {
@@ -370,8 +425,6 @@ void init_tracing() {
     roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, NULL);
 
     // Enable API callbacks
-    roctracer_enable_domain_callback(ACTIVITY_DOMAIN_HIP_API, api_callback, NULL);
-    roctracer_disable_op_callback(ACTIVITY_DOMAIN_HIP_API, HIP_API_ID_hipGetDevice);
     roctracer_enable_domain_callback(ACTIVITY_DOMAIN_ROCTX, api_callback, NULL);
 
     if (s_apiList->invertMode() == true) {
@@ -400,18 +453,6 @@ void init_tracing() {
     //properties.buffer_callback_fun = hip_activity_callback;
     roctracer_open_pool(&properties);
     //roctracer_enable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
-#endif
-
-#if 0
-    // Log hip
-    roctracer_properties_t hip_cb_properties;
-    memset(&hip_cb_properties, 0, sizeof(roctracer_properties_t));
-    //hip_cb_properties.buffer_size = 0xf0000;
-    hip_cb_properties.buffer_size = 0x1000;
-    hip_cb_properties.buffer_callback_fun = hip_activity_callback;
-    //roctracer_pool_t *hipPool;
-    roctracer_open_pool_expl(&hip_cb_properties, &hipPool);
-    roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HIP_API, hccPool);
 #endif
 
 #if 1
@@ -444,7 +485,6 @@ void stop_tracing() {
     roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HSA_OPS);
 
     roctracer_flush_activity();
-    roctracer_flush_activity_expl(hipPool);
     roctracer_flush_activity_expl(hccPool);
 }
 

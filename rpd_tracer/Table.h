@@ -92,8 +92,42 @@ public:
         sqlite3_int64 api_id;  // correlation id
     };
 
+    struct kernelRow {
+        sqlite3_int64 gridX;
+        sqlite3_int64 gridY;
+        sqlite3_int64 gridZ;
+        sqlite3_int64 workgroupX;
+        sqlite3_int64 workgroupY;
+        sqlite3_int64 workgroupZ;
+        sqlite3_int64 groupSegmentSize;
+        sqlite3_int64 privateSegmentSize;
+        //codeObject
+        //kernelName
+        //kernelArgAddress
+        //aquireFence
+        //releaseFence
+        sqlite3_int64 api_id;  // correlation id
+    };
+
+    struct copyRow {
+        sqlite3_int64 size;
+        sqlite3_int64 src;
+        sqlite3_int64 dst;
+        bool sync;
+        bool pinned;
+    };
+
+    struct barrierRow {
+        sqlite3_int64 signalCount;
+        char aquireFence[9];
+        char releaseFence[9];
+    };
+
     void insert(const row&);
     void associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id);
+    void associateKernel(const sqlite3_int64 &api_id, const kernelRow &row);
+    void associateCopy(const sqlite3_int64 &api_id, const copyRow &row);
+    void associateBarrier(const sqlite3_int64 &api_id, const barrierRow &row);
     void flush();
     void finalize();
 
