@@ -166,7 +166,7 @@ def populateKernelInfo(imp):
     def commitRecords():
         nonlocal kernel_inserts
         imp.commitStrings
-        imp.connection.executemany("insert into rocpd_kernelop(op_ptr_id, gridX, gridY, gridZ, workgroupX, workgroupY, workgroupZ, groupSegementSize, privateSegementSize, codeObject_id, kernelName_id, kernelArgAddress, aquireFence, releaseFence) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", kernel_inserts)
+        imp.connection.executemany("insert into rocpd_kernelop(op_ptr_id, gridX, gridY, gridZ, workgroupX, workgroupY, workgroupZ, groupSegmentSize, privateSegmentSize, codeObject_id, kernelName_id, kernelArgAddress, aquireFence, releaseFence) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", kernel_inserts)
         imp.connection.commit()
         kernel_inserts = []
 
