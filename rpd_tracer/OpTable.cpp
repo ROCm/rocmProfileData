@@ -168,7 +168,6 @@ void OpTablePrivate::writeRows()
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     // FIXME: write the overhead record
-    printf("head: %d   tail: %d  \n", head, tail);
 }
 
 
