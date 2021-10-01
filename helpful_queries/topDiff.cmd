@@ -9,4 +9,4 @@
 ATTACH "<rpd filename 1>" as rpdA;
 ATTACH "<rpd filename 2>" as rpdB;
 
-SELECT *, (100.0*(B.Ave-A.Ave)/A.Ave) AS PctDiff FROM rdpA.top A JOIN rpdB.top B USING(Name) ORDER BY PctDiff DESC;
+SELECT *, (100.0*(B.Ave-A.Ave)/A.Ave) AS PctDiff FROM rpdA.top A JOIN rpdB.top B USING(Name) ORDER BY PctDiff DESC;
