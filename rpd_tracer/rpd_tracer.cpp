@@ -370,8 +370,6 @@ void init_tracing() {
     roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, NULL);
 
     // Enable API callbacks
-    roctracer_enable_domain_callback(ACTIVITY_DOMAIN_HIP_API, api_callback, NULL);
-    roctracer_disable_op_callback(ACTIVITY_DOMAIN_HIP_API, HIP_API_ID_hipGetDevice);
     roctracer_enable_domain_callback(ACTIVITY_DOMAIN_ROCTX, api_callback, NULL);
 
     if (s_apiList->invertMode() == true) {
@@ -384,6 +382,7 @@ void init_tracing() {
     }
     else {
         // inclusion list - only enable things in the list
+        roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
         const std::unordered_map<uint32_t, uint32_t> &filter = s_apiList->filterList();
         for (auto it = filter.begin(); it != filter.end(); ++it) {
             roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, it->first, api_callback, NULL);
@@ -396,10 +395,7 @@ void init_tracing() {
     roctracer_properties_t properties;
     memset(&properties, 0, sizeof(roctracer_properties_t));
     properties.buffer_size = 0x1000;
-    //properties.buffer_size = 0x40000;
-    //properties.buffer_callback_fun = hip_activity_callback;
     roctracer_open_pool(&properties);
-    //roctracer_enable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
 #endif
 
 #if 0
@@ -421,12 +417,9 @@ void init_tracing() {
     //hcc_cb_properties.buffer_size = 0x1000; //0x40000;
     hcc_cb_properties.buffer_size = 0x40000;
     hcc_cb_properties.buffer_callback_fun = hcc_activity_callback;
-    //roctracer_pool_t *hccPool;
     roctracer_open_pool_expl(&hcc_cb_properties, &hccPool);
     roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HCC_OPS, hccPool);
 #endif
-
-    //roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_ROCTX);
 }
 
 void start_tracing() {
@@ -456,8 +449,6 @@ void rpdInit()
     char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
         filename = "./trace.rpd";
-
-    //sqlite3_open("./trace.rpd", &connection);
 
     // Create table recorders
 
@@ -489,7 +480,6 @@ void rpdInit()
     s_apiList->add("hipModuleGetFunction");
     s_apiList->add("hipEventCreateWithFlags");
 
-    //printf("rpdInit()\n");
     init_tracing();
     start_tracing();
 }
@@ -512,8 +502,6 @@ void rpdFinalize()
         s_apiTable->finalize();
         const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
-
-        //sqlite3_close(connection);
     }
 }
 
