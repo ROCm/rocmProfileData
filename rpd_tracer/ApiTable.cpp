@@ -122,11 +122,13 @@ void ApiTable::popRoctx(const ApiTable::row &row)
     }
     auto key = std::pair<sqlite3_int64, sqlite3_int64>(row.pid, row.tid);
     auto &stack = d->roctxStacks[key];
-    ApiTable::row &r = stack.front();
-    r.end = row.end;
-    r.api_id = ++roctx_id_hack;
-    d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
-    stack.pop_front();
+    if (stack.empty() == false) {
+        ApiTable::row &r = stack.front();
+        r.end = row.end;
+        r.api_id = ++roctx_id_hack;
+        d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+        stack.pop_front();
+    }
 
     if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
         m_wait.notify_one();

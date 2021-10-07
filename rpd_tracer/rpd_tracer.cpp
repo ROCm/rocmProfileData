@@ -85,6 +85,7 @@ OpTable *s_opTable = NULL;
 ApiTable *s_apiTable = NULL;
 // API list
 ApiIdList *s_apiList = NULL;
+bool s_logOn = true;
 
 
 
@@ -94,6 +95,26 @@ void api_callback(
     const void* callback_data,
     void* arg)
 {
+    if (s_logOn == false) {
+        if (domain == ACTIVITY_DOMAIN_ROCTX) {
+            const roctx_api_data_t* data = (const roctx_api_data_t*)(callback_data);
+
+            switch (cid) {
+                case ROCTX_API_ID_roctxMarkA:
+                    if (std::string(data->args.message) == "rpd_start") {
+                        s_logOn = true;
+                        printf("rpd_start\n");
+                    }
+                    break;
+                //case ROCTX_API_ID_roctxRangePop:
+                //    s_apiTable->popRoctx(row);
+                //    break;
+                default:
+                    break;
+            }
+        }
+       return;
+    }
     //printf("  api_callback\n");
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
         //if (s_apiList->contains(cid) == false)
@@ -211,6 +232,10 @@ void api_callback(
 
         switch (cid) {
             case ROCTX_API_ID_roctxMarkA:
+                if (std::string(data->args.message) == "rpd_stop") {
+                    s_logOn = false;
+                    printf("rpd_stop\n");
+                }
                 row.args_id = s_stringTable->getOrCreate(data->args.message);
                 s_apiTable->insertRoctx(row);
                 break;
@@ -320,6 +345,9 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
 
     int batchSize = 0;
+
+    if (s_logOn == false)
+        return;
 
     while (record < end_record) {
         const char *name = roctracer_op_string(record->domain, record->op, record->kind);
