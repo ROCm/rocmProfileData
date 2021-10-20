@@ -1,4 +1,5 @@
 HIP_PATH?= $(wildcard /opt/rocm/hip)
+PREFIX = /usr/local/
 ifeq (,$(HIP_PATH))
     HIP_PATH=../../..
 endif
@@ -14,7 +15,7 @@ CXX=$(HIPCC)
 
 RPD_MAIN = rpd_tracer.so
 RTG_MAIN = rtg_tracer.so
-
+RPD_SCRIPT = runTracer.sh
 all: $(RPD_MAIN) $(RTG_MAIN)
 
 RPD_SRCS = Table.cpp OpTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
@@ -38,5 +39,15 @@ RTG_OBJS = $(RTG_SRCS:.cpp=.o)
 $(RTG_MAIN): ../rtg_tracer/rtg_tracer/rtg_tracer.o $(RTG_OBJS) $(RPD_OBJS)
 	$(CXX) -o $@ $< $(RPD_OBJS) $(RTG_OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
 
+.PHONY: install
+install:
+	cp $(RPD_MAIN)  $(PREFIX)/lib/
+	cp $(RPD_SCRIPT) $(PREFIX)/bin/
+
+.PHONY: uninstall
+uninstall:
+	rm $(PREFIX)/lib/$(RPD_MAIN)
+	rm $(PREFIX)/bin/$(RPD_SCRIPT)
+.PHONY: clean
 clean:
 	rm -f *.o *.so ../rtg_tracer/rtg_tracer/*.o
