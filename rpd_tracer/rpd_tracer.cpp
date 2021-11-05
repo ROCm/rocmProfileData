@@ -22,6 +22,8 @@
 #include "Table.h"
 #include "ApiIdList.h"
 
+#include "rpd_tracer.h"
+
 
 static void rpdInit() __attribute__((constructor));
 static void rpdFinalize() __attribute__((destructor));
@@ -66,6 +68,15 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
+void rpdstart()
+{
+    printf("START: yay\n");
+}
+
+void rpdstop()
+{
+    printf("STOP: yay\n");
+}
 
 #if 0
 sqlite3 *connection = NULL;
