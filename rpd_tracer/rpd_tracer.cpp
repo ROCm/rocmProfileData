@@ -137,7 +137,7 @@ void api_callback(
                     {
                         std::string kernelName = hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream);
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            data->args.hipModuleLaunchKernel.stream,
+                            data->args.hipLaunchKernel.stream,
                             kernelName.c_str());
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
                                                 // Associate kernel name with op
