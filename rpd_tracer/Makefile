@@ -1,5 +1,5 @@
 HIP_PATH?= $(wildcard /opt/rocm/hip)
-PREFIX = /usr/local/
+PREFIX = /opt/rocm/
 ifeq (,$(HIP_PATH))
     HIP_PATH=../../..
 endif
