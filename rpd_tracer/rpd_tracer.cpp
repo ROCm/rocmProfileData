@@ -135,7 +135,7 @@ void api_callback(
                 case HIP_API_ID_hipLaunchKernel:
                 case HIP_API_ID_hipExtLaunchKernel:
                     {
-                        std::string kernelName = hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream);
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
                             data->args.hipLaunchKernel.stream,
                             kernelName.c_str());
