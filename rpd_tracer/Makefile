@@ -16,7 +16,16 @@ CXX=$(HIPCC)
 RPD_MAIN = rpd_tracer.so
 RTG_MAIN = rtg_tracer.so
 RPD_SCRIPT = runTracer.sh
-all: $(RPD_MAIN) $(RTG_MAIN)
+
+RTG_DIR = $(wildcard ../rtg_tracer/rtg_tracer)
+
+all: | $(RPD_MAIN) $(RTG_DIR)
+
+.PHONY: all $(RTG_DIR)
+
+$(RTG_DIR):
+	@echo "rtg_tracer exists.  Building"
+	$(MAKE) $(RTG_MAIN)
 
 RPD_SRCS = Table.cpp OpTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
