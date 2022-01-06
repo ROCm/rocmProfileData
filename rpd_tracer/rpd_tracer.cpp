@@ -446,7 +446,7 @@ void rpdInit()
 {
     //printf("rpd_tracer, because\n");
 
-    char *filename = getenv("RPDT_FILENAME");
+    const char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
         filename = "./trace.rpd";
 
