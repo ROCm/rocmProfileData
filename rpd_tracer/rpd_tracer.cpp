@@ -162,7 +162,33 @@ void api_callback(
                     } }
                     break;
                 case HIP_API_ID_hipMemcpy:
+                case HIP_API_ID_hipMemcpy2D:
+                case HIP_API_ID_hipMemcpy2DAsync:
+                case HIP_API_ID_hipMemcpy2DFromArray:
+                case HIP_API_ID_hipMemcpy2DFromArrayAsync:
+                case HIP_API_ID_hipMemcpy2DToArray:
+                case HIP_API_ID_hipMemcpy2DToArrayAsync:
+                case HIP_API_ID_hipMemcpy3D:
+		case HIP_API_ID_hipMemcpy3DAsync:
                 case HIP_API_ID_hipMemcpyAsync:
+                case HIP_API_ID_hipMemcpyAtoH:
+                case HIP_API_ID_hipMemcpyDtoD:
+                case HIP_API_ID_hipMemcpyDtoDAsync:
+                case HIP_API_ID_hipMemcpyDtoH:
+                case HIP_API_ID_hipMemcpyDtoHAsync:
+                case HIP_API_ID_hipMemcpyFromArray:
+                case HIP_API_ID_hipMemcpyFromSymbol:
+		case HIP_API_ID_hipMemcpyFromSymbolAsync:
+                case HIP_API_ID_hipMemcpyHtoA:
+                case HIP_API_ID_hipMemcpyHtoD:
+                case HIP_API_ID_hipMemcpyHtoDAsync:
+                case HIP_API_ID_hipMemcpyParam2D:
+                case HIP_API_ID_hipMemcpyParam2DAsync:
+                case HIP_API_ID_hipMemcpyPeer:
+                case HIP_API_ID_hipMemcpyPeerAsync:
+                case HIP_API_ID_hipMemcpyToArray:
+                case HIP_API_ID_hipMemcpyToSymbol:
+                case HIP_API_ID_hipMemcpyToSymbolAsync:
                 case HIP_API_ID_hipMemcpyWithStream:
                     std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
                         data->args.hipMemcpy.dst,
