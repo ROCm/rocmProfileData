@@ -34,11 +34,10 @@ static void rpdFinalize() __attribute__((destructor));
 //                     this let's us unload first, or close to.
 // New workaround: register 3 times, only finalize once.  see register_once
 
-void rpdFinalize();
-
 void init_tracing();
 void start_tracing();
 void stop_tracing();
+void end_tracing();
 
 std::once_flag register_once;
 std::once_flag registerAgain_once;
@@ -68,15 +67,24 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
+//
+// Control interface
+//
+
+//extern "C" {
+
 void rpdstart()
 {
     printf("START: yay\n");
+    start_tracing();
 }
 
 void rpdstop()
 {
     printf("STOP: yay\n");
+    stop_tracing();
 }
+//}
 
 #if 0
 sqlite3 *connection = NULL;
@@ -96,8 +104,6 @@ OpTable *s_opTable = NULL;
 ApiTable *s_apiTable = NULL;
 // API list
 ApiIdList *s_apiList = NULL;
-bool s_logOn = true;
-
 
 
 void api_callback(
@@ -106,26 +112,6 @@ void api_callback(
     const void* callback_data,
     void* arg)
 {
-    if (s_logOn == false) {
-        if (domain == ACTIVITY_DOMAIN_ROCTX) {
-            const roctx_api_data_t* data = (const roctx_api_data_t*)(callback_data);
-
-            switch (cid) {
-                case ROCTX_API_ID_roctxMarkA:
-                    if (std::string(data->args.message) == "rpd_start") {
-                        s_logOn = true;
-                        printf("rpd_start\n");
-                    }
-                    break;
-                //case ROCTX_API_ID_roctxRangePop:
-                //    s_apiTable->popRoctx(row);
-                //    break;
-                default:
-                    break;
-            }
-        }
-       return;
-    }
     //printf("  api_callback\n");
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
         //if (s_apiList->contains(cid) == false)
@@ -243,10 +229,6 @@ void api_callback(
 
         switch (cid) {
             case ROCTX_API_ID_roctxMarkA:
-                if (std::string(data->args.message) == "rpd_stop") {
-                    s_logOn = false;
-                    printf("rpd_stop\n");
-                }
                 row.args_id = s_stringTable->getOrCreate(data->args.message);
                 s_apiTable->insertRoctx(row);
                 break;
@@ -357,9 +339,6 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
 
     int batchSize = 0;
 
-    if (s_logOn == false)
-        return;
-
     while (record < end_record) {
         const char *name = roctracer_op_string(record->domain, record->op, record->kind);
 
@@ -469,6 +448,10 @@ void start_tracing() {
 void stop_tracing() {
     //printf("# STOP #############################\n");
     roctracer_stop();
+}
+
+void end_tracing() {
+    roctracer_stop();
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_ROCTX);
 
@@ -483,7 +466,7 @@ void stop_tracing() {
 
 void rpdInit()
 {
-    //printf("rpd_tracer, because\n");
+    printf("rpd_tracer, because\n");
 
     char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
@@ -520,7 +503,14 @@ void rpdInit()
     s_apiList->add("hipEventCreateWithFlags");
 
     init_tracing();
-    start_tracing();
+
+    // Allow starting with recording disabled via ENV
+    char *val = getenv("RPDT_AUTOSTART");
+    if (val != NULL) {
+        int autostart = atoi(val);
+        if (autostart != 0)
+            start_tracing();
+    }
 }
 
 static bool doFinalize = true;
@@ -532,7 +522,7 @@ void rpdFinalize()
     if (doFinalize == true) {
         doFinalize = false;
         //printf("+++++++++++++++++++  rpdFinalize\n");
-        stop_tracing();
+        end_tracing();
 
         // Flush recorders
         const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);

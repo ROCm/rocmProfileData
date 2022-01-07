@@ -1,6 +1,9 @@
 #pragma once
 
 
-// FIXME: scope these
-void rpdstart();
-void rpdstop();
+extern "C" {
+    //void rpdInit();
+    //void rpdFinalize();
+    void rpdstart();
+    void rpdstop();
+}
