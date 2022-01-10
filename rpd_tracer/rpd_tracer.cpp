@@ -133,12 +133,35 @@ void api_callback(
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
                 case HIP_API_ID_hipLaunchKernel:
-                case HIP_API_ID_hipExtLaunchKernel:
                     {
                         std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream));
-                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        std::snprintf(buff, 4096, "stream=%p | kernel=%s | grid=[%d,%d,%d] | threads=[%d,%d,%d]",
                             data->args.hipLaunchKernel.stream,
-                            kernelName.c_str());
+                            kernelName.c_str(),
+                            data->args.hipLaunchKernel.numBlocks.x,
+                            data->args.hipLaunchKernel.numBlocks.y,
+                            data->args.hipLaunchKernel.numBlocks.z,
+                            data->args.hipLaunchKernel.dimBlocks.x,
+                            data->args.hipLaunchKernel.dimBlocks.y,
+                            data->args.hipLaunchKernel.dimBlocks.z);
+                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                                                // Associate kernel name with op
+                        sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                        s_opTable->associateDescription(row.api_id, kernelName_id);
+                    }
+                    break;
+                case HIP_API_ID_hipExtLaunchKernel:
+                    {
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(data->args.hipExtLaunchKernel.function_address, data->args.hipExtLaunchKernel.stream));
+                        std::snprintf(buff, 4096, "stream=%p | kernel=%s | grid=[%d,%d,%d] | threads=[%d,%d,%d]",
+                            data->args.hipExtLaunchKernel.stream,
+                            kernelName.c_str(),
+                            data->args.hipExtLaunchKernel.numBlocks.x,
+                            data->args.hipExtLaunchKernel.numBlocks.y,
+                            data->args.hipExtLaunchKernel.numBlocks.z,
+                            data->args.hipExtLaunchKernel.dimBlocks.x,
+                            data->args.hipExtLaunchKernel.dimBlocks.y,
+                            data->args.hipExtLaunchKernel.dimBlocks.z);
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
                                                 // Associate kernel name with op
                         sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
