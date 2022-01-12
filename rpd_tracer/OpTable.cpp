@@ -24,6 +24,9 @@ public:
     int tail;
     int count;
 
+    std::map<sqlite3_int64, KernelOpTable::row> kernelRows;
+    std::map<sqlite3_int64, CopyOpTable::row> copyRows;
+
     sqlite3_stmt *opInsert;
     sqlite3_stmt *apiOpInsert;
 
@@ -35,10 +38,12 @@ public:
     bool done;
 
     OpTable *p;
+    KernelOpTable *kp;
+    CopyOpTable *cp;
 };
 
 
-OpTable::OpTable(const char *basefile)
+OpTable::OpTable(const char *basefile, KernelOpTable *kernelTable, CopyOpTable *copyTable)
 : Table(basefile)
 , d(new OpTablePrivate(this))
 {
@@ -51,12 +56,15 @@ OpTable::OpTable(const char *basefile)
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, completionSignal, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api_ops(api_id, op_id) values (?,?)", -1, &d->apiOpInsert, NULL);
     
-    d->head = 0;	// last produced by insert()
+    d->head = 0;    // last produced by insert()
     d->tail = 0;    // last consumed by 
 
     d->worker = NULL;
     d->done = false;
     d->workerRunning = true;
+
+    d->kp = kernelTable;
+    d->cp = copyTable;
 
     d->worker = new std::thread(&OpTablePrivate::work, d);
 }
@@ -79,10 +87,25 @@ void OpTable::insert(const OpTable::row &row)
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)
 {
+    // FIXME: remove this, kernelops has kernel description
     // FIXME: double buffer this?
     // writeRows uses this structure heavily, intermittently.  May matter
     std::lock_guard<std::mutex> guard(d->m_descriptionLock);
     d->descriptions[api_id] = string_id;
+}
+
+void OpTable::associateKernelOp(const sqlite3_int64 &api_id, KernelOpTable::row krow)
+{
+    // FIXME: double buffer this?
+    // writeRows uses this structure heavily, intermittently.  May matter
+    d->kernelRows.emplace(std::make_pair(api_id, krow));
+}
+
+void OpTable::associateCopyOp(const sqlite3_int64 &api_id, CopyOpTable::row crow)
+{
+    // FIXME: double buffer this?
+    // writeRows uses this structure heavily, intermittently.  May matter
+    d->copyRows.emplace(std::make_pair(api_id, crow));
 }
 
 void OpTable::flush()
@@ -124,8 +147,10 @@ void OpTablePrivate::writeRows()
         // insert rocpd_op
         int index = 1;
         OpTable::row &r = rows[(tail + i) % BUFFERSIZE];
+        sqlite3_int64 primaryKey = (tail + i) + p->m_idOffset;
 
         // check for description override
+#if 0
         {
             std::lock_guard<std::mutex> guard(m_descriptionLock);
             auto it = descriptions.find(r.api_id);
@@ -134,8 +159,21 @@ void OpTablePrivate::writeRows()
                 descriptions.erase(it);
             }
         }
+#endif
+        // Check for kernelop
+        {
+            std::lock_guard<std::mutex> guard(m_descriptionLock);
+            auto it = kernelRows.find(r.api_id);
+            if (it != kernelRows.end()) {
+                KernelOpTable::row &krow = it->second;
+                krow.op_id = primaryKey;
+                kp->insert(krow);
+                printf("krow for %lld\n", primaryKey);
+                kernelRows.erase(it);
+            }
+        }
 
-        sqlite3_bind_int64(opInsert, index++, (tail + i) + p->m_idOffset);
+        sqlite3_bind_int64(opInsert, index++, primaryKey);
         sqlite3_bind_int(opInsert, index++, r.gpuId);
         sqlite3_bind_int(opInsert, index++, r.queueId);
         sqlite3_bind_int(opInsert, index++, r.sequenceId);

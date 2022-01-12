@@ -73,12 +73,99 @@ private:
 };
 
 
+class KernelOpTablePrivate;
+class KernelOpTable: public Table
+{
+public:
+    KernelOpTable(const char *basefile);
+
+    struct row {
+        sqlite3_int64 gridX;
+        sqlite3_int64 gridY;
+        sqlite3_int64 gridZ;
+        sqlite3_int64 workgroupX;
+        sqlite3_int64 workgroupY;
+        sqlite3_int64 workgroupZ;
+        sqlite3_int64 groupSegmentSize;
+        sqlite3_int64 privateSegmentSize;
+        sqlite3_int64 kernelName_id;
+        //codeObject
+        //kernelArgAddress
+        //aquireFence
+        //releaseFence
+        sqlite3_int64 op_id;   // Baseclass OpTable primary key
+        //sqlite3_int64 api_id;  // correlation id
+    };
+
+    void insert(const row&);
+    void flush();
+    void finalize();
+
+private:
+    KernelOpTablePrivate *d;
+    friend class KernelOpTablePrivate;
+};
+
+
+class CopyOpTablePrivate;
+class CopyOpTable: public Table
+{
+public:
+    CopyOpTable(const char *basefile);
+
+    struct row {
+        sqlite3_int64 size;
+        sqlite3_int64 width;
+        sqlite3_int64 height;
+        sqlite3_int64 src;
+        sqlite3_int64 dst;
+        sqlite3_int64 srcDevice;
+        sqlite3_int64 dstDevice;
+        sqlite3_int64 type;
+        bool sync;
+        bool pinned;
+        sqlite3_int64 op_id;   // Baseclass OpTable primary key
+        //sqlite3_int64 api_id;  // correlation id
+    };
+    void insert(const row&);
+    void flush();
+    void finalize();
+
+private:
+    CopyOpTablePrivate *d;
+    friend class CopyOpTablePrivate;
+};
+
+
+#if 0
+class BarrierOpTablePrivate;
+class BarrierOpTable: public Table
+{
+public:
+    BarrierOpTable(const char *basefile);
+
+    struct row {
+        sqlite3_int64 signalCount;
+        char aquireFence[9];
+        char releaseFence[9];
+        sqlite3_int64 api_id;  // correlation id
+    };
+    void insert(const row&);
+    void flush();
+    void finalize();
+
+private:
+    BarrierOpTablePrivate *d;
+    friend class BarrierOpTablePrivate
+};
+#endif
+
 
 class OpTablePrivate;
 class OpTable: public Table
 {
 public:
-    OpTable(const char *basefile);
+    OpTable(const char *basefile, KernelOpTable *kt, CopyOpTable *ct);
 
     struct row {
         int gpuId;
@@ -92,42 +179,10 @@ public:
         sqlite3_int64 api_id;  // correlation id
     };
 
-    struct kernelRow {
-        sqlite3_int64 gridX;
-        sqlite3_int64 gridY;
-        sqlite3_int64 gridZ;
-        sqlite3_int64 workgroupX;
-        sqlite3_int64 workgroupY;
-        sqlite3_int64 workgroupZ;
-        sqlite3_int64 groupSegmentSize;
-        sqlite3_int64 privateSegmentSize;
-        //codeObject
-        //kernelName
-        //kernelArgAddress
-        //aquireFence
-        //releaseFence
-        sqlite3_int64 api_id;  // correlation id
-    };
-
-    struct copyRow {
-        sqlite3_int64 size;
-        sqlite3_int64 src;
-        sqlite3_int64 dst;
-        bool sync;
-        bool pinned;
-    };
-
-    struct barrierRow {
-        sqlite3_int64 signalCount;
-        char aquireFence[9];
-        char releaseFence[9];
-    };
-
     void insert(const row&);
     void associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id);
-    void associateKernel(const sqlite3_int64 &api_id, const kernelRow &row);
-    void associateCopy(const sqlite3_int64 &api_id, const copyRow &row);
-    void associateBarrier(const sqlite3_int64 &api_id, const barrierRow &row);
+    void associateKernelOp(const sqlite3_int64 &api_id, KernelOpTable::row);
+    void associateCopyOp(const sqlite3_int64 &api_id, CopyOpTable::row);
     void flush();
     void finalize();
 

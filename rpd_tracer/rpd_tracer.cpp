@@ -82,6 +82,8 @@ const sqlite_int64 EMPTY_STRING_ID = 1;
 MetadataTable *s_metadataTable = NULL;
 StringTable *s_stringTable = NULL;
 OpTable *s_opTable = NULL;
+KernelOpTable *s_kernelOpTable = NULL;
+CopyOpTable *s_copyOpTable = NULL;
 ApiTable *s_apiTable = NULL;
 // API list
 ApiIdList *s_apiList = NULL;
@@ -139,27 +141,28 @@ void api_callback(
                 case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice:
                 case HIP_API_ID_hipExtLaunchMultiKernelMultiDevice:
                     {
-                        hipLaunchParams &params = data->args.hipLaunchCooperativeKernelMultiDevice.launchParamsList__val;
+                        const hipLaunchParams &params = data->args.hipLaunchCooperativeKernelMultiDevice.launchParamsList__val;
                         std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.func, params.stream));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            data->params.stream,
+                            params.stream,
                             kernelName.c_str());
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
 
                         // Associate kernel name with op
-                        OpTable::kernelRow krow;
+                        KernelOpTable::row krow;
+                        //krow.op_id = 0;
                         krow.gridX = params.gridDim.x;
                         krow.gridY = params.gridDim.y;
                         krow.gridZ = params.gridDim.z;
-                        krow.workGroupX = params.blockDim.x;
+                        krow.workgroupX = params.blockDim.x;
                         krow.workgroupY = params.blockDim.y;
                         krow.workgroupZ = params.blockDim.z;
                         krow.groupSegmentSize = params.sharedMem;
                         krow.privateSegmentSize = 0;
-                        krow.kernelName = s_stringTable->getOrCreate(kernelName);
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
                         //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
                         //s_opTable->associateDescription(row.api_id, kernelName_id);
-                        s_opTable->associateKernel(row.api_id, krow);
+                        s_opTable->associateKernelOp(row.api_id, krow);
                     }
                     break;
 
@@ -167,7 +170,7 @@ void api_callback(
                 case HIP_API_ID_hipExtLaunchKernel:
                 case HIP_API_ID_hipLaunchCooperativeKernel:	// Should work here
                     {
-                        hipLaunchKernel &params = data->args.hipLaunchKernel;
+                        auto &params = data->args.hipLaunchKernel;
                         std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.function_address, data->args.hipLaunchKernel.stream));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
                             params.stream,
@@ -175,26 +178,27 @@ void api_callback(
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
 
                         // Associate kernel name with op
-                        OpTable::kernelRow krow;
+                        KernelOpTable::row krow;
+                        //krow.op_id = 0;
                         krow.gridX = params.numBlocks.x;
                         krow.gridY = params.numBlocks.y;
                         krow.gridZ = params.numBlocks.z;
-                        krow.workGroupX = params.dimBlocks.x;
+                        krow.workgroupX = params.dimBlocks.x;
                         krow.workgroupY = params.dimBlocks.y;
                         krow.workgroupZ = params.dimBlocks.z;
                         krow.groupSegmentSize = params.sharedMemBytes;
                         krow.privateSegmentSize = 0;
-                        krow.kernelName = s_stringTable->getOrCreate(kernelName);
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
                         //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
                         //s_opTable->associateDescription(row.api_id, kernelName_id);
-                        s_opTable->associateKernel(row.api_id, krow);
+                        s_opTable->associateKernelOp(row.api_id, krow);
                     }
                     break;
                 case HIP_API_ID_hipHccModuleLaunchKernel:
                 case HIP_API_ID_hipModuleLaunchKernel:
                 case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
-                        hipModuleLaunchKernel &params = data->args.hipModuleLaunchKernel;
+                        auto &params = data->args.hipModuleLaunchKernel;
                         std::string kernelName(cxx_demangle(hipKernelNameRef(params.f)));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
                             params.stream,
@@ -202,19 +206,20 @@ void api_callback(
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
 
                         // Associate kernel name with op
-                        OpTable::kernelRow krow;
+                        KernelOpTable::row krow;
+                        //krow.op_id = 0;
                         krow.gridX = params.gridDimX;
                         krow.gridY = params.gridDimY;
                         krow.gridZ = params.gridDimZ;
-                        krow.workGroupX = params.blockDimX;
+                        krow.workgroupX = params.blockDimX;
                         krow.workgroupY = params.blockDimY;
                         krow.workgroupZ = params.blockDimZ;
                         krow.groupSegmentSize = params.sharedMemBytes;
                         krow.privateSegmentSize = 0;
-                        krow.kernelName = s_stringTable->getOrCreate(kernelName);
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
                         //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
                         //s_opTable->associateDescription(row.api_id, kernelName_id);
-                        s_opTable->associateKernel(row.api_id, krow);
+                        s_opTable->associateKernelOp(row.api_id, krow);
                     }
                     break;
                 case HIP_API_ID_hipMemcpy:
@@ -226,6 +231,17 @@ void api_callback(
                         (uint32_t)(data->args.hipMemcpy.sizeBytes),
                         (uint32_t)(data->args.hipMemcpy.kind));
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
+
+                    // Add CopyOp table fields
+                    CopyOpTable::row crow;
+                    //crow.op_id = 0;
+                    crow.size = (uint32_t)(data->args.hipMemcpy.sizeBytes);
+                    //FIXME: pointers below
+                    crow.src = 0;  //data->args.hipMemcpy.src;
+                    crow.dst = 0;  //data->args.hipMemcpy.dst;
+                    crow.sync = false;
+                    crow.pinned = false;
+                    s_opTable->associateCopyOp(row.api_id, crow);
                     break;
                 default:
                     break;
@@ -503,13 +519,17 @@ void rpdInit()
 
     s_metadataTable = new MetadataTable(filename);
     s_stringTable = new StringTable(filename);
-    s_opTable = new OpTable(filename);
+    s_kernelOpTable = new KernelOpTable(filename);
+    s_copyOpTable = new CopyOpTable(filename);
+    s_opTable = new OpTable(filename, s_kernelOpTable, s_copyOpTable);
     s_apiTable = new ApiTable(filename);
 
     // Offset primary keys so they do not collide between sessions
     sqlite3_int64 offset = s_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
     s_metadataTable->setIdOffset(offset);
     s_stringTable->setIdOffset(offset);
+    s_kernelOpTable->setIdOffset(offset);
+    s_copyOpTable->setIdOffset(offset);
     s_opTable->setIdOffset(offset);
     s_apiTable->setIdOffset(offset);
 
@@ -548,7 +568,9 @@ void rpdFinalize()
         // Flush recorders
         const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         s_stringTable->finalize();
-        s_opTable->finalize();
+        s_opTable->finalize();		// OpTable before subclassOpTables
+        s_kernelOpTable->finalize();
+        s_copyOpTable->finalize();
         s_apiTable->finalize();
         const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
