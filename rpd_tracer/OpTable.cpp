@@ -135,7 +135,7 @@ void OpTablePrivate::writeRows()
 {
     int i = 1;
 
-    std::unique_lock<std::mutex> guard(p->m_mutex);
+    std::unique_lock<std::mutex> lock(p->m_mutex);
 
     if (head == tail)
         return;
@@ -143,11 +143,16 @@ void OpTablePrivate::writeRows()
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    while (i < BATCHSIZE && (head > tail + i)) {	// FIXME: refactor like ApiTable?
+    int start = tail + 1;
+    int end = tail + BATCHSIZE;
+    end = (end > head) ? head : end;
+    lock.unlock();
+
+    for (i = start; i <= end; ++i) {
         // insert rocpd_op
         int index = 1;
-        OpTable::row &r = rows[(tail + i) % BUFFERSIZE];
-        sqlite3_int64 primaryKey = (tail + i) + p->m_idOffset;
+        OpTable::row &r = rows[i % BUFFERSIZE];
+        sqlite3_int64 primaryKey = i + p->m_idOffset;
 
         // check for description override
 #if 0
@@ -189,18 +194,18 @@ void OpTablePrivate::writeRows()
         //sqlite_int64 rowId = sqlite3_last_insert_rowid(p->m_connection);
         index = 1;
         sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(r.api_id) + p->m_idOffset);
-        sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(tail + i) + p->m_idOffset);
+        sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(i) + p->m_idOffset);
         ret = sqlite3_step(apiOpInsert);
         sqlite3_reset(apiOpInsert);
-        ++i;
     }
-    tail = tail + i;
-
-    guard.unlock();
+    lock.lock();
+    tail = end;
+    lock.unlock();
 
     const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME: write the overhead record
 }
 
 
