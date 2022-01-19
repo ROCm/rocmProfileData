@@ -58,8 +58,13 @@ class KernelOp(Op):
 class CopyOp(Op):
     #op = models.OneToOneField(Ops, on_delete=models.PROTECT, primary_key=True)
     size = models.IntegerField(default=0)
-    src = models.IntegerField(default=0) # GPU id or -1
-    dst = models.IntegerField(default=0) # GPU id or -1
+    width = models.IntegerField(default=0)
+    height = models.IntegerField(default=0)
+    kind = models.IntegerField(default=0) # enum
+    src = models.CharField(max_length=18)
+    dst = models.CharField(max_length=18)
+    srcDevice = models.IntegerField(default=0) # GPU id or -1
+    dstDevice = models.IntegerField(default=0) # GPU id or -1
     sync = models.BooleanField()
     pinned = models.BooleanField()
 
