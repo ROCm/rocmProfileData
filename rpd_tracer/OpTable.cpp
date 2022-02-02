@@ -173,8 +173,10 @@ void OpTablePrivate::writeRows()
                 KernelOpTable::row &krow = it->second;
                 krow.op_id = primaryKey;
                 kp->insert(krow);
-                printf("krow for %lld\n", primaryKey);
+                //printf("krow for %lld\n", primaryKey);
                 kernelRows.erase(it);
+                // Copy kernel name into description of base op (for historical reasons)
+                r.description_id = krow.kernelName_id;
             }
         }
 

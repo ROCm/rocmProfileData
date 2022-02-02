@@ -223,12 +223,27 @@ void api_callback(
                     }
                     break;
                 case HIP_API_ID_hipMemcpy:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
-                        data->args.hipMemcpy.dst,
-                        data->args.hipMemcpy.src,
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
+                    //    data->args.hipMemcpy.dst,
+                    //    data->args.hipMemcpy.src,
+                    //    (uint32_t)(data->args.hipMemcpy.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpy.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+#if 0
+                    s_opTable->associateCopyOp(row.api_id, CopyOpTable::row(
                         (uint32_t)(data->args.hipMemcpy.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpy.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                        0,
+                        0,
+                        std::format("{}", data->args.hipMemcpy.src),
+                        std::format("{}", data->args.hipMemcpy.dst),
+                        0,
+                        0,
+                        (uint32_t)(data->args.hipMemcpy.kind),
+                        true,
+                        false,
+                        0)
+                    )
+#endif
                     break;
                 case HIP_API_ID_hipMemcpy2D:
                     std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
@@ -356,6 +371,7 @@ void api_callback(
                         (uint32_t)(data->args.hipMemcpyWithStream.kind));
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
 
+#if 0
                     // Add CopyOp table fields
                     CopyOpTable::row crow;
                     //crow.op_id = 0;
@@ -366,6 +382,7 @@ void api_callback(
                     crow.sync = false;
                     crow.pinned = false;
                     s_opTable->associateCopyOp(row.api_id, crow);
+#endif
                     break;
                 default:
                     break;

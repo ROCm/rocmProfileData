@@ -112,8 +112,8 @@ void CopyOpTablePrivate::writeRows()
         //sqlite3_bind_int(opInsert, index++, r.width);
         //sqlite3_bind_int(opInsert, index++, r.height);
         //sqlite3_bind_text(opInsert, index++, "", -1, SQLITE_STATIC);
-        sqlite3_bind_int64(opInsert, index++, r.src);
-        sqlite3_bind_int64(opInsert, index++, r.dst);
+        sqlite3_bind_text(opInsert, index++, r.src.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(opInsert, index++, r.dst.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(opInsert, index++, r.sync);
         sqlite3_bind_int(opInsert, index++, r.pinned);
         int ret = sqlite3_step(opInsert);

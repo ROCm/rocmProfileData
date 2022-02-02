@@ -117,11 +117,11 @@ public:
         sqlite3_int64 size;
         sqlite3_int64 width;
         sqlite3_int64 height;
-        sqlite3_int64 src;
-        sqlite3_int64 dst;
+        std::string src;
+        std::string dst;
         sqlite3_int64 srcDevice;
         sqlite3_int64 dstDevice;
-        sqlite3_int64 type;
+        sqlite3_int64 kind;
         bool sync;
         bool pinned;
         sqlite3_int64 op_id;   // Baseclass OpTable primary key
