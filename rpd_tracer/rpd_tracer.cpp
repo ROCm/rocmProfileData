@@ -158,9 +158,9 @@ void api_callback(
                 case HIP_API_ID_hipLaunchKernel:
                 case HIP_API_ID_hipExtLaunchKernel:
                     {
-                        std::string kernelName = hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream);
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(data->args.hipLaunchKernel.function_address, data->args.hipLaunchKernel.stream));
                         std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            data->args.hipModuleLaunchKernel.stream,
+                            data->args.hipLaunchKernel.stream,
                             kernelName.c_str());
                         row.args_id = s_stringTable->getOrCreate(std::string(buff));
                                                 // Associate kernel name with op
@@ -185,13 +185,137 @@ void api_callback(
                     } }
                     break;
                 case HIP_API_ID_hipMemcpy:
-                case HIP_API_ID_hipMemcpyAsync:
-                case HIP_API_ID_hipMemcpyWithStream:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
                         data->args.hipMemcpy.dst,
                         data->args.hipMemcpy.src,
                         (uint32_t)(data->args.hipMemcpy.sizeBytes),
                         (uint32_t)(data->args.hipMemcpy.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpy2D:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
+                        data->args.hipMemcpy2D.dst,
+                        data->args.hipMemcpy2D.src,
+                        (uint32_t)(data->args.hipMemcpy2D.width),
+                        (uint32_t)(data->args.hipMemcpy2D.height),
+                        (uint32_t)(data->args.hipMemcpy2D.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpy2DAsync:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
+                        data->args.hipMemcpy2DAsync.dst,
+                        data->args.hipMemcpy2DAsync.src,
+                        (uint32_t)(data->args.hipMemcpy2DAsync.width),
+                        (uint32_t)(data->args.hipMemcpy2DAsync.height),
+                        (uint32_t)(data->args.hipMemcpy2DAsync.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyAsync:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
+                        data->args.hipMemcpyAsync.dst,
+                        data->args.hipMemcpyAsync.src,
+                        (uint32_t)(data->args.hipMemcpyAsync.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpyAsync.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyDtoD:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                        data->args.hipMemcpyDtoD.dst,
+                        data->args.hipMemcpyDtoD.src,
+                        (uint32_t)(data->args.hipMemcpyDtoD.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyDtoDAsync:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                        data->args.hipMemcpyDtoDAsync.dst,
+                        data->args.hipMemcpyDtoDAsync.src,
+                        (uint32_t)(data->args.hipMemcpyDtoDAsync.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyDtoH:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                        data->args.hipMemcpyDtoH.dst,
+                        data->args.hipMemcpyDtoH.src,
+                        (uint32_t)(data->args.hipMemcpyDtoH.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyDtoHAsync:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                        data->args.hipMemcpyDtoHAsync.dst,
+                        data->args.hipMemcpyDtoHAsync.src,
+                        (uint32_t)(data->args.hipMemcpyDtoHAsync.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyFromSymbol:
+                    std::snprintf(buff, 4096, "dst=%p | symbol=%p | size=0x%x | kind=%u",
+                        data->args.hipMemcpyFromSymbol.dst,
+                        data->args.hipMemcpyFromSymbol.symbol,
+                        (uint32_t)(data->args.hipMemcpyFromSymbol.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpyFromSymbol.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+		case HIP_API_ID_hipMemcpyFromSymbolAsync:
+                    std::snprintf(buff, 4096, "dst=%p | symbol=%p | size=0x%x | kind=%u",
+                        data->args.hipMemcpyFromSymbolAsync.dst,
+                        data->args.hipMemcpyFromSymbolAsync.symbol,
+                        (uint32_t)(data->args.hipMemcpyFromSymbolAsync.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpyFromSymbolAsync.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyHtoD:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                        data->args.hipMemcpyHtoDAsync.dst,
+                        data->args.hipMemcpyHtoDAsync.src,
+                        (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+		case HIP_API_ID_hipMemcpyHtoDAsync:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                        data->args.hipMemcpyHtoDAsync.dst,
+                        data->args.hipMemcpyHtoDAsync.src,
+                        (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyPeer:
+                    std::snprintf(buff, 4096, "dst=%p | device=%d | src=%p | device=%d | size=0x%x",
+                        data->args.hipMemcpyPeer.dst,
+                        data->args.hipMemcpyPeer.dstDeviceId,
+                        data->args.hipMemcpyPeer.src,
+                        data->args.hipMemcpyPeer.srcDeviceId,
+                        (uint32_t)(data->args.hipMemcpyPeer.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyPeerAsync:
+                    std::snprintf(buff, 4096, "dst=%p | device=%d | src=%p | device=%d | size=0x%x",
+                        data->args.hipMemcpyPeerAsync.dst,
+                        data->args.hipMemcpyPeerAsync.dstDeviceId,
+                        data->args.hipMemcpyPeerAsync.src,
+                        data->args.hipMemcpyPeerAsync.srcDevice,
+                        (uint32_t)(data->args.hipMemcpyPeerAsync.sizeBytes));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyToSymbol:
+                    std::snprintf(buff, 4096, "symbol=%p | src=%p | size=0x%x | kind=%u",
+                        data->args.hipMemcpyToSymbol.symbol,
+                        data->args.hipMemcpyToSymbol.src,
+                        (uint32_t)(data->args.hipMemcpyToSymbol.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpyToSymbol.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyToSymbolAsync:
+                    std::snprintf(buff, 4096, "symbol=%p | src=%p | size=0x%x | kind=%u",
+                        data->args.hipMemcpyToSymbolAsync.symbol,
+                        data->args.hipMemcpyToSymbolAsync.src,
+                        (uint32_t)(data->args.hipMemcpyToSymbolAsync.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpyToSymbolAsync.kind));
+                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    break;
+                case HIP_API_ID_hipMemcpyWithStream:
+                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
+                        data->args.hipMemcpyWithStream.dst,
+                        data->args.hipMemcpyWithStream.src,
+                        (uint32_t)(data->args.hipMemcpyWithStream.sizeBytes),
+                        (uint32_t)(data->args.hipMemcpyWithStream.kind));
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
                 default:
@@ -474,7 +598,7 @@ void rpdInit()
 {
     printf("rpd_tracer, because\n");
 
-    char *filename = getenv("RPDT_FILENAME");
+    const char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
         filename = "./trace.rpd";
 

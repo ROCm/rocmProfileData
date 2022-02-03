@@ -19,4 +19,4 @@ if [ $? != 0 ] ; then
 fi
 
 export RPDT_FILENAME=${OUTPUT_FILE}
-LD_PRELOAD=./rpd_tracer.so "$@"
+LD_PRELOAD=rpd_tracer.so "$@"
