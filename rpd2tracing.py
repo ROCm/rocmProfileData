@@ -1,4 +1,10 @@
-# Format sqlite trace data as sjon for chrome:tracing
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
+#
+# Format sqlite trace data as json for chrome:tracing
+#
 
 import sys
 import os

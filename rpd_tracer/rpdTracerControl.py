@@ -1,3 +1,7 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
 from ctypes import CDLL
 from ctypes.util import find_library
 import os

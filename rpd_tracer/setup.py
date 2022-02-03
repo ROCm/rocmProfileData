@@ -1,3 +1,7 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
 from distutils.core import setup, Extension
 
 setup (name = 'rpdTracer',

@@ -1,9 +1,10 @@
+/**************************************************************************
+ * Copyright (c) 2022 Advanced Micro Devices, Inc.
+ **************************************************************************/
 #pragma once
 
 
 extern "C" {
-    //void rpdInit();
-    //void rpdFinalize();
     void rpdstart();
     void rpdstop();
 }

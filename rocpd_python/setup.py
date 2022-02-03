@@ -1,3 +1,7 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
 from setuptools import setup, find_packages
 
 setup(name = 'rocpd',

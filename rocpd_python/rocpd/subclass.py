@@ -1,3 +1,7 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
 # Create subclass table for a set of apis/ops exposing args as columns
 #
 # input1: parent class ('api' || 'op')

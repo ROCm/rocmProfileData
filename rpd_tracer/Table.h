@@ -1,3 +1,6 @@
+/**************************************************************************
+ * Copyright (c) 2022 Advanced Micro Devices, Inc.
+ **************************************************************************/
 #include <sqlite3.h>
 #include <mutex>
 #include <condition_variable>
