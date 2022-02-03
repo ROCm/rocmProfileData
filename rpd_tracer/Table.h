@@ -64,6 +64,8 @@ public:
     void insertRoctx(row&);
     void pushRoctx(const row&);
     void popRoctx(const row&);
+    void suspendRoctx(sqlite3_int64 atTime);
+    void resumeRoctx(sqlite3_int64 atTime);
     void flush();
     void finalize();
 

@@ -67,35 +67,7 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
-//
-// Control interface
-//
-
-//extern "C" {
-
-void rpdstart()
-{
-    printf("START: yay\n");
-    start_tracing();
-}
-
-void rpdstop()
-{
-    printf("STOP: yay\n");
-    stop_tracing();
-}
-//}
-
-#if 0
-sqlite3 *connection = NULL;
-sqlite3_stmt *apiInsert = NULL;
-sqlite3_stmt *apiInsertNoId = NULL;
-sqlite3_stmt *stringInsert = NULL;
-#endif
-
 const sqlite_int64 EMPTY_STRING_ID = 1;
-
-
 
 // Table Recorders
 MetadataTable *s_metadataTable = NULL;
@@ -104,6 +76,39 @@ OpTable *s_opTable = NULL;
 ApiTable *s_apiTable = NULL;
 // API list
 ApiIdList *s_apiList = NULL;
+
+
+//
+// Control interface
+//
+
+//extern "C" {
+
+static int activeCount = 0;
+static std::mutex activeMutex;
+
+void rpdstart()
+{
+    std::unique_lock<std::mutex> lock(activeMutex);
+    if (activeCount == 0) {
+        printf("rpd_tracer: START\n");
+        s_apiTable->resumeRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
+        start_tracing();
+    }
+    ++activeCount;
+}
+
+void rpdstop()
+{
+    std::unique_lock<std::mutex> lock(activeMutex);
+    if (activeCount == 1) {
+        printf("rpd_tracer: STOP\n");
+        stop_tracing();
+        s_apiTable->suspendRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
+    }
+    --activeCount;
+}
+//}
 
 
 void api_callback(
@@ -438,6 +443,7 @@ void init_tracing() {
     roctracer_open_pool_expl(&hcc_cb_properties, &hccPool);
     roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HCC_OPS, hccPool);
 #endif
+    stop_tracing();
 }
 
 void start_tracing() {
@@ -505,11 +511,15 @@ void rpdInit()
     init_tracing();
 
     // Allow starting with recording disabled via ENV
+    bool startTracing = true;
     char *val = getenv("RPDT_AUTOSTART");
     if (val != NULL) {
         int autostart = atoi(val);
-        if (autostart != 0)
-            start_tracing();
+        if (autostart == 0)
+            startTracing = false;
+    }
+    if (startTracing == true) {
+        rpdstart();
     }
 }
 

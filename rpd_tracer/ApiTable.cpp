@@ -34,6 +34,8 @@ public:
     bool workerRunning;
     bool done;
 
+    sqlite3_int64 roctxResumeTime;
+
     ApiTable *p;
 };
 
@@ -55,6 +57,8 @@ ApiTable::ApiTable(const char *basefile)
     d->worker = NULL;
     d->done = false;
     d->workerRunning = true;
+
+    d->roctxResumeTime = 0;
 
     d->worker = new std::thread(&ApiTablePrivate::work, d);
 }
@@ -129,9 +133,50 @@ void ApiTable::popRoctx(const ApiTable::row &row)
         d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
         stack.pop_front();
     }
+    else {  // Pop without a push.  This is due to suspend/resume.  Fudge the start.
+        ApiTable::row &r = const_cast<ApiTable::row&>(row);
+        r.start = d->roctxResumeTime;
+        r.api_id = ++roctx_id_hack;
+        d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+    }
 
     if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
         m_wait.notify_one();
+}
+
+void ApiTable::suspendRoctx(sqlite3_int64 atTime)
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+        m_wait.notify_one();
+        m_wait.wait(lock);
+    }
+
+    // Profiling is suspended, we won't get pops for anything pushed.  So end them all now.
+    auto it = d->roctxStacks.begin();
+    while (it != d->roctxStacks.end()) {
+        auto &stack = it->second;
+        while (stack.empty() == false) {
+            // Make sure there is room
+            if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+                m_wait.notify_one();
+                m_wait.wait(lock);
+            }
+            ApiTable::row &r = stack.front();
+            r.end = atTime;
+            r.api_id = ++roctx_id_hack;
+            d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+            stack.pop_front();
+        }
+    }
+
+    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
+        m_wait.notify_one();
+}
+
+void ApiTable::resumeRoctx(sqlite3_int64 atTime)
+{
+    d->roctxResumeTime = atTime;
 }
 
 void ApiTable::flush()
