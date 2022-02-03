@@ -17,6 +17,10 @@ RPD_MAIN = rpd_tracer.so
 RTG_MAIN = rtg_tracer.so
 RPD_SCRIPT = runTracer.sh
 
+PYTHON = python3
+PIP = pip3
+
+
 RTG_DIR = $(wildcard ../rtg_tracer/rtg_tracer)
 
 all: | $(RPD_MAIN) $(RTG_DIR)
@@ -52,6 +56,7 @@ $(RTG_MAIN): ../rtg_tracer/rtg_tracer/rtg_tracer.o $(RTG_OBJS) $(RPD_OBJS)
 install:
 	cp $(RPD_MAIN)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
+	$(PYTHON) setup.py install
 
 .PHONY: uninstall
 uninstall:
