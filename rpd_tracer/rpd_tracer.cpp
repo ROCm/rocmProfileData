@@ -94,7 +94,7 @@ void rpdstart()
 {
     std::unique_lock<std::mutex> lock(activeMutex);
     if (activeCount == 0) {
-        printf("rpd_tracer: START\n");
+        //fprintf(stderr, "rpd_tracer: START\n");
         s_apiTable->resumeRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
         start_tracing();
     }
@@ -105,7 +105,7 @@ void rpdstop()
 {
     std::unique_lock<std::mutex> lock(activeMutex);
     if (activeCount == 1) {
-        printf("rpd_tracer: STOP\n");
+        //fprintf(stderr, "rpd_tracer: STOP\n");
         stop_tracing();
         s_apiTable->suspendRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
     }
@@ -599,7 +599,7 @@ void end_tracing() {
 
 void rpdInit()
 {
-    printf("rpd_tracer, because\n");
+    fprintf(stderr, "rpd_tracer, because\n");
 
     const char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
