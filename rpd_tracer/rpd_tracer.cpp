@@ -168,8 +168,28 @@ void api_callback(
                         s_opTable->associateDescription(row.api_id, kernelName_id);
                     }
                     break;
-                case HIP_API_ID_hipHccModuleLaunchKernel:
                 case HIP_API_ID_hipModuleLaunchKernel:
+                    {
+                        const hipFunction_t f = data->args.hipModuleLaunchKernel.f;
+                        if (f != NULL) {
+                            std::string kernelName(cxx_demangle(hipKernelNameRef(f)));
+                            std::snprintf(buff, 4096, "stream=%p | kernel=%s | grid=[%d,%d,%d] | threads=[%d,%d,%d]",
+                                data->args.hipModuleLaunchKernel.stream,
+                                kernelName.c_str(),
+                                data->args.hipModuleLaunchKernel.gridDimX,
+                                data->args.hipModuleLaunchKernel.gridDimY,
+                                data->args.hipModuleLaunchKernel.gridDimZ,
+                                data->args.hipModuleLaunchKernel.blockDimX,
+                                data->args.hipModuleLaunchKernel.blockDimY,
+                                data->args.hipModuleLaunchKernel.blockDimZ);
+                             row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                                                     // Associate kernel name with op
+                             sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
+                             s_opTable->associateDescription(row.api_id, kernelName_id);
+                        }
+                    }
+                    break;
+                case HIP_API_ID_hipHccModuleLaunchKernel:
                 case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
                     const hipFunction_t f = data->args.hipModuleLaunchKernel.f;
