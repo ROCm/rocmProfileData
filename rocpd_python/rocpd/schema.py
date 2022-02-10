@@ -1,3 +1,7 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
 #
 #   Utility Class to create the rocpd schema on an existing sqlite connection
 #     

@@ -1,3 +1,7 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
 # Elevate roctx logging messages to 1st class api events
 #
 # Logged messages should be formatted as: api=<> args1=<> arg2=<>

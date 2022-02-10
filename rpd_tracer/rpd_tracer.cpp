@@ -1,3 +1,6 @@
+/**************************************************************************
+ * Copyright (c) 2022 Advanced Micro Devices, Inc.
+ **************************************************************************/
 #include <atomic>
 #include <cstdio>
 #include <iostream>
@@ -22,6 +25,8 @@
 #include "Table.h"
 #include "ApiIdList.h"
 
+#include "rpd_tracer.h"
+
 
 static void rpdInit() __attribute__((constructor));
 static void rpdFinalize() __attribute__((destructor));
@@ -32,11 +37,10 @@ static void rpdFinalize() __attribute__((destructor));
 //                     this let's us unload first, or close to.
 // New workaround: register 3 times, only finalize once.  see register_once
 
-void rpdFinalize();
-
 void init_tracing();
 void start_tracing();
 void stop_tracing();
+void end_tracing();
 
 std::once_flag register_once;
 std::once_flag registerAgain_once;
@@ -66,17 +70,7 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
-
-#if 0
-sqlite3 *connection = NULL;
-sqlite3_stmt *apiInsert = NULL;
-sqlite3_stmt *apiInsertNoId = NULL;
-sqlite3_stmt *stringInsert = NULL;
-#endif
-
 const sqlite_int64 EMPTY_STRING_ID = 1;
-
-
 
 // Table Recorders
 MetadataTable *s_metadataTable = NULL;
@@ -88,6 +82,38 @@ ApiTable *s_apiTable = NULL;
 // API list
 ApiIdList *s_apiList = NULL;
 
+
+//
+// Control interface
+//
+
+//extern "C" {
+
+static int activeCount = 0;
+static std::mutex activeMutex;
+
+void rpdstart()
+{
+    std::unique_lock<std::mutex> lock(activeMutex);
+    if (activeCount == 0) {
+        //fprintf(stderr, "rpd_tracer: START\n");
+        s_apiTable->resumeRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
+        start_tracing();
+    }
+    ++activeCount;
+}
+
+void rpdstop()
+{
+    std::unique_lock<std::mutex> lock(activeMutex);
+    if (activeCount == 1) {
+        //fprintf(stderr, "rpd_tracer: STOP\n");
+        stop_tracing();
+        s_apiTable->suspendRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
+    }
+    --activeCount;
+}
+//}
 
 
 void api_callback(
@@ -620,6 +646,7 @@ void init_tracing() {
     roctracer_open_pool_expl(&hcc_cb_properties, &hccPool);
     roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HCC_OPS, hccPool);
 #endif
+    stop_tracing();
 }
 
 void start_tracing() {
@@ -629,6 +656,10 @@ void start_tracing() {
 
 void stop_tracing() {
     //printf("# STOP #############################\n");
+    roctracer_stop();
+}
+
+void end_tracing() {
     roctracer_stop();
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_ROCTX);
@@ -643,7 +674,7 @@ void stop_tracing() {
 
 void rpdInit()
 {
-    //printf("rpd_tracer, because\n");
+    fprintf(stderr, "rpd_tracer, because\n");
 
     const char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
@@ -684,7 +715,18 @@ void rpdInit()
     s_apiList->add("hipEventCreateWithFlags");
 
     init_tracing();
-    start_tracing();
+
+    // Allow starting with recording disabled via ENV
+    bool startTracing = true;
+    char *val = getenv("RPDT_AUTOSTART");
+    if (val != NULL) {
+        int autostart = atoi(val);
+        if (autostart == 0)
+            startTracing = false;
+    }
+    if (startTracing == true) {
+        rpdstart();
+    }
 }
 
 static bool doFinalize = true;
@@ -696,7 +738,7 @@ void rpdFinalize()
     if (doFinalize == true) {
         doFinalize = false;
         //printf("+++++++++++++++++++  rpdFinalize\n");
-        stop_tracing();
+        end_tracing();
 
         // Flush recorders
         const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);

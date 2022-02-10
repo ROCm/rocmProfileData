@@ -1,4 +1,10 @@
+###########################################################################
+# Copyright (c) 2022 Advanced Micro Devices, Inc.
+###########################################################################
+
+#
 # Create an rpd file from an nvvp file
+#
 
 import sys
 import os
