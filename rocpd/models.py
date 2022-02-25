@@ -43,8 +43,9 @@ class Op(models.Model):
     start = models.IntegerField(default=0)
     end = models.IntegerField(default=0)
 
-class KernelOp(Op):
-    #op = models.OneToOneField(Ops, on_delete=models.PROTECT, primary_key=True)
+class KernelApi(Api):
+    #api = models.OneToOneField(Api, on_delete=models.PROTECT, primary_key=True)
+    stream = models.CharField(max_length=18)
     gridX = models.IntegerField(default=0)
     gridY = models.IntegerField(default=0)
     gridz = models.IntegerField(default=0)
@@ -59,16 +60,16 @@ class KernelOp(Op):
     aquireFence = models.CharField(max_length=8)   #(none, agent, system)
     releaseFence = models.CharField(max_length=8)  #(none, agent, system)
 
-class CopyOp(Op):
-    #op = models.OneToOneField(Ops, on_delete=models.PROTECT, primary_key=True)
+class CopyApi(Api):
+    #api = models.OneToOneField(Api, on_delete=models.PROTECT, primary_key=True)
     size = models.IntegerField(default=0)
     width = models.IntegerField(default=0)
     height = models.IntegerField(default=0)
     kind = models.IntegerField(default=0) # enum
-    src = models.CharField(max_length=18)
     dst = models.CharField(max_length=18)
-    srcDevice = models.IntegerField(default=0) # GPU id or -1
+    src = models.CharField(max_length=18)
     dstDevice = models.IntegerField(default=0) # GPU id or -1
+    srcDevice = models.IntegerField(default=0) # GPU id or -1
     sync = models.BooleanField()
     pinned = models.BooleanField()
 

@@ -27,9 +27,6 @@ public:
     int tail;
     int count;
 
-    std::map<sqlite3_int64, KernelOpTable::row> kernelRows;
-    std::map<sqlite3_int64, CopyOpTable::row> copyRows;
-
     sqlite3_stmt *opInsert;
     sqlite3_stmt *apiOpInsert;
 
@@ -41,12 +38,10 @@ public:
     bool done;
 
     OpTable *p;
-    KernelOpTable *kp;
-    CopyOpTable *cp;
 };
 
 
-OpTable::OpTable(const char *basefile, KernelOpTable *kernelTable, CopyOpTable *copyTable)
+OpTable::OpTable(const char *basefile)
 : Table(basefile)
 , d(new OpTablePrivate(this))
 {
@@ -65,9 +60,6 @@ OpTable::OpTable(const char *basefile, KernelOpTable *kernelTable, CopyOpTable *
     d->worker = NULL;
     d->done = false;
     d->workerRunning = true;
-
-    d->kp = kernelTable;
-    d->cp = copyTable;
 
     d->worker = new std::thread(&OpTablePrivate::work, d);
 }
@@ -90,25 +82,10 @@ void OpTable::insert(const OpTable::row &row)
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)
 {
-    // FIXME: remove this, kernelops has kernel description
     // FIXME: double buffer this?
     // writeRows uses this structure heavily, intermittently.  May matter
     std::lock_guard<std::mutex> guard(d->m_descriptionLock);
     d->descriptions[api_id] = string_id;
-}
-
-void OpTable::associateKernelOp(const sqlite3_int64 &api_id, KernelOpTable::row krow)
-{
-    // FIXME: double buffer this?
-    // writeRows uses this structure heavily, intermittently.  May matter
-    d->kernelRows.emplace(std::make_pair(api_id, krow));
-}
-
-void OpTable::associateCopyOp(const sqlite3_int64 &api_id, CopyOpTable::row crow)
-{
-    // FIXME: double buffer this?
-    // writeRows uses this structure heavily, intermittently.  May matter
-    d->copyRows.emplace(std::make_pair(api_id, crow));
 }
 
 void OpTable::flush()
@@ -158,7 +135,7 @@ void OpTablePrivate::writeRows()
         sqlite3_int64 primaryKey = i + p->m_idOffset;
 
         // check for description override
-#if 0
+#if 1
         {
             std::lock_guard<std::mutex> guard(m_descriptionLock);
             auto it = descriptions.find(r.api_id);
@@ -168,21 +145,6 @@ void OpTablePrivate::writeRows()
             }
         }
 #endif
-        // Check for kernelop
-        {
-            std::lock_guard<std::mutex> guard(m_descriptionLock);
-            auto it = kernelRows.find(r.api_id);
-            if (it != kernelRows.end()) {
-                KernelOpTable::row &krow = it->second;
-                krow.op_id = primaryKey;
-                kp->insert(krow);
-                //printf("krow for %lld\n", primaryKey);
-                kernelRows.erase(it);
-                // Copy kernel name into description of base op (for historical reasons)
-                r.description_id = krow.kernelName_id;
-            }
-        }
-
         sqlite3_bind_int64(opInsert, index++, primaryKey);
         sqlite3_bind_int(opInsert, index++, r.gpuId);
         sqlite3_bind_int(opInsert, index++, r.queueId);

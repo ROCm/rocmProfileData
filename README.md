@@ -34,6 +34,11 @@ RPD makes heavy use to SQLite(https://sqlite.org/index.html).  You will want to 
 apt-get install sqlite3 libsqlite3-dev
 ```
 
+Additional packages required
+```
+apt-get install libfmt-dev
+```
+
 There are many tools in the RPD repo.  A baseline set can be built and installed via make:
 ```
 make; make install
