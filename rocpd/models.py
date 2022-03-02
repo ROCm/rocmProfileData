@@ -48,7 +48,7 @@ class KernelApi(Api):
     stream = models.CharField(max_length=18)
     gridX = models.IntegerField(default=0)
     gridY = models.IntegerField(default=0)
-    gridz = models.IntegerField(default=0)
+    gridZ = models.IntegerField(default=0)
     workgroupX = models.IntegerField(default=0)
     workgroupY = models.IntegerField(default=0)
     workgroupZ = models.IntegerField(default=0)
