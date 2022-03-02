@@ -62,6 +62,7 @@ class KernelApi(Api):
 
 class CopyApi(Api):
     #api = models.OneToOneField(Api, on_delete=models.PROTECT, primary_key=True)
+    stream = models.CharField(max_length=18)
     size = models.IntegerField(default=0)
     width = models.IntegerField(default=0)
     height = models.IntegerField(default=0)

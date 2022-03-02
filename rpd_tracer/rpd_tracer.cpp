@@ -445,6 +445,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpy2DAsync.stream);
                         crow.width = (uint32_t)(data->args.hipMemcpy2DAsync.width);
                         crow.height = (uint32_t)(data->args.hipMemcpy2DAsync.height);
                         crow.dst = fmt::format("{}", data->args.hipMemcpy2DAsync.dst);
@@ -464,6 +465,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyAsync.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyAsync.src);
@@ -498,6 +500,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyDtoDAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyDtoDAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyDtoDAsync.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyDtoDAsync.src);
@@ -531,6 +534,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyDtoHAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyDtoHAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyDtoHAsync.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyDtoHAsync.src);
@@ -566,6 +570,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyFromSymbolAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyFromSymbolAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyFromSymbolAsync.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyFromSymbolAsync.symbol);
@@ -599,6 +604,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyHtoDAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyHtoDAsync.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyHtoDAsync.src);
@@ -637,6 +643,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyPeerAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyPeerAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyPeerAsync.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyPeerAsync.src);
@@ -674,6 +681,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyToSymbolAsync.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyToSymbolAsync.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyToSymbolAsync.symbol);
                         crow.src = fmt::format("{}", data->args.hipMemcpyToSymbolAsync.src);
@@ -692,6 +700,7 @@ void api_callback(
                     {
                         CopyApiTable::row crow;
                         crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyWithStream.stream);
                         crow.size = (uint32_t)(data->args.hipMemcpyWithStream.sizeBytes);
                         crow.dst = fmt::format("{}", data->args.hipMemcpyWithStream.dst);
                         crow.src = fmt::format("{}", data->args.hipMemcpyWithStream.src);

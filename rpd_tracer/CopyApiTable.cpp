@@ -6,8 +6,7 @@
 typedef uint64_t timestamp_t;
 
 
-//const char *SCHEMA_COPYAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_copyapi\" (\"api_ptr_id\" integer NOT NULL PRIMARY KEY, \"size\" integer NOT NULL, \"src\" integer NOT NULL, \"dst\" integer NOT NULL, \"sync\" bool NOT NULL, \"pinned\" bool NOT NULL);";
-const char *SCHEMA_COPYAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_copyapi\" (\"api_ptr_id\" integer NOT NULL PRIMARY KEY REFERENCES \"rocpd_api\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"size\" integer NOT NULL, \"width\" integer NOT NULL, \"height\" integer NOT NULL, \"kind\" integer NOT NULL, \"dst\" varchar(18) NOT NULL, \"src\" varchar(18) NOT NULL, \"dstDevice\" integer NOT NULL, \"srcDevice\" integer NOT NULL, \"sync\" bool NOT NULL, \"pinned\" bool NOT NULL);";
+const char *SCHEMA_COPYAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_copyapi\" (\"api_ptr_id\" integer NOT NULL PRIMARY KEY REFERENCES \"rocpd_api\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"stream\" varchar(18) NOT NULL, \"size\" integer NOT NULL, \"width\" integer NOT NULL, \"height\" integer NOT NULL, \"kind\" integer NOT NULL, \"dst\" varchar(18) NOT NULL, \"src\" varchar(18) NOT NULL, \"dstDevice\" integer NOT NULL, \"srcDevice\" integer NOT NULL, \"sync\" bool NOT NULL, \"pinned\" bool NOT NULL);";
 
 class CopyApiTablePrivate
 {
@@ -42,7 +41,7 @@ CopyApiTable::CopyApiTable(const char *basefile)
     ret = sqlite3_exec(m_connection, SCHEMA_COPYAPI, NULL, NULL, NULL);
 
     // prepare queries to insert row
-    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_copyapi(api_ptr_id, size, width, height, kind, src, dst, srcDevice, dstDevice, sync, pinned) values (?,?,?,?,?,?,?,?,?,?,?)", -1, &d->apiInsert, NULL);
+    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_copyapi(api_ptr_id, stream, size, width, height, kind, src, dst, srcDevice, dstDevice, sync, pinned) values (?,?,?,?,?,?,?,?,?,?,?,?)", -1, &d->apiInsert, NULL);
     
     d->head = 0;    // last produced by insert()
     d->tail = 0;    // last consumed by 
@@ -109,6 +108,7 @@ void CopyApiTablePrivate::writeRows()
         CopyApiTable::row &r = rows[(tail + i) % BUFFERSIZE];
 
         sqlite3_bind_int64(apiInsert, index++, r.api_id);
+        sqlite3_bind_text(apiInsert, index++, r.stream.c_str(), -1, SQLITE_STATIC);
         if (r.size > 0)
             sqlite3_bind_int(apiInsert, index++, r.size);
         else

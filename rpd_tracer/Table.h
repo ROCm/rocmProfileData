@@ -119,6 +119,7 @@ public:
     CopyApiTable(const char *basefile);
 
     struct row {
+        std::string stream;
         int size {0};
         int width {0};
         int height {0};
