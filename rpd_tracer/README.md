@@ -2,18 +2,16 @@
 
 This is a tracer that can attach to any process and record hip apis, ops, and roctx.
 
+
 ## Steps:
-1) In this directory run `make`.  It should build `rpd_tracer.so`.
-2) Installs rpd utilites: `cd ../rocpd_python` and `python setup.py install`.
+1) `cd` to the rocmProfileData root directory
+2) Run `make; make install`
 3) Run `runTracer.sh -o <output_file>.rpd <your_command_and_args>`.
-4) `python ../rpd2tracing <your_profile>.rpd <your_profile>.json` for Chrome tracing output.
+4) `python tools/rpd2tracing <your_profile>.rpd <your_profile>.json` for Chrome tracing output.
 
-<b>WARNING:</b> Keep runTracer.sh and rpd_trace.so together in $PWD. (until a proper installer exists)
-
-<b>ISSUE:</b> Very small traces will not write any output. This a tmp workaround. Profile something bigger.
 
 <b>Manual Stuff:</b>
- - Use 'LD_PRELOAD=./rpd_tracer.so' to attach the profiler to any process
+ - Use 'LD_PRELOAD=./librpd_tracer.so' to attach the profiler to any process
  - Default output file name is 'trace.rpd'
  - Override file name with env 'RPDT_FILENAME='
  - Create empty rpd file with python3 -m rocpd.schema --create ${OUTPUT_FILE}
@@ -21,7 +19,7 @@ This is a tracer that can attach to any process and record hip apis, ops, and ro
  - Files can be appended any number of times
 
  ## Example
- This example shows how to dynamically link `rpd_tracer.so` file to your application.
+ This example shows how to dynamically link `librpd_tracer.so` file to your application.
 
 1) Make sure you run step 2 above to install rpd utilities.
 2) Create empty rpd file with `python3 -m rocpd.schema --create ${OUTPUT_FILE}`. Here `${OUTPUT_FILE}` a rpd file.
@@ -40,7 +38,7 @@ This is a tracer that can attach to any process and record hip apis, ops, and ro
         ```
     3) Load dynamic library file:
         ```
-        rocTracer_lib = dlopen("<YOUR_PATH>/rpd_tracer.so", RTLD_LAZY); //defer resolution until the first reference via RTLD_LAZY
+        rocTracer_lib = dlopen("<YOUR_PATH>/librpd_tracer.so", RTLD_LAZY); //defer resolution until the first reference via RTLD_LAZY
             std::cout << rocTracer_lib << std::endl; // points to some memory location, e.g. 0x89a...
             if (!rocTracer_lib) {
                 fputs (dlerror(), stderr);
@@ -62,4 +60,4 @@ This is a tracer that can attach to any process and record hip apis, ops, and ro
         ```
         init_tracing();
         ```
-<b>Note:</b> You can utilize `nm -gd <PATH_TO_rpd_tracer.so>` to find out symbol names in your library.
+<b>Note:</b> You can utilize `nm -gd <PATH_TO_librpd_tracer.so>` to find out symbol names in your library.
