@@ -147,7 +147,7 @@ def purgeStrings(imp):
             union all select distinct args_id from rocpd_api \
             union all select distinct description_id from rocpd_op \
             union all select distinct opType_id from rocpd_op \
-            union all select distinct kernelName_id from rocpd_kernelop \
+            union all select distinct kernelName_id from rocpd_kernelapi \
             )")
             # DISABLED to review HSA support
             #union all select distinct apiName_id from rocpd_hsaApi
@@ -172,12 +172,12 @@ def populateKernelInfo(imp):
     def commitRecords():
         nonlocal kernel_inserts
         imp.commitStrings
-        imp.connection.executemany("insert into rocpd_kernelop(op_ptr_id, gridX, gridY, gridZ, workgroupX, workgroupY, workgroupZ, groupSegmentSize, privateSegmentSize, codeObject_id, kernelName_id, kernelArgAddress, aquireFence, releaseFence) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", kernel_inserts)
+        imp.connection.executemany("insert into rocpd_kernelapi(api_ptr_id, stream, gridX, gridY, gridZ, workgroupX, workgroupY, workgroupZ, groupSegmentSize, privateSegmentSize, codeObject_id, kernelName_id, kernelArgAddress, aquireFence, releaseFence) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", kernel_inserts)
         imp.connection.commit()
         kernel_inserts = []
 
 
-    for row in imp.connection.execute("select A.op_id, C.string from rocpd_api_ops A join rocpd_api B on B.id = A.api_id join rocpd_string C on C.id = B.args_id where B.apiName_id in (select id from rocpd_string where string in (%s))" % str(kernelApis)[1:-1]):
+    for row in imp.connection.execute("select A.api_id, C.string from rocpd_api_ops A join rocpd_api B on B.id = A.api_id join rocpd_string C on C.id = B.args_id where B.apiName_id in (select id from rocpd_string where string in (%s))" % str(kernelApis)[1:-1]):
         args = {}
         if ('kernel=' in row[1]):
             input_line, kernel_line = row[1].split('kernel=')
@@ -187,6 +187,8 @@ def populateKernelInfo(imp):
         for line in input_line.split(','):
             key, value = line.partition("=")[::2]
             args[key.strip()] = value.strip()
+        stream = args['stream'] if 'stream' in args else 0
+        # Rocprof doesn't seem to populate "numBlocks={}, dimBlocks={}" at the moment
         gridx = args['gridDimX'] if 'gridDimX' in args else 0
         gridy = args['gridDimY'] if 'gridDimY' in args else 0
         gridz = args['gridDimZ'] if 'gridDimZ' in args else 0
@@ -202,14 +204,15 @@ def populateKernelInfo(imp):
         relfence = '';
         kernel = imp.getStringId(kernstring)
 
-        kernel_inserts.append((row[0], gridx, gridy, gridz, bdimx, bdimy, bdimz, shmem, prmem, 0, kernel, kargs, aqfence, relfence))
+        kernel_inserts.append((row[0], stream, gridx, gridy, gridz, bdimx, bdimy, bdimz, shmem, prmem, 0, kernel, kargs, aqfence, relfence))
         count = count + 1
         if (count % 100000 == 99999):
             commitRecords()
     commitRecords()
     # copy the kernel names into the base op table's description
     # Most use cases will just want the kernel name and can avoid joining KernelOp
-    imp.connection.execute("update rocpd_op set description_id = (select kernelName_id from rocpd_kernelop A join rocpd_op B on B.id = A.op_ptr_id where rocpd_op.id = B.id) where rocpd_op.id in (select op_ptr_id from rocpd_kernelop)")
+    imp.connection.execute("CREATE INDEX opid_index ON rocpd_api_ops (op_id)");
+    imp.connection.execute("update rocpd_op set description_id = (select kernelName_id from rocpd_api_ops A join rocpd_kernelapi B on B.api_ptr_id = A.api_id where rocpd_op.id = A.op_id) where rocpd_op.id in (select A.id from rocpd_api_ops A join rocpd_kernelapi B on B.api_ptr_id=A.api_id)")
     imp.connection.commit()
 
 
@@ -219,7 +222,7 @@ def populateKernelInfo(imp):
 # hipMemcpyAsync
 
 def populateCopyInfo(imp):
-    copyApis = ['hipMemcpyWithStream', 'hipMemsetAsync', 'hipMemcpyAsync']
+    copyApis = ['hipMemcpy', 'hipMemcpy2D', 'hipMemcpy2DAsync', 'hipMemcpyAsync', 'hipMemcpyDtoD', 'hipMemcpyDtoDAsync', 'hipMemcpyDtoH', 'hipMemcpyDtoHAsync', 'hipMemcpyFromSymbol', '.hipMemcpyFromSymbolAsync', 'hipMemcpyHtoD', 'hipMemcpyHtoDAsync', 'hipMemcpyPeer', 'hipMemcpyPeerAsync', 'hipMemcpyToSymbol', 'hipMemcpyToSymbolAsync', 'hipMemcpyWithStream']
     print(f"Extracting copy info for: {str(copyApis)[1:-1]}")
 
     count = 0
@@ -227,22 +230,28 @@ def populateCopyInfo(imp):
 
     def commitRecords():
         nonlocal copy_inserts
-        imp.connection.executemany("insert into rocpd_copyop(op_ptr_id, size, src, dst, sync, pinned) values (?,?,?,?,?,?)", copy_inserts)
+        imp.connection.executemany("insert into rocpd_copyapi(api_ptr_id, stream, size, width, height, kind, src, dst, srcDevice, dstDevice, sync, pinned) values (?,?,?,?,?,?,?,?,?,?,?,?)", copy_inserts)
         imp.connection.commit()
         copy_inserts = []
 
-    for row in connection.execute("select A.op_id, C.string from rocpd_api_ops A join rocpd_api B on B.id = A.api_id join rocpd_string C on C.id = B.args_id where B.apiName_id in (select id from rocpd_string where string in (%s))" % str(copyApis)[1:-1]):
+    for row in connection.execute("select A.api_id, C.string from rocpd_api_ops A join rocpd_api B on B.id = A.api_id join rocpd_string C on C.id = B.args_id where B.apiName_id in (select id from rocpd_string where string in (%s))" % str(copyApis)[1:-1]):
         args = {}
         for line in row[1].split(','):
             key, value = line.partition("=")[::2]
             args[key.strip()] = value.strip()
+        stream = args['stream'] if 'stream' in args else ''
         size = args['sizeBytes'] if 'sizeBytes' in args else 0
-        src = -1
-        dst = -1
-        sync = False
+        width = args['width'] if 'width' in args else 0
+        height = args['height'] if 'height' in args else 0
+        kind = args['kind'] if 'kind' in args else 0
+        src = args['src'] if 'src' in args else ''
+        dst = args['dst'] if 'dst' in args else ''
+        srcDevice = args['srcDevice'] if 'srcDevice' in args else 0
+        dstDevice = args['dstDevice'] if 'dstDevice' in args else 0
+        sync = False if 'stream' in args else True
         pinned = False
 
-        copy_inserts.append((row[0], size, src, dst, sync, pinned))
+        copy_inserts.append((row[0], stream, size, width, height, kind, src, dst, srcDevice, dstDevice, sync, pinned))
         if (count % 100000 == 99999):
             commitRecords()
     commitRecords()

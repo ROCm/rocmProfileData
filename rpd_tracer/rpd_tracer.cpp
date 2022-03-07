@@ -21,6 +21,7 @@
 #include "hsa_rsrc_factory.h"
 
 #include <sqlite3.h>
+#include <fmt/format.h>
 
 #include "Table.h"
 #include "ApiIdList.h"
@@ -76,8 +77,8 @@ const sqlite_int64 EMPTY_STRING_ID = 1;
 MetadataTable *s_metadataTable = NULL;
 StringTable *s_stringTable = NULL;
 OpTable *s_opTable = NULL;
-KernelOpTable *s_kernelOpTable = NULL;
-CopyOpTable *s_copyOpTable = NULL;
+KernelApiTable *s_kernelApiTable = NULL;
+CopyApiTable *s_copyApiTable = NULL;
 ApiTable *s_apiTable = NULL;
 // API list
 ApiIdList *s_apiList = NULL;
@@ -122,7 +123,6 @@ void api_callback(
     const void* callback_data,
     void* arg)
 {
-    //printf("  api_callback\n");
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
         //if (s_apiList->contains(cid) == false)
         //    return;
@@ -165,18 +165,17 @@ void api_callback(
                     break;
 
                 case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice:
-                case HIP_API_ID_hipExtLaunchMultiKernelMultiDevice:
                     {
                         const hipLaunchParams &params = data->args.hipLaunchCooperativeKernelMultiDevice.launchParamsList__val;
                         std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.func, params.stream));
-                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            params.stream,
-                            kernelName.c_str());
-                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
 
-                        // Associate kernel name with op
-                        KernelOpTable::row krow;
-                        //krow.op_id = 0;
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
                         krow.gridX = params.gridDim.x;
                         krow.gridY = params.gridDim.y;
                         krow.gridZ = params.gridDim.z;
@@ -186,26 +185,55 @@ void api_callback(
                         krow.groupSegmentSize = params.sharedMem;
                         krow.privateSegmentSize = 0;
                         krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        //s_opTable->associateDescription(row.api_id, kernelName_id);
-                        s_opTable->associateKernelOp(row.api_id, krow);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
+                    }
+                    break;
+
+                case HIP_API_ID_hipExtLaunchMultiKernelMultiDevice:
+                    {
+                        const hipLaunchParams &params = data->args.hipExtLaunchMultiKernelMultiDevice.launchParamsList__val;
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.func, params.stream));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
+                        krow.gridX = params.gridDim.x;
+                        krow.gridY = params.gridDim.y;
+                        krow.gridZ = params.gridDim.z;
+                        krow.workgroupX = params.blockDim.x;
+                        krow.workgroupY = params.blockDim.y;
+                        krow.workgroupZ = params.blockDim.z;
+                        krow.groupSegmentSize = params.sharedMem;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
                 case HIP_API_ID_hipLaunchKernel:
-                case HIP_API_ID_hipExtLaunchKernel:
-                case HIP_API_ID_hipLaunchCooperativeKernel:	// Should work here
                     {
                         auto &params = data->args.hipLaunchKernel;
                         std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.function_address, params.stream));
-                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            params.stream,
-                            kernelName.c_str());
-                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
 
-                        // Associate kernel name with op
-                        KernelOpTable::row krow;
-                        //krow.op_id = 0;
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
                         krow.gridX = params.numBlocks.x;
                         krow.gridY = params.numBlocks.y;
                         krow.gridZ = params.numBlocks.z;
@@ -215,25 +243,113 @@ void api_callback(
                         krow.groupSegmentSize = params.sharedMemBytes;
                         krow.privateSegmentSize = 0;
                         krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        //s_opTable->associateDescription(row.api_id, kernelName_id);
-                        s_opTable->associateKernelOp(row.api_id, krow);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
+
+                case HIP_API_ID_hipExtLaunchKernel:
+                    {
+                        auto &params = data->args.hipExtLaunchKernel;
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.function_address, params.stream));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
+                        krow.gridX = params.numBlocks.x;
+                        krow.gridY = params.numBlocks.y;
+                        krow.gridZ = params.numBlocks.z;
+                        krow.workgroupX = params.dimBlocks.x;
+                        krow.workgroupY = params.dimBlocks.y;
+                        krow.workgroupZ = params.dimBlocks.z;
+                        krow.groupSegmentSize = params.sharedMemBytes;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
+                    }
+                    break;
+
+                case HIP_API_ID_hipLaunchCooperativeKernel:
+                    {
+                        auto &params = data->args.hipLaunchCooperativeKernel;
+                        std::string kernelName = cxx_demangle(hipKernelNameRefByPtr(params.f, params.stream));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
+                        krow.gridX = params.gridDim.x;
+                        krow.gridY = params.gridDim.y;
+                        krow.gridZ = params.gridDim.z;
+                        krow.workgroupX = params.blockDimX.x;
+                        krow.workgroupY = params.blockDimX.y;
+                        krow.workgroupZ = params.blockDimX.z;
+                        krow.groupSegmentSize = params.sharedMemBytes;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
+                    }
+                    break;
+
                 case HIP_API_ID_hipHccModuleLaunchKernel:
+                    {
+                        auto &params = data->args.hipHccModuleLaunchKernel;
+                        std::string kernelName(cxx_demangle(hipKernelNameRef(params.f)));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.hStream);
+                        krow.gridX = params.globalWorkSizeX;
+                        krow.gridY = params.globalWorkSizeY;
+                        krow.gridZ = params.globalWorkSizeZ;
+                        krow.workgroupX = params.blockDimX;
+                        krow.workgroupY = params.blockDimY;
+                        krow.workgroupZ = params.blockDimZ;
+                        krow.groupSegmentSize = params.sharedMemBytes;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
+                    }
+                    break;
+
                 case HIP_API_ID_hipModuleLaunchKernel:
-                case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
                         auto &params = data->args.hipModuleLaunchKernel;
                         std::string kernelName(cxx_demangle(hipKernelNameRef(params.f)));
-                        std::snprintf(buff, 4096, "stream=%p | kernel=%s",
-                            params.stream,
-                            kernelName.c_str());
-                        row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
 
-                        // Associate kernel name with op
-                        KernelOpTable::row krow;
-                        //krow.op_id = 0;
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
                         krow.gridX = params.gridDimX;
                         krow.gridY = params.gridDimY;
                         krow.gridZ = params.gridDimZ;
@@ -243,11 +359,43 @@ void api_callback(
                         krow.groupSegmentSize = params.sharedMemBytes;
                         krow.privateSegmentSize = 0;
                         krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        //sqlite3_int64 kernelName_id = s_stringTable->getOrCreate(kernelName);
-                        //s_opTable->associateDescription(row.api_id, kernelName_id);
-                        s_opTable->associateKernelOp(row.api_id, krow);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
+
+                case HIP_API_ID_hipExtModuleLaunchKernel:
+                    {
+                        auto &params = data->args.hipExtModuleLaunchKernel;
+                        std::string kernelName(cxx_demangle(hipKernelNameRef(params.f)));
+                        //std::snprintf(buff, 4096, "stream=%p | kernel=%s",
+                        //    params.stream,
+                        //    kernelName.c_str());
+                        //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.hStream);
+                        krow.gridX = params.globalWorkSizeX;
+                        krow.gridY = params.globalWorkSizeY;
+                        krow.gridZ = params.globalWorkSizeZ;
+                        krow.workgroupX = params.localWorkSizeX;
+                        krow.workgroupY = params.localWorkSizeY;
+                        krow.workgroupZ = params.localWorkSizeZ;
+                        krow.groupSegmentSize = params.sharedMemBytes;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = s_stringTable->getOrCreate(kernelName);
+
+                        s_kernelApiTable->insert(krow);
+
+                        // Associate kernel name with op
+                        s_opTable->associateDescription(row.api_id, krow.kernelName_id);
+                    }
+                    break;
+
                 case HIP_API_ID_hipMemcpy:
                     //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
                     //    data->args.hipMemcpy.dst,
@@ -255,160 +403,311 @@ void api_callback(
                     //    (uint32_t)(data->args.hipMemcpy.sizeBytes),
                     //    (uint32_t)(data->args.hipMemcpy.kind));
                     //row.args_id = s_stringTable->getOrCreate(std::string(buff));
-#if 0
-                    s_opTable->associateCopyOp(row.api_id, CopyOpTable::row(
-                        (uint32_t)(data->args.hipMemcpy.sizeBytes),
-                        0,
-                        0,
-                        std::format("{}", data->args.hipMemcpy.src),
-                        std::format("{}", data->args.hipMemcpy.dst),
-                        0,
-                        0,
-                        (uint32_t)(data->args.hipMemcpy.kind),
-                        true,
-                        false,
-                        0)
-                    )
-#endif
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpy.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpy.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpy.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpy.kind);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpy2D:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
-                        data->args.hipMemcpy2D.dst,
-                        data->args.hipMemcpy2D.src,
-                        (uint32_t)(data->args.hipMemcpy2D.width),
-                        (uint32_t)(data->args.hipMemcpy2D.height),
-                        (uint32_t)(data->args.hipMemcpy2D.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
+                    //    data->args.hipMemcpy2D.dst,
+                    //    data->args.hipMemcpy2D.src,
+                    //    (uint32_t)(data->args.hipMemcpy2D.width),
+                    //    (uint32_t)(data->args.hipMemcpy2D.height),
+                    //    (uint32_t)(data->args.hipMemcpy2D.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(data->args.hipMemcpy2D.width);
+                        crow.height = (uint32_t)(data->args.hipMemcpy2D.height);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpy2D.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpy2D.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpy2D.kind);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpy2DAsync:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
-                        data->args.hipMemcpy2DAsync.dst,
-                        data->args.hipMemcpy2DAsync.src,
-                        (uint32_t)(data->args.hipMemcpy2DAsync.width),
-                        (uint32_t)(data->args.hipMemcpy2DAsync.height),
-                        (uint32_t)(data->args.hipMemcpy2DAsync.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | width=0x%x | height=0x%x | kind=%u",
+                    //    data->args.hipMemcpy2DAsync.dst,
+                    //    data->args.hipMemcpy2DAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpy2DAsync.width),
+                    //    (uint32_t)(data->args.hipMemcpy2DAsync.height),
+                    //    (uint32_t)(data->args.hipMemcpy2DAsync.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpy2DAsync.stream);
+                        crow.width = (uint32_t)(data->args.hipMemcpy2DAsync.width);
+                        crow.height = (uint32_t)(data->args.hipMemcpy2DAsync.height);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpy2DAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpy2DAsync.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpy2DAsync.kind);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyAsync:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
-                        data->args.hipMemcpyAsync.dst,
-                        data->args.hipMemcpyAsync.src,
-                        (uint32_t)(data->args.hipMemcpyAsync.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpyAsync.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u",
+                    //    data->args.hipMemcpyAsync.dst,
+                    //    data->args.hipMemcpyAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpyAsync.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpyAsync.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyAsync.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpyAsync.kind);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyDtoD:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
-                        data->args.hipMemcpyDtoD.dst,
-                        data->args.hipMemcpyDtoD.src,
-                        (uint32_t)(data->args.hipMemcpyDtoD.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                    //    data->args.hipMemcpyDtoD.dst,
+                    //    data->args.hipMemcpyDtoD.src,
+                    //    (uint32_t)(data->args.hipMemcpyDtoD.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpyDtoD.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyDtoD.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyDtoD.src);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
+
                     break;
                 case HIP_API_ID_hipMemcpyDtoDAsync:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
-                        data->args.hipMemcpyDtoDAsync.dst,
-                        data->args.hipMemcpyDtoDAsync.src,
-                        (uint32_t)(data->args.hipMemcpyDtoDAsync.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                    //    data->args.hipMemcpyDtoDAsync.dst,
+                    //    data->args.hipMemcpyDtoDAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpyDtoDAsync.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyDtoDAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyDtoDAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyDtoDAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyDtoDAsync.src);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
+
                     break;
                 case HIP_API_ID_hipMemcpyDtoH:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
-                        data->args.hipMemcpyDtoH.dst,
-                        data->args.hipMemcpyDtoH.src,
-                        (uint32_t)(data->args.hipMemcpyDtoH.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                    //    data->args.hipMemcpyDtoH.dst,
+                    //    data->args.hipMemcpyDtoH.src,
+                    //    (uint32_t)(data->args.hipMemcpyDtoH.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpyDtoH.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyDtoH.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyDtoH.src);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyDtoHAsync:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
-                        data->args.hipMemcpyDtoHAsync.dst,
-                        data->args.hipMemcpyDtoHAsync.src,
-                        (uint32_t)(data->args.hipMemcpyDtoHAsync.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                    //    data->args.hipMemcpyDtoHAsync.dst,
+                    //    data->args.hipMemcpyDtoHAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpyDtoHAsync.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyDtoHAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyDtoHAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyDtoHAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyDtoHAsync.src);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyFromSymbol:
-                    std::snprintf(buff, 4096, "dst=%p | symbol=%p | size=0x%x | kind=%u",
-                        data->args.hipMemcpyFromSymbol.dst,
-                        data->args.hipMemcpyFromSymbol.symbol,
-                        (uint32_t)(data->args.hipMemcpyFromSymbol.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpyFromSymbol.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | symbol=%p | size=0x%x | kind=%u",
+                    //    data->args.hipMemcpyFromSymbol.dst,
+                    //    data->args.hipMemcpyFromSymbol.symbol,
+                    //    (uint32_t)(data->args.hipMemcpyFromSymbol.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpyFromSymbol.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpyFromSymbol.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyFromSymbol.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyFromSymbol.symbol);
+                        crow.kind = (uint32_t)(data->args.hipMemcpyFromSymbol.kind);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
 		case HIP_API_ID_hipMemcpyFromSymbolAsync:
-                    std::snprintf(buff, 4096, "dst=%p | symbol=%p | size=0x%x | kind=%u",
-                        data->args.hipMemcpyFromSymbolAsync.dst,
-                        data->args.hipMemcpyFromSymbolAsync.symbol,
-                        (uint32_t)(data->args.hipMemcpyFromSymbolAsync.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpyFromSymbolAsync.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | symbol=%p | size=0x%x | kind=%u",
+                    //    data->args.hipMemcpyFromSymbolAsync.dst,
+                    //    data->args.hipMemcpyFromSymbolAsync.symbol,
+                    //    (uint32_t)(data->args.hipMemcpyFromSymbolAsync.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpyFromSymbolAsync.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyFromSymbolAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyFromSymbolAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyFromSymbolAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyFromSymbolAsync.symbol);
+                        crow.kind = (uint32_t)(data->args.hipMemcpyFromSymbolAsync.kind);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyHtoD:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
-                        data->args.hipMemcpyHtoDAsync.dst,
-                        data->args.hipMemcpyHtoDAsync.src,
-                        (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                    //    data->args.hipMemcpyHtoDAsync.dst,
+                    //    data->args.hipMemcpyHtoDAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpyHtoD.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyHtoD.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyHtoD.src);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
 		case HIP_API_ID_hipMemcpyHtoDAsync:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
-                        data->args.hipMemcpyHtoDAsync.dst,
-                        data->args.hipMemcpyHtoDAsync.src,
-                        (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x",
+                    //    data->args.hipMemcpyHtoDAsync.dst,
+                    //    data->args.hipMemcpyHtoDAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyHtoDAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyHtoDAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyHtoDAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyHtoDAsync.src);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyPeer:
-                    std::snprintf(buff, 4096, "dst=%p | device=%d | src=%p | device=%d | size=0x%x",
-                        data->args.hipMemcpyPeer.dst,
-                        data->args.hipMemcpyPeer.dstDeviceId,
-                        data->args.hipMemcpyPeer.src,
-                        data->args.hipMemcpyPeer.srcDeviceId,
-                        (uint32_t)(data->args.hipMemcpyPeer.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | device=%d | src=%p | device=%d | size=0x%x",
+                    //    data->args.hipMemcpyPeer.dst,
+                    //    data->args.hipMemcpyPeer.dstDeviceId,
+                    //    data->args.hipMemcpyPeer.src,
+                    //    data->args.hipMemcpyPeer.srcDeviceId,
+                    //    (uint32_t)(data->args.hipMemcpyPeer.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpyPeer.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyPeer.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyPeer.src);
+                        crow.dstDevice = data->args.hipMemcpyPeer.dstDeviceId;
+                        crow.srcDevice = data->args.hipMemcpyPeer.srcDeviceId;
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyPeerAsync:
-                    std::snprintf(buff, 4096, "dst=%p | device=%d | src=%p | device=%d | size=0x%x",
-                        data->args.hipMemcpyPeerAsync.dst,
-                        data->args.hipMemcpyPeerAsync.dstDeviceId,
-                        data->args.hipMemcpyPeerAsync.src,
-                        data->args.hipMemcpyPeerAsync.srcDevice,
-                        (uint32_t)(data->args.hipMemcpyPeerAsync.sizeBytes));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "dst=%p | device=%d | src=%p | device=%d | size=0x%x",
+                    //    data->args.hipMemcpyPeerAsync.dst,
+                    //    data->args.hipMemcpyPeerAsync.dstDeviceId,
+                    //    data->args.hipMemcpyPeerAsync.src,
+                    //    data->args.hipMemcpyPeerAsync.srcDevice,
+                    //    (uint32_t)(data->args.hipMemcpyPeerAsync.sizeBytes));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyPeerAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyPeerAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyPeerAsync.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyPeerAsync.src);
+                        crow.dstDevice = data->args.hipMemcpyPeerAsync.dstDeviceId;
+                        crow.srcDevice = data->args.hipMemcpyPeerAsync.srcDevice;
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyToSymbol:
-                    std::snprintf(buff, 4096, "symbol=%p | src=%p | size=0x%x | kind=%u",
-                        data->args.hipMemcpyToSymbol.symbol,
-                        data->args.hipMemcpyToSymbol.src,
-                        (uint32_t)(data->args.hipMemcpyToSymbol.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpyToSymbol.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "symbol=%p | src=%p | size=0x%x | kind=%u",
+                    //    data->args.hipMemcpyToSymbol.symbol,
+                    //    data->args.hipMemcpyToSymbol.src,
+                    //    (uint32_t)(data->args.hipMemcpyToSymbol.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpyToSymbol.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(data->args.hipMemcpyToSymbol.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyToSymbol.symbol);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyToSymbol.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpyToSymbol.kind);
+                        crow.sync = true;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyToSymbolAsync:
-                    std::snprintf(buff, 4096, "symbol=%p | src=%p | size=0x%x | kind=%u",
-                        data->args.hipMemcpyToSymbolAsync.symbol,
-                        data->args.hipMemcpyToSymbolAsync.src,
-                        (uint32_t)(data->args.hipMemcpyToSymbolAsync.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpyToSymbolAsync.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    //std::snprintf(buff, 4096, "symbol=%p | src=%p | size=0x%x | kind=%u",
+                    //    data->args.hipMemcpyToSymbolAsync.symbol,
+                    //    data->args.hipMemcpyToSymbolAsync.src,
+                    //    (uint32_t)(data->args.hipMemcpyToSymbolAsync.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpyToSymbolAsync.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff));
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyToSymbolAsync.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyToSymbolAsync.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyToSymbolAsync.symbol);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyToSymbolAsync.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpyToSymbolAsync.kind);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 case HIP_API_ID_hipMemcpyWithStream:
-                    std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
-                        data->args.hipMemcpyWithStream.dst,
-                        data->args.hipMemcpyWithStream.src,
-                        (uint32_t)(data->args.hipMemcpyWithStream.sizeBytes),
-                        (uint32_t)(data->args.hipMemcpyWithStream.kind));
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
-
-#if 0
-                    // Add CopyOp table fields
-                    CopyOpTable::row crow;
-                    //crow.op_id = 0;
-                    crow.size = (uint32_t)(data->args.hipMemcpy.sizeBytes);
-                    //FIXME: pointers below
-                    crow.src = 0;  //data->args.hipMemcpy.src;
-                    crow.dst = 0;  //data->args.hipMemcpy.dst;
-                    crow.sync = false;
-                    crow.pinned = false;
-                    s_opTable->associateCopyOp(row.api_id, crow);
-#endif
+                    //std::snprintf(buff, 4096, "dst=%p | src=%p | size=0x%x | kind=%u", 
+                    //    data->args.hipMemcpyWithStream.dst,
+                    //    data->args.hipMemcpyWithStream.src,
+                    //    (uint32_t)(data->args.hipMemcpyWithStream.sizeBytes),
+                    //    (uint32_t)(data->args.hipMemcpyWithStream.kind));
+                    //row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
+                    {
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.stream = fmt::format("{}", (void*)data->args.hipMemcpyWithStream.stream);
+                        crow.size = (uint32_t)(data->args.hipMemcpyWithStream.sizeBytes);
+                        crow.dst = fmt::format("{}", data->args.hipMemcpyWithStream.dst);
+                        crow.src = fmt::format("{}", data->args.hipMemcpyWithStream.src);
+                        crow.kind = (uint32_t)(data->args.hipMemcpyWithStream.kind);
+                        crow.sync = false;
+                        s_copyApiTable->insert(crow);
+                    }
                     break;
                 default:
                     break;
@@ -416,7 +715,7 @@ void api_callback(
         }
 #endif
 #if 0
-        else {   // (data->phase == ACTIVITY_API_PHASE_???)
+        else {   // (data->phase == ACTIVITY_API_PHASE_EXIT)
             switch (cid) {
                 case HIP_API_ID_hipMalloc:
                     std::snprintf(buff, 4096, "ptr=%p",
@@ -684,17 +983,17 @@ void rpdInit()
 
     s_metadataTable = new MetadataTable(filename);
     s_stringTable = new StringTable(filename);
-    s_kernelOpTable = new KernelOpTable(filename);
-    s_copyOpTable = new CopyOpTable(filename);
-    s_opTable = new OpTable(filename, s_kernelOpTable, s_copyOpTable);
+    s_kernelApiTable = new KernelApiTable(filename);
+    s_copyApiTable = new CopyApiTable(filename);
+    s_opTable = new OpTable(filename);
     s_apiTable = new ApiTable(filename);
 
     // Offset primary keys so they do not collide between sessions
     sqlite3_int64 offset = s_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
     s_metadataTable->setIdOffset(offset);
     s_stringTable->setIdOffset(offset);
-    s_kernelOpTable->setIdOffset(offset);
-    s_copyOpTable->setIdOffset(offset);
+    s_kernelApiTable->setIdOffset(offset);
+    s_copyApiTable->setIdOffset(offset);
     s_opTable->setIdOffset(offset);
     s_apiTable->setIdOffset(offset);
 
@@ -744,8 +1043,8 @@ void rpdFinalize()
         const timestamp_t begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         s_stringTable->finalize();
         s_opTable->finalize();		// OpTable before subclassOpTables
-        s_kernelOpTable->finalize();
-        s_copyOpTable->finalize();
+        s_kernelApiTable->finalize();
+        s_copyApiTable->finalize();
         s_apiTable->finalize();
         const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);

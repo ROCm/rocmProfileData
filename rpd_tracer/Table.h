@@ -78,28 +78,28 @@ private:
 };
 
 
-class KernelOpTablePrivate;
-class KernelOpTable: public Table
+class KernelApiTablePrivate;
+class KernelApiTable: public Table
 {
 public:
-    KernelOpTable(const char *basefile);
+    KernelApiTable(const char *basefile);
 
     struct row {
-        sqlite3_int64 gridX;
-        sqlite3_int64 gridY;
-        sqlite3_int64 gridZ;
-        sqlite3_int64 workgroupX;
-        sqlite3_int64 workgroupY;
-        sqlite3_int64 workgroupZ;
-        sqlite3_int64 groupSegmentSize;
-        sqlite3_int64 privateSegmentSize;
+        std::string stream;
+        int gridX {0};
+        int gridY {0};
+        int gridZ {0};
+        int workgroupX {0};
+        int workgroupY {0};
+        int workgroupZ {0};
+        int groupSegmentSize {0};
+        int privateSegmentSize {0};
         sqlite3_int64 kernelName_id;
         //codeObject
         //kernelArgAddress
         //aquireFence
         //releaseFence
-        sqlite3_int64 op_id;   // Baseclass OpTable primary key
-        //sqlite3_int64 api_id;  // correlation id
+        sqlite3_int64 api_id;   // Baseclass ApiTable primary key (correlation id)
     };
 
     void insert(const row&);
@@ -107,38 +107,38 @@ public:
     void finalize();
 
 private:
-    KernelOpTablePrivate *d;
-    friend class KernelOpTablePrivate;
+    KernelApiTablePrivate *d;
+    friend class KernelApiTablePrivate;
 };
 
 
-class CopyOpTablePrivate;
-class CopyOpTable: public Table
+class CopyApiTablePrivate;
+class CopyApiTable: public Table
 {
 public:
-    CopyOpTable(const char *basefile);
+    CopyApiTable(const char *basefile);
 
     struct row {
-        sqlite3_int64 size;
-        sqlite3_int64 width;
-        sqlite3_int64 height;
-        std::string src;
+        std::string stream;
+        int size {0};
+        int width {0};
+        int height {0};
         std::string dst;
-        sqlite3_int64 srcDevice;
-        sqlite3_int64 dstDevice;
-        sqlite3_int64 kind;
-        bool sync;
-        bool pinned;
-        sqlite3_int64 op_id;   // Baseclass OpTable primary key
-        //sqlite3_int64 api_id;  // correlation id
+        std::string src;
+        int dstDevice {0};
+        int srcDevice {0};
+        int kind {0};
+        bool sync {false};
+        bool pinned {false};
+        sqlite3_int64 api_id {0};   // Baseclass ApiTable primary key (correlation id)
     };
     void insert(const row&);
     void flush();
     void finalize();
 
 private:
-    CopyOpTablePrivate *d;
-    friend class CopyOpTablePrivate;
+    CopyApiTablePrivate *d;
+    friend class CopyApiTablePrivate;
 };
 
 
@@ -170,7 +170,7 @@ class OpTablePrivate;
 class OpTable: public Table
 {
 public:
-    OpTable(const char *basefile, KernelOpTable *kt, CopyOpTable *ct);
+    OpTable(const char *basefile);
 
     struct row {
         int gpuId;
@@ -186,8 +186,6 @@ public:
 
     void insert(const row&);
     void associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id);
-    void associateKernelOp(const sqlite3_int64 &api_id, KernelOpTable::row);
-    void associateCopyOp(const sqlite3_int64 &api_id, CopyOpTable::row);
     void flush();
     void finalize();
 

@@ -8,7 +8,7 @@ HIPCC=$(HIP_PATH)/bin/hipcc
 
 TARGET=hcc
 
-ROC_LIBS = -lroctracer64 -lroctx64 -lsqlite3
+ROC_LIBS = -lroctracer64 -lroctx64 -lsqlite3 -lfmt
 ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/roctracer/include/ -I/opt/rocm/include/hsa
 
 CXX=$(HIPCC)
@@ -31,7 +31,7 @@ $(RTG_DIR):
 	@echo "rtg_tracer exists.  Building"
 	$(MAKE) $(RTG_MAIN)
 
-RPD_SRCS = Table.cpp OpTable.cpp  KernelOpTable.cpp CopyOpTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
+RPD_SRCS = Table.cpp OpTable.cpp  KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 
 
