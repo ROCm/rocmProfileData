@@ -4,13 +4,15 @@
 
 from ctypes import CDLL
 from ctypes.util import find_library
+from multiprocessing import parent_process
 import os
 import sqlite3
 from rocpd.schema import RocpdSchema
 
+
 class rpdTracerControl:
-    filename = "trace.rpd"
-    __rpd = None    # the dll
+    __filename = "trace.rpd"
+    __rpd = None    # the dll/
     __initFile = True
 
     @classmethod
@@ -21,25 +23,42 @@ class rpdTracerControl:
 
     @classmethod
     def initializeFile(cls):
+        # Only the top parent process will initialize the trace file
+        if parent_process() != None:
+            cls.__initFile = False
+
         if cls.__initFile == True:
-            if os.path.exists(cls.filename):
-                os.remove(cls.filename)
+            if os.path.exists(cls.__filename):
+                os.remove(cls.__filename)
             # Create new file and write schema
             schema = RocpdSchema()
-            connection = sqlite3.connect(cls.filename)
+            connection = sqlite3.connect(cls.__filename)
             schema.writeSchema(connection)
             connection.commit()
             connection.close()
             #
-            os.environ["RPDT_FILENAME"] = cls.filename
+            os.environ["RPDT_FILENAME"] = cls.__filename
             cls.__initFile = False   
 
-    # Multiple concurrent processes will each reinitialize the output file
-    #   workaround: Call rpdTracerControl.skipFileInit() from "spawned" processes
+
+    # You can set the output filename and optionally append to an exiting file.
+    #   This must be done on the main process before any class instances are created.
+
+    # When using python multiprocessing, you must crate an rpdTracerControl instance on the
+    #   main process before spawning processes.  This initializes the output file and sets
+    #   up the envirnoment that the child processes will inherit
 
     @classmethod
-    def skipFileInit(cls):
-        cls.__initFile = False
+    def setFilename(cls, name, append = False):
+        if cls.__rpd != None:
+            raise RuntimeError("Trace file name can not be changed once logging")
+        if parent_process() != None:
+            raise RuntimeError("Trace file name can not be changed by sub-processes")
+
+        cls.__filename = name
+        if append:
+            os.environ["RPDT_FILENAME"] = cls.__filename
+            cls.__initFile = False
 
     def __init__(self):
         rpdTracerControl.initializeFile()
