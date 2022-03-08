@@ -106,7 +106,7 @@ void KernelApiTablePrivate::writeRows()
         // insert rocpd_op
         int index = 1;
         KernelApiTable::row &r = rows[(tail + i) % BUFFERSIZE];
-        sqlite3_bind_int64(apiInsert, index++, r.api_id);
+        sqlite3_bind_int64(apiInsert, index++, r.api_id + p->m_idOffset);
         sqlite3_bind_text(apiInsert, index++, r.stream.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(apiInsert, index++, r.gridX);
         sqlite3_bind_int(apiInsert, index++, r.gridY);
@@ -120,7 +120,7 @@ void KernelApiTablePrivate::writeRows()
         sqlite3_bind_text(apiInsert, index++, "", -1, SQLITE_STATIC);
         sqlite3_bind_text(apiInsert, index++, "", -1, SQLITE_STATIC);
         sqlite3_bind_text(apiInsert, index++, "", -1, SQLITE_STATIC);
-        sqlite3_bind_int64(apiInsert, index++, r.kernelName_id);
+        sqlite3_bind_int64(apiInsert, index++, r.kernelName_id + p->m_idOffset);
         int ret = sqlite3_step(apiInsert);
         sqlite3_reset(apiInsert);
         ++i;
