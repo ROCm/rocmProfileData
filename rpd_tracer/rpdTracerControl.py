@@ -4,11 +4,18 @@
 
 from ctypes import CDLL
 from ctypes.util import find_library
-from multiprocessing import parent_process
+import platform
+import multiprocessing
 import os
 import sqlite3
 from rocpd.schema import RocpdSchema
 
+def isChildProcess() -> bool:
+    version = platform.python_version_tuple()
+    if int(version[0]) >=3 and int(version[1]) >= 8:
+        return multiprocessing.parent_process() != None
+    else:
+        return type(multiprocessing.current_process()) == multiprocessing.Process
 
 class rpdTracerControl:
     __filename = "trace.rpd"
@@ -24,7 +31,7 @@ class rpdTracerControl:
     @classmethod
     def initializeFile(cls):
         # Only the top parent process will initialize the trace file
-        if parent_process() != None:
+        if isChildProcess():
             cls.__initFile = False
 
         if cls.__initFile == True:
@@ -52,7 +59,7 @@ class rpdTracerControl:
     def setFilename(cls, name, append = False):
         if cls.__rpd != None:
             raise RuntimeError("Trace file name can not be changed once logging")
-        if parent_process() != None:
+        if isChildProcess():
             raise RuntimeError("Trace file name can not be changed by sub-processes")
 
         cls.__filename = name
