@@ -11,4 +11,5 @@ setup(name = 'rocpd',
       packages = { 'rocpd' },
       include_package_data=True, 
       python_requires='>=3.6',
+      zip_safe=False,
 )
