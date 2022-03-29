@@ -60,7 +60,7 @@ $(RTG_MAIN): ../rtg_tracer/rtg_tracer/rtg_tracer.o $(RTG_OBJS) $(RPD_OBJS)
 install:
 	cp $(RPD_MAIN)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
-        
+        ldconfig
 	$(PYTHON) setup.py install
 
 .PHONY: uninstall
