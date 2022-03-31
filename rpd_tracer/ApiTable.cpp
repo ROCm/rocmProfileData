@@ -171,6 +171,7 @@ void ApiTable::suspendRoctx(sqlite3_int64 atTime)
             d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
             stack.pop_front();
         }
+        ++it;
     }
 
     if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
