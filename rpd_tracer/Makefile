@@ -42,8 +42,10 @@ $(RPD_MAIN): rpd_tracer.o $(RPD_OBJS)
 	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
 
 RTG_SRCS =
+RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_printf_lockless.cpp
 RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_printf.cpp
 RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_rpd.cpp
+RTG_SRCS += ../rtg_tracer/rtg_tracer/missing_ostream_definitions.cpp
 RTG_OBJS = $(RTG_SRCS:.cpp=.o)
 
 ../rtg_tracer/rtg_tracer/rtg_tracer.o: ../rtg_tracer/rtg_tracer/rtg_tracer.cpp
@@ -60,7 +62,7 @@ $(RTG_MAIN): ../rtg_tracer/rtg_tracer/rtg_tracer.o $(RTG_OBJS) $(RPD_OBJS)
 install:
 	cp $(RPD_MAIN)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
-        ldconfig
+	ldconfig
 	$(PYTHON) setup.py install
 
 .PHONY: uninstall
