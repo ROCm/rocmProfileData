@@ -124,37 +124,30 @@ void api_callback(
     void* arg)
 {
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
-        //if (s_apiList->contains(cid) == false)
-        //    return;
-
-        //#define HIP_PROF_HIP_API_STRING 1
-        //hipApiString(cid, data);
-
+        thread_local sqlite3_int64 timestamp;
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
-        //printf("ACTIVITY_DOMAIN_HIP_API cid = %d, phase = %d, cor_id = %lu\n", cid, data->phase, data->correlation_id);
 
-        char buff[4096];
-        ApiTable::row row;
         if (data->phase == ACTIVITY_API_PHASE_ENTER) {
+            timestamp = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        }
+        else { // data->phase == ACTIVITY_API_PHASE_EXIT
+            char buff[4096];
+            ApiTable::row row;
+
             const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
             sqlite3_int64 name_id = s_stringTable->getOrCreate(name);
             row.pid = GetPid();
             row.tid = GetTid();
-            row.start = 0;
-            row.end = 0;
+            row.start = timestamp;  // From TLS from preceding enter call
+            row.end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
-        }
-        row.phase = data->phase;
-        row.api_id = data->correlation_id;
-
-        if (row.phase == 1)  // Log timestamp
-            row.end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+            row.api_id = data->correlation_id;
 #if 1
-        if (data->phase == ACTIVITY_API_PHASE_ENTER) {
             switch (cid) {
                 case HIP_API_ID_hipMalloc:
-                    std::snprintf(buff, 4096, "size=0x%x",
+                    std::snprintf(buff, 4096, "ptr=%p | size=0x%x",
+                        *data->args.hipMalloc.ptr,
                         (uint32_t)(data->args.hipMalloc.size));
                     row.args_id = s_stringTable->getOrCreate(std::string(buff)); 
                     break;
@@ -712,26 +705,9 @@ void api_callback(
                 default:
                     break;
             }
-        }
 #endif
-#if 0
-        else {   // (data->phase == ACTIVITY_API_PHASE_EXIT)
-            switch (cid) {
-                case HIP_API_ID_hipMalloc:
-                    std::snprintf(buff, 4096, "ptr=%p",
-                        data->args.hipMalloc.ptr);		// FIXME: needs to combine with 'start' args
-                    row.args_id = s_stringTable->getOrCreate(std::string(buff));
-                break;
-            default:
-                    break;
-            }
+            s_apiTable->insert(row);
         }
-#endif
-
-        if (row.phase == 0) // Log timestamp
-            row.start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-        
-        s_apiTable->insert(row);
     }
 
     if (domain == ACTIVITY_DOMAIN_ROCTX) {
@@ -744,7 +720,6 @@ void api_callback(
         row.end = row.start;
         row.apiName_id = s_stringTable->getOrCreate(std::string("UserMarker"));   // FIXME: can cache
         row.args_id = EMPTY_STRING_ID;
-        row.phase = 0;
         row.api_id = 0;
 
         switch (cid) {

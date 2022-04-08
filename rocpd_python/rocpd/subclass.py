@@ -35,7 +35,7 @@ def createSubclassTable(importData, baseClass, subClass, events, argTypes):
     # Scan all events of subclass.  Find superset of args 
     args = {}
     for row in importData.connection.execute(queryString % str(events)[1:-1]):
-        for line in row[0].split(','):
+        for line in row[0].split('|'):
             key,value = line.partition("=")[::2]
             args[key.strip()] = True
     try:
@@ -100,7 +100,7 @@ def createSubclassTable(importData, baseClass, subClass, events, argTypes):
 
     for row in importData.connection.execute(queryString % str(events)[1:-1]):
         argvals = {}
-        for line in row[1].split(','):
+        for line in row[1].split('|'):
             key,value = line.partition("=")[::2]
             argvals[key.strip()] = value.strip()
         val_list = []

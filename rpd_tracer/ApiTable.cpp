@@ -24,7 +24,6 @@ public:
     int tail;
     int count;
 
-    std::map<sqlite3_int64, ApiTable::row> inFlight;
     std::map<std::pair<sqlite3_int64, sqlite3_int64>, std::deque<ApiTable::row>> roctxStacks;
 
     sqlite3_stmt *apiInsert;
@@ -69,10 +68,6 @@ ApiTable::ApiTable(const char *basefile)
 void ApiTable::insert(const ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    if (row.phase == 0) {
-       d->inFlight.insert({row.api_id, row});
-       return;
-    }
 
     if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
@@ -82,15 +77,7 @@ void ApiTable::insert(const ApiTable::row &row)
         m_wait.wait(lock);
     }
 
-    if (row.phase == 1) {
-        auto it = d->inFlight.find(row.api_id);
-        if (it != d->inFlight.end()) {
-            ApiTable::row &r = it->second;
-            r.end = row.end;
-            d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
-            d->inFlight.erase(it);
-        }
-    }
+    d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = row;
 
     if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
         m_wait.notify_one();

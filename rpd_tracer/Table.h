@@ -60,7 +60,6 @@ public:
         sqlite3_int64 apiName_id;
         sqlite3_int64 args_id;
         sqlite3_int64 api_id;  // correlation id
-        int phase;
     };
 
     void insert(const row&);
