@@ -36,7 +36,7 @@ public:
     };
 
     //void insert(const row&);
-    sqlite3_int64 getOrCreate(std::string);
+    sqlite3_int64 getOrCreate(const std::string&);
     void flush();
     void finalize();
 

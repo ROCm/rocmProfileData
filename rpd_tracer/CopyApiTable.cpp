@@ -1,5 +1,9 @@
+/**************************************************************************
+ * Copyright (c) 2022 Advanced Micro Devices, Inc.
+ **************************************************************************/
 #include "Table.h"
 #include <thread>
+#include "rpd_tracer.h"
 
 #include "hsa_rsrc_factory.h"
 
@@ -12,7 +16,7 @@ class CopyApiTablePrivate
 {
 public:
     CopyApiTablePrivate(CopyApiTable *cls) : p(cls) {} 
-    static const int BUFFERSIZE = 16384;
+    static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<CopyApiTable::row, BUFFERSIZE> rows; // Circular buffer
     int head;
@@ -65,6 +69,7 @@ void CopyApiTable::insert(const CopyApiTable::row &row)
     d->rows[(++d->head) % CopyApiTablePrivate::BUFFERSIZE] = row;
 
     if (d->workerRunning == false && (d->head - d->tail) >= CopyApiTablePrivate::BATCHSIZE) {
+        lock.unlock();
         m_wait.notify_one();
     }
 }
@@ -92,18 +97,21 @@ void CopyApiTable::finalize()
 
 void CopyApiTablePrivate::writeRows()
 {
-    int i = 1;
-
-    std::unique_lock<std::mutex> guard(p->m_mutex);
+    std::unique_lock<std::mutex> lock(p->m_mutex);
 
     if (head == tail)
         return;
 
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+
+    int start = tail + 1;
+    int end = tail + BATCHSIZE;
+    end = (end > head) ? head : end;
+    lock.unlock();
+
     sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    while (i < BATCHSIZE && (head > tail + i)) {	// FIXME: refactor like ApiTable?
-        // insert rocpd_op
+    for (int i = start; i <= end; ++i) {
         int index = 1;
         CopyApiTable::row &r = rows[(tail + i) % BUFFERSIZE];
 
@@ -134,15 +142,17 @@ void CopyApiTablePrivate::writeRows()
         sqlite3_bind_int(apiInsert, index++, r.pinned);
         int ret = sqlite3_step(apiInsert);
         sqlite3_reset(apiInsert);
-        ++i;
     }
-    tail = tail + i;
+    lock.lock();
+    tail = end;
+    lock.unlock();
 
-    guard.unlock();
-
-    const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
+    createOverheadRecord(cb_begin_time, cb_end_time, "CopyApiTable::writeRows", buff);
 }
 
 

@@ -858,6 +858,9 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
         ++batchSize;
     }
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%d", batchSize);
+    createOverheadRecord(cb_begin_time, cb_end_time, "hcc_activity_callback", buff);
     //printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
 
 #if 0
@@ -1024,5 +1027,21 @@ void rpdFinalize()
         const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
     }
+}
+
+void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args)
+{
+    ApiTable::row row;
+    row.pid = GetPid();
+    row.tid = GetTid();
+    row.start = start;
+    row.end = end;
+    row.apiName_id = s_stringTable->getOrCreate(name);
+    row.args_id = s_stringTable->getOrCreate(args);
+    row.api_id = 0;
+
+    //printf("overhead: %s (%s) - %f usec\n", name.c_str(), args.c_str(), (end-start) / 1000.0);
+
+    s_apiTable->insertRoctx(row);
 }
 
