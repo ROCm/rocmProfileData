@@ -1,5 +1,9 @@
+/**************************************************************************
+ * Copyright (c) 2022 Advanced Micro Devices, Inc.
+ **************************************************************************/
 #include "Table.h"
 #include <thread>
+#include "rpd_tracer.h"
 
 #include "hsa_rsrc_factory.h"
 
@@ -12,7 +16,7 @@ class KernelApiTablePrivate
 {
 public:
     KernelApiTablePrivate(KernelApiTable *cls) : p(cls) {} 
-    static const int BUFFERSIZE = 16384;
+    static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<KernelApiTable::row, BUFFERSIZE> rows; // Circular buffer
     int head;
@@ -65,6 +69,7 @@ void KernelApiTable::insert(const KernelApiTable::row &row)
     d->rows[(++d->head) % KernelApiTablePrivate::BUFFERSIZE] = row;
 
     if (d->workerRunning == false && (d->head - d->tail) >= KernelApiTablePrivate::BATCHSIZE) {
+        lock.unlock();
         m_wait.notify_one();
     }
 }
@@ -92,18 +97,21 @@ void KernelApiTable::finalize()
 
 void KernelApiTablePrivate::writeRows()
 {
-    int i = 1;
-
-    std::unique_lock<std::mutex> guard(p->m_mutex);
+    std::unique_lock<std::mutex> lock(p->m_mutex);
 
     if (head == tail)
         return;
 
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+
+    int start = tail + 1;
+    int end = tail + BATCHSIZE;
+    end = (end > head) ? head : end;
+    lock.unlock();
+
     sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    while (i < BATCHSIZE && (head > tail + i)) {	// FIXME: refactor like ApiTable?
-        // insert rocpd_op
+    for (int i = start; i <= end; ++i) {
         int index = 1;
         KernelApiTable::row &r = rows[(tail + i) % BUFFERSIZE];
         sqlite3_bind_int64(apiInsert, index++, r.api_id + p->m_idOffset);
@@ -123,15 +131,17 @@ void KernelApiTablePrivate::writeRows()
         sqlite3_bind_int64(apiInsert, index++, r.kernelName_id + p->m_idOffset);
         int ret = sqlite3_step(apiInsert);
         sqlite3_reset(apiInsert);
-        ++i;
     }
-    tail = tail + i;
+    lock.lock();
+    tail = end;
+    lock.unlock();
 
-    guard.unlock();
-
-    const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
+    createOverheadRecord(cb_begin_time, cb_end_time, "KernelApiTable::writeRows", buff);
 }
 
 

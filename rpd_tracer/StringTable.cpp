@@ -3,8 +3,10 @@
  **************************************************************************/
 #include "Table.h"
 #include <thread>
+#include "rpd_tracer.h"
 
 #include "hsa_rsrc_factory.h"
+#include <unordered_map>
 
 typedef uint64_t timestamp_t;
 
@@ -16,10 +18,11 @@ class StringTablePrivate
 {
 public:
     StringTablePrivate(StringTable *cls) : p(cls) {} 
-    static const int BUFFERSIZE = 16384;
+    static const int BUFFERSIZE = 4096 * 8;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<StringTable::row, BUFFERSIZE> rows; // Circular buffer
-    std::map<std::string,sqlite3_int64> cache;     // Cache for string lookups
+    //std::map<std::string,sqlite3_int64> cache;     // Cache for string lookups
+    std::unordered_map<std::string,sqlite3_int64> cache;     // Cache for string lookups
     int head;
     int tail;
     int count;
@@ -58,11 +61,12 @@ StringTable::StringTable(const char *basefile)
     d->workerRunning = true;
 
     d->worker = new std::thread(&StringTablePrivate::work, d);
+    d->cache.reserve(64 * 1024);  // Avoid/delay rehashing for typical runs
 
     StringTable::getOrCreate("");    // empty string is id=1
 }
 
-sqlite3_int64 StringTable::getOrCreate(std::string key)
+sqlite3_int64 StringTable::getOrCreate(const std::string &key)
 {
     std::lock_guard<std::mutex> guard(d->cacheMutex);
     auto it = d->cache.find(key);
@@ -84,15 +88,20 @@ void StringTablePrivate::insert(StringTable::row &row)
     std::unique_lock<std::mutex> lock(p->m_mutex);
     if (head - tail >= StringTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
+        const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
         p->m_wait.notify_one();  // make sure working is running
         p->m_wait.wait(lock);
+        const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        lock.unlock();
+        createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::StringTable::insert");
+        lock.lock();
     }
 
     row.string_id = ++head;
     rows[head % StringTablePrivate::BUFFERSIZE] = row;
 
-    //printf("***insert: %lld %s\n", row.string_id, row.string.c_str());
     if (workerRunning == false && (head - tail) >= StringTablePrivate::BATCHSIZE) {
+        lock.unlock();
         p->m_wait.notify_one();
     }
 }
@@ -123,22 +132,21 @@ void StringTable::finalize()
 
 void StringTablePrivate::writeRows()
 {
-    int i = 1;
-
     std::unique_lock<std::mutex> lock(p->m_mutex);
 
     if (head == tail)
         return;
 
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
     int start = tail + 1;
     int end = tail + BATCHSIZE;
     end = (end > head) ? head : end;
     lock.unlock();
 
-    for (i = start; i <= end; ++i) {
+    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+
+    for (int i = start; i <= end; ++i) {
         // insert rocpd_string
         int index = 1;
         StringTable::row &r = rows[i % BUFFERSIZE];
@@ -152,9 +160,14 @@ void StringTablePrivate::writeRows()
     tail = end;
     lock.unlock();
 
-    const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    if (done == false) {
+        char buff[4096];
+        std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
+        createOverheadRecord(cb_begin_time, cb_end_time, "StringTable::writeRows", buff);
+    }
 }
 
 

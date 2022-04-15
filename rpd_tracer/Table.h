@@ -36,7 +36,7 @@ public:
     };
 
     //void insert(const row&);
-    sqlite3_int64 getOrCreate(std::string);
+    sqlite3_int64 getOrCreate(const std::string&);
     void flush();
     void finalize();
 
@@ -60,7 +60,6 @@ public:
         sqlite3_int64 apiName_id;
         sqlite3_int64 args_id;
         sqlite3_int64 api_id;  // correlation id
-        int phase;
     };
 
     void insert(const row&);

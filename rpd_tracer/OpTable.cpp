@@ -3,6 +3,7 @@
  **************************************************************************/
 #include "Table.h"
 #include <thread>
+#include "rpd_tracer.h"
 
 #include "hsa_rsrc_factory.h"
 
@@ -18,7 +19,7 @@ class OpTablePrivate
 {
 public:
     OpTablePrivate(OpTable *cls) : p(cls) {} 
-    static const int BUFFERSIZE = 16384;
+    static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<OpTable::row, BUFFERSIZE> rows; // Circular buffer
     std::map<sqlite3_int64, sqlite3_int64> descriptions;
@@ -76,6 +77,7 @@ void OpTable::insert(const OpTable::row &row)
     d->rows[(++d->head) % OpTablePrivate::BUFFERSIZE] = row;
 
     if (d->workerRunning == false && (d->head - d->tail) >= OpTablePrivate::BATCHSIZE) {
+        lock.unlock();
         m_wait.notify_one();
     }
 }
@@ -113,22 +115,21 @@ void OpTable::finalize()
 
 void OpTablePrivate::writeRows()
 {
-    int i = 1;
-
     std::unique_lock<std::mutex> lock(p->m_mutex);
 
     if (head == tail)
         return;
 
     const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
     int start = tail + 1;
     int end = tail + BATCHSIZE;
     end = (end > head) ? head : end;
     lock.unlock();
 
-    for (i = start; i <= end; ++i) {
+    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+
+    for (int i = start; i <= end; ++i) {
         // insert rocpd_op
         int index = 1;
         OpTable::row &r = rows[i % BUFFERSIZE];
@@ -169,10 +170,12 @@ void OpTablePrivate::writeRows()
     tail = end;
     lock.unlock();
 
-    const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    // FIXME: write the overhead record
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
+    createOverheadRecord(cb_begin_time, cb_end_time, "OpTable::writeRows", buff);
 }
 
 
