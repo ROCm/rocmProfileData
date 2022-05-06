@@ -208,7 +208,7 @@ void ApiTable::finalize()
     flush();
     int ret = 0;
     ret = sqlite3_exec(m_connection, "insert into rocpd_api select * from temp_rocpd_api", NULL, NULL, NULL);
-    printf("rocpd_api: %d\n", ret);
+    fprintf(stderr, "rocpd_api: %d\n", ret);
 }
 
 
