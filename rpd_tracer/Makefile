@@ -14,6 +14,7 @@ ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/roctracer/include/ -I/opt/rocm/inc
 CXX=$(HIPCC)
 
 RPD_MAIN = librpd_tracer.so
+RPD_LEGACY = librpd_tracer_legacy.so
 RTG_MAIN = librtg_tracer.so
 RPD_SCRIPT = runTracer.sh
 
@@ -31,11 +32,17 @@ $(RTG_DIR):
 	@echo "rtg_tracer exists.  Building"
 	$(MAKE) $(RTG_MAIN)
 
-RPD_SRCS = Table.cpp OpTable.cpp  KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
+RPD_SRCS = Table.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 
+TRACER_SRCS = $(RPD_SRCS) Logger.cpp RoctracerDataSource.cpp
+TRACER_OBJS = $(TRACER_SRCS:.cpp=.o)
 
-$(RPD_MAIN): rpd_tracer.o $(RPD_OBJS)
+
+$(RPD_MAIN): $(TRACER_OBJS)
+	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
+
+$(RPD_LEGACY): rpd_tracer.o $(RPD_OBJS)
 	$(CXX) -o $@ $< $(RPD_OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
 
 .cpp.o:
