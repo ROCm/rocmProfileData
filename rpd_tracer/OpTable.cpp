@@ -2,12 +2,12 @@
  * Copyright (c) 2022 Advanced Micro Devices, Inc.
  **************************************************************************/
 #include "Table.h"
+
+#include <map>
 #include <thread>
+
 #include "rpd_tracer.h"
-
-#include "hsa_rsrc_factory.h"
-
-typedef uint64_t timestamp_t;
+#include "Utility.h"
 
 
 const char *SCHEMA_OP = "CREATE TEMPORARY TABLE \"temp_rocpd_op\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"gpuId\" integer NOT NULL, \"queueId\" integer NOT NULL, \"sequenceId\" integer NOT NULL, \"completionSignal\" varchar(18) NOT NULL, \"start\" integer NOT NULL, \"end\" integer NOT NULL, \"description_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"opType_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED)";
@@ -120,7 +120,9 @@ void OpTablePrivate::writeRows()
     if (head == tail)
         return;
 
-    const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME
+    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_begin_time = clocktime_ns();
 
     int start = tail + 1;
     int end = tail + BATCHSIZE;
@@ -172,7 +174,9 @@ void OpTablePrivate::writeRows()
 
     //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME
+    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_end_time = clocktime_ns() + 1;
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "OpTable::writeRows", buff);

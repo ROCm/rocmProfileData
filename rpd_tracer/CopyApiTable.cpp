@@ -2,12 +2,11 @@
  * Copyright (c) 2022 Advanced Micro Devices, Inc.
  **************************************************************************/
 #include "Table.h"
+
 #include <thread>
+
 #include "rpd_tracer.h"
-
-#include "hsa_rsrc_factory.h"
-
-typedef uint64_t timestamp_t;
+#include "Utility.h"
 
 
 const char *SCHEMA_COPYAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_copyapi\" (\"api_ptr_id\" integer NOT NULL PRIMARY KEY REFERENCES \"rocpd_api\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"stream\" varchar(18) NOT NULL, \"size\" integer NOT NULL, \"width\" integer NOT NULL, \"height\" integer NOT NULL, \"kind\" integer NOT NULL, \"dst\" varchar(18) NOT NULL, \"src\" varchar(18) NOT NULL, \"dstDevice\" integer NOT NULL, \"srcDevice\" integer NOT NULL, \"sync\" bool NOT NULL, \"pinned\" bool NOT NULL);";
@@ -102,7 +101,9 @@ void CopyApiTablePrivate::writeRows()
     if (head == tail)
         return;
 
-    const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME
+    const timestamp_t cb_begin_time = clocktime_ns();
 
     int start = tail + 1;
     int end = tail + BATCHSIZE;
@@ -149,7 +150,9 @@ void CopyApiTablePrivate::writeRows()
 
     //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME
+    const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "CopyApiTable::writeRows", buff);

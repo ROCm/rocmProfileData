@@ -11,7 +11,10 @@ TARGET=hcc
 ROC_LIBS = -lroctracer64 -lroctx64 -lsqlite3 -lfmt
 ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/roctracer/include/ -I/opt/rocm/include/hsa
 
-CXX=$(HIPCC)
+CUDA_LIBS = -lcupti -lsqlite3 -lfmt
+CUDA_INCLUDE = -I/usr/local/cuda/include
+
+#CXX=$(HIPCC)
 
 RPD_MAIN = librpd_tracer.so
 RPD_LEGACY = librpd_tracer_legacy.so
@@ -35,18 +38,25 @@ $(RTG_DIR):
 RPD_SRCS = Table.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 
-TRACER_SRCS = $(RPD_SRCS) Logger.cpp RoctracerDataSource.cpp
+#TRACER_SRCS = $(RPD_SRCS) Logger.cpp RoctracerDataSource.cpp
+TRACER_SRCS = $(RPD_SRCS) Logger.cpp CuptiDataSource.cpp
 TRACER_OBJS = $(TRACER_SRCS:.cpp=.o)
 
 
+#$(RPD_MAIN): $(TRACER_OBJS)
+#	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
+
 $(RPD_MAIN): $(TRACER_OBJS)
-	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
+	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 -L/usr/local/cuda/lib64 $(CUDA_LIBS) -g
 
 $(RPD_LEGACY): rpd_tracer.o $(RPD_OBJS)
 	$(CXX) -o $@ $< $(RPD_OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
 
+#.cpp.o:
+#	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
+
 .cpp.o:
-	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
+	$(CXX) -o $@ -c $< $(CUDA_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
 
 RTG_SRCS =
 RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_printf_lockless.cpp

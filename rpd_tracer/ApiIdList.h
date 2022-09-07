@@ -7,7 +7,7 @@
 #include <map>
 #include <unordered_map>
 
-#include <roctracer_hip.h>
+//#include <roctracer_hip.h>
 
 // Usage
 //   contains() are items you are interested in, i.e. matches the filter
