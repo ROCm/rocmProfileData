@@ -25,29 +25,38 @@
 static std::once_flag register_once;
 static std::once_flag registerAgain_once;
 
-
-
 void CuptiDataSource::init()
 {
+
+    // Pick some apis to ignore
+    m_apiList.setInvertMode(true);  // Omit the specified api
+    m_apiList.add("cudaGetDevice_v3020");
+    m_apiList.add("cudaSetDevice_v3020");
+    m_apiList.add("cudaGetLastError_v3020");
+
+    //FIXME: gross
+    setenv("NVTX_INJECTION64_PATH", "/usr/local/cuda/targets/x86_64-linux/lib/libcupti.so", 0);
+
     // FIXME: cuptiSubscribe may fail with CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED
     cuptiSubscribe(&m_subscriber, (CUpti_CallbackFunc)api_callback, nullptr);
-    cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
-    cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
+    cuptiActivityRegisterCallbacks(CuptiDataSource::bufferRequested, CuptiDataSource::bufferCompleted);
+    //cuptiActivityRegisterTimestampCallback();	// Cuda 11.6 :(
+
+    // Callback API
+    //cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
+    //cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
 
     // Async Activity
     //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DEVICE);
     //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT);
     //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER);
-    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME);
-    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY);
-    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET);
+    //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME);
+    //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY);
+    //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET);
     //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_NAME);
     //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MARKER);
-    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
+    //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
     //cuptiActivityEnable(CUPTI_ACTIVITY_KIND_OVERHEAD);
-
-    cuptiActivityRegisterCallbacks(CuptiDataSource::bufferRequested, CuptiDataSource::bufferCompleted);
-    //cuptiActivityRegisterTimestampCallback();	// Cuda 11.6 :(
 }
 
 void CuptiDataSource::end()
@@ -57,12 +66,36 @@ void CuptiDataSource::end()
 
 void CuptiDataSource::startTracing()
 {
-    //printf("# START ############################# %d\n", GetTid());
+    if (m_apiList.invertMode() == true) {
+        // exclusion list - enable entire domain and turn off things in list
+        cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
+        const std::unordered_map<uint32_t, uint32_t> &filter = m_apiList.filterList();
+        for (auto it = filter.begin(); it != filter.end(); ++it) {
+            cuptiEnableCallback(0, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API, it->first);
+        }
+    }
+    else {
+        // inclusion list - only enable things in the list
+        cuptiEnableDomain(0, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
+        const std::unordered_map<uint32_t, uint32_t> &filter = m_apiList.filterList();
+        for (auto it = filter.begin(); it != filter.end(); ++it) {
+            cuptiEnableCallback(1, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API, it->first);
+        }
+    }
+
+    cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
+    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY);
+    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET);
+    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
 }
 
 void CuptiDataSource::stopTracing()
 {
-    //printf("# STOP #############################\n");
+    cuptiEnableDomain(0, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
+    cuptiEnableDomain(0, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
+    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
+    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET);
+    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
 }
 
 void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbid, const CUpti_CallbackData *cbInfo)
@@ -127,8 +160,10 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         krow.workgroupZ = params.blockDim.z;
                         krow.groupSegmentSize = params.sharedMem;
                         krow.privateSegmentSize = 0;
-                        krow.kernelName_id = logger.stringTable().getOrCreate(cxx_demangle(cbInfo->symbolName));
-
+                        if (cbInfo->symbolName != nullptr)  // Happens, why?  "" duh
+                            krow.kernelName_id = logger.stringTable().getOrCreate(cxx_demangle(cbInfo->symbolName));
+                        else
+                            krow.kernelName_id = EMPTY_STRING_ID;
                         logger.kernelApiTable().insert(krow);
                     }
                     break;
@@ -145,10 +180,6 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         logger.copyApiTable().insert(crow);
                     }
                     break;
-                //case HIP:
-                //    break;
-                //case HIP:
-                //    break;
                 default:
                     break;
             }
@@ -161,7 +192,8 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
         row.tid = GetTid();
         row.start = clocktime_ns();
         row.end = row.start;
-        row.apiName_id = logger.stringTable().getOrCreate(std::string("UserMarker"));   // FIXME: can cache
+        static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+        row.apiName_id = markerId;
         row.args_id = EMPTY_STRING_ID;
         row.api_id = 0;
 
@@ -198,17 +230,6 @@ void CUPTIAPI CuptiDataSource::bufferRequested(uint8_t **buffer, size_t *size, s
     *buffer = (uint8_t*)malloc(16 * 1024);
     *size = 16 * 1024;
     *maxNumRecords = 0;
-#if 0
-  uint8_t *bfr = (uint8_t *) malloc(BUF_SIZE + ALIGN_SIZE);
-  if (bfr == NULL) {
-    printf("Error: out of memory\n");
-    exit(-1);
-  }
-
-  *size = BUF_SIZE;
-  *buffer = ALIGN_BUFFER(bfr, ALIGN_SIZE);
-  *maxNumRecords = 0;
-#endif
 }
 
 void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer, size_t size, size_t validSize)
@@ -298,3 +319,21 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
     std::call_once(registerAgain_once, atexit, Logger::rpdFinalize);
 }
 
+
+CudaApiIdList::CudaApiIdList()
+{
+    uint32_t cbid = 0;
+    const char *name;
+    while (cuptiGetCallbackName(CUPTI_CB_DOMAIN_RUNTIME_API, ++cbid, &name) == CUPTI_SUCCESS) {
+        m_nameMap.emplace(name, cbid);
+    }
+}
+
+uint32_t CudaApiIdList::mapName(const std::string &apiName)
+{
+    auto it = m_nameMap.find(apiName);
+    if (it != m_nameMap.end()) {
+        return it->second;
+    }
+    return 0;
+}

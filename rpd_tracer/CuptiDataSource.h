@@ -9,6 +9,15 @@
 #include "DataSource.h"
 #include "ApiIdList.h"
 
+class CudaApiIdList : public ApiIdList
+{
+public:
+    CudaApiIdList();
+    uint32_t mapName(const std::string &apiName) override;
+private:
+    std::unordered_map<std::string, uint32_t> m_nameMap;
+};
+
 class CuptiDataSource : public DataSource
 {
 public:
@@ -21,7 +30,7 @@ public:
 
 
 private:
-    ApiIdList m_apiList;
+    CudaApiIdList m_apiList;
 
     CUpti_SubscriberHandle m_subscriber;
 
@@ -30,9 +39,5 @@ private:
 
     static void CUPTIAPI bufferRequested(uint8_t **buffer, size_t *size, size_t *maxNumRecords);
     static void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer, size_t size, size_t validSize);
-
-    //static void api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
-    //static void activity_callback(const char* begin, const char* end, void* arg);
-
 
 };

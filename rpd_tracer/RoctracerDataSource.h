@@ -6,7 +6,13 @@
 #include "DataSource.h"
 #include "ApiIdList.h"
 
-class Logger;
+class RocmApiIdList : public ApiIdList
+{
+public:
+    RocmApiIdList() { ; }
+    uint32_t mapName(const std::string &apiName) override;
+};
+
 
 class RoctracerDataSource : public DataSource
 {
@@ -18,11 +24,10 @@ public:
     void stopTracing() override;
 
 private:
-    ApiIdList m_apiList;
+    RocmApiIdList m_apiList;
 
     roctracer_pool_t *m_hccPool{nullptr};
     static void api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
     static void hcc_activity_callback(const char* begin, const char* end, void* arg);
-
 
 };

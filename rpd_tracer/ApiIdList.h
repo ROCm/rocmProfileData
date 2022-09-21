@@ -20,9 +20,12 @@ public:
   ApiIdList();
   bool invertMode() { return m_invert; }
   void setInvertMode(bool invert) { m_invert = invert; }
-  void add(std::string apiName);
-  void remove(std::string apiName);
+  void add(const std::string &apiName);
+  void remove(const std::string &apiName);
   bool loadUserPrefs();
+
+  // Map api string to cnid enum
+  virtual uint32_t mapName(const std::string &apiName) = 0;
 
   bool contains(uint32_t apiId);
 

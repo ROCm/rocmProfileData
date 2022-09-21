@@ -854,3 +854,12 @@ void RoctracerDataSource::end() {
     roctracer_flush_activity_expl(m_hccPool);
     m_hccPool = nullptr;
 }
+
+uint32_t RocmApiIdList::mapName(const std::string &apiName)
+{
+    uint32_t cid = 0;
+    if (roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, apiName.c_str(), &cid, NULL) == ROCTRACER_STATUS_SUCCESS)
+        return cid;
+    else
+        return 0;
+}

@@ -11,16 +11,22 @@ ApiIdList::ApiIdList()
 {
 }
 
-void ApiIdList::add(std::string apiName)
+void ApiIdList::add(const std::string &apiName)
 {
+    uint32_t cid = mapName(apiName);
+    if (cid > 0)
+        m_filter[cid] = 1;
 #if 0
   uint32_t cid = 0;
   if (roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, apiName.c_str(), &cid, NULL) == ROCTRACER_STATUS_SUCCESS)
     m_filter[cid] = 1;
 #endif
 }
-void ApiIdList::remove(std::string apiName)
+void ApiIdList::remove(const std::string &apiName)
 {
+    uint32_t cid = mapName(apiName);
+    if (cid > 0)
+        m_filter.erase(cid);
 #if 0
   uint32_t cid = 0;
   if (roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, apiName.c_str(), &cid, NULL) == ROCTRACER_STATUS_SUCCESS)
