@@ -9,7 +9,7 @@ HIPCC=$(HIP_PATH)/bin/hipcc
 TARGET=hcc
 
 ROC_LIBS = -lroctracer64 -lroctx64 -lsqlite3 -lfmt
-ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/roctracer/include/ -I/opt/rocm/include/hsa
+ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
 
 CXX=$(HIPCC)
 

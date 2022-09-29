@@ -50,7 +50,6 @@ typedef uint64_t timestamp_t;
 
 
 #include <roctracer_hip.h>
-#include <roctracer_hcc.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
 #include <roctx.h>
