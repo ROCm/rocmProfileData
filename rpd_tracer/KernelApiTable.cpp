@@ -91,7 +91,7 @@ void KernelApiTable::finalize()
     flush();
     int ret = 0;
     ret = sqlite3_exec(m_connection, "insert into rocpd_kernelapi select * from temp_rocpd_kernelapi", NULL, NULL, NULL);
-    printf("rocpd_kernelapi: %d\n", ret);
+    fprintf(stderr, "rocpd_kernelapi: %d\n", ret);
 }
 
 
