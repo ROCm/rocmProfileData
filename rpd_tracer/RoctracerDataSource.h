@@ -3,6 +3,8 @@
  **************************************************************************/
 #pragma once
 
+#include <roctracer.h>
+
 #include "DataSource.h"
 #include "ApiIdList.h"
 

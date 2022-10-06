@@ -3,13 +3,11 @@
  **************************************************************************/
 #include "RoctracerDataSource.h"
 
-#include "hsa_rsrc_factory.h"
+//#include "hsa_rsrc_factory.h"
 
 #include <roctracer_hip.h>
-#include <roctracer_hcc.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
-#include <roctx.h>
 
 #include <sqlite3.h>
 #include <fmt/format.h>
@@ -50,7 +48,7 @@ void RoctracerDataSource::api_callback(
         const hip_api_data_t* data = (const hip_api_data_t*)(callback_data);
 
         if (data->phase == ACTIVITY_API_PHASE_ENTER) {
-            timestamp = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+            timestamp = clocktime_ns();
         }
         else { // data->phase == ACTIVITY_API_PHASE_EXIT
             char buff[4096];
@@ -61,7 +59,7 @@ void RoctracerDataSource::api_callback(
             row.pid = GetPid();
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
-            row.end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+            row.end = clocktime_ns();
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
             row.api_id = data->correlation_id;
@@ -638,9 +636,10 @@ void RoctracerDataSource::api_callback(
         ApiTable::row row;
         row.pid = GetPid();
         row.tid = GetTid();
-        row.start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        row.start = clocktime_ns();
         row.end = row.start;
-        row.apiName_id = logger.stringTable().getOrCreate(std::string("UserMarker"));   // FIXME: can cache
+        static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+        row.apiName_id = markerId;
         row.args_id = EMPTY_STRING_ID;
         row.api_id = 0;
 
@@ -670,7 +669,7 @@ void hip_activity_callback(const char* begin, const char* end, void* arg)
 return;
     const roctracer_record_t* record = (const roctracer_record_t*)(begin);
     const roctracer_record_t* end_record = (const roctracer_record_t*)(end);
-    const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_begin_time = clocktime_ns();
 
     int batchSize = 0;
 
@@ -708,9 +707,9 @@ return;
         roctracer_next_record(record, &record);
         ++batchSize;
     }
-    const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_mid_time = clocktime_ns();
     sqlite3_exec(connection, "END TRANSACTION", NULL, NULL, NULL);
-    const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_end_time = clocktime_ns();
     printf("### activity_callback hip ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
 
     // Make a tracer overhead record
@@ -726,7 +725,7 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
 {
     const roctracer_record_t* record = (const roctracer_record_t*)(begin);
     const roctracer_record_t* end_record = (const roctracer_record_t*)(end);
-    const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_begin_time = clocktime_ns();
 
     int batchSize = 0;
 
@@ -755,7 +754,7 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
         roctracer_next_record(record, &record);
         ++batchSize;
     }
-    const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d", batchSize);
     logger.createOverheadRecord(cb_begin_time, cb_end_time, "hcc_activity_callback", buff);
