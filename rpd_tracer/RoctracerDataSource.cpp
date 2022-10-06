@@ -18,6 +18,11 @@
 #include "Utility.h"
 
 
+// Create a factory for the Logger to locate and use
+extern "C" {
+    DataSource *RoctracerDataSourceFactory() { return new RoctracerDataSource(); }
+}  // extern "C"
+
 // FIXME: can we avoid shutdown corruption?
 // Other rocm libraries crashing on unload
 // libsqlite unloading before we are done using it

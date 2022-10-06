@@ -19,14 +19,14 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
-//FIXME make a universal timestamp source
-//static timestamp_t clocktime_ns() { return 0; }
+static timestamp_t timespec_to_ns(const timespec& time) {
+    return ((timestamp_t)time.tv_sec * 1000000000) + time.tv_nsec;
+  }
 
-#include <cupti.h>
 static timestamp_t clocktime_ns() {
-    timestamp_t ts;
-    cuptiGetTimestamp(&ts);
-    return ts;
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
 }
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);

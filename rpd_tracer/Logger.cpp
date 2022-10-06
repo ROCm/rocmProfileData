@@ -5,6 +5,11 @@
 
 //#include "hsa_rsrc_factory.h"
 
+#include <list>
+#include <stdio.h>
+#include <stdlib.h>
+#include <dlfcn.h>
+
 #include "Utility.h"
 
 // FIMXE: remove and use static init
@@ -68,8 +73,6 @@ void Logger::rpdstart()
     std::unique_lock<std::mutex> lock(m_activeMutex);
     if (m_activeCount == 0) {
         //fprintf(stderr, "rpd_tracer: START\n");
-        //m_apiTable->resumeRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
-	//FIXME
         m_apiTable->resumeRoctx(clocktime_ns());
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->startTracing();
@@ -84,8 +87,6 @@ void Logger::rpdstop()
         //fprintf(stderr, "rpd_tracer: STOP\n");
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->stopTracing();
-        //m_apiTable->suspendRoctx(util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC));
-	//FIXME
         m_apiTable->suspendRoctx(clocktime_ns());
     }
     --m_activeCount;
@@ -120,9 +121,22 @@ void Logger::init()
     m_opTable->setIdOffset(offset);
     m_apiTable->setIdOffset(offset);
 
-    // Create available datasourced #FIXME: use static initializer
-    //m_sources.push_back(new RoctracerDataSource());
-    m_sources.push_back(new CuptiDataSource());
+    // Create one instance of each available datasource
+    std::list<std::string> factories = {
+        "RoctracerDataSourceFactory",
+        "CuptiDataSourceFactory"
+        };
+
+    void (*dl) = dlopen(NULL, RTLD_LAZY);
+    if (dl) {
+        for (auto it = factories.begin(); it != factories.end(); ++it) {
+            DataSource* (*func) (void) = (DataSource* (*)()) dlsym(dl, (*it).c_str());
+            if (func) {
+                m_sources.push_back(func());
+                //fprintf(stderr, "Using: %s\n", (*it).c_str());
+            }
+        }
+    }
 
     // Initialize data sources
     for (auto it = m_sources.begin(); it != m_sources.end(); ++it)

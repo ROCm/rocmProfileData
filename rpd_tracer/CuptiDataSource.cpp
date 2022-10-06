@@ -15,6 +15,11 @@
 #include "Utility.h"
 
 
+// Create a factory for the Logger to locate and use
+extern "C" {
+    DataSource *CuptiDataSourceFactory() { return new CuptiDataSource(); }
+}  // extern "C"
+
 // FIXME: can we avoid shutdown corruption?
 // Other libraries crashing on unload
 // libsqlite unloading before we are done using it
@@ -180,6 +185,38 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         logger.copyApiTable().insert(crow);
                     }
                     break;
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020:
+                    {
+                        auto &params = *(cudaMemcpyAsync_v3020_params *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                    }
+                    break;
+                //case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2D_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToArray_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DToArray_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromArray_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DFromArray_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyArrayToArray_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DArrayToArray_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToSymbol_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromSymbol_v3020:
+                //case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToArrayAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromArrayAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DToArrayAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DFromArrayAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToSymbolAsync_v3020:
+                case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromSymbolAsync_v3020:
+                    break;
                 default:
                     break;
             }
@@ -238,6 +275,14 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
     int batchSize = 0;
     CUpti_Activity *it = NULL;
 
+    // Cupti uses CLOCK_REALTIME for timestamps, which is not suitable for profiling
+    //   Convert to a reliable timestamp domain, hopefully doing no additional damage
+    timestamp_t t0, t1, t00;
+    t0 = clocktime_ns();
+    cuptiGetTimestamp(&t1);
+    t00 = clocktime_ns();
+    const timestamp_t toffset = (t0 >> 1) + (t00 >> 1) - t1;
+
     if (validSize > 0) {
         do {
             CUptiResult status = cuptiActivityGetNextRecord(buffer, validSize, &it);
@@ -253,8 +298,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.sequenceId = record->streamId;
                             //row.completionSignal = "";    //strcpy
                             strncpy(row.completionSignal, "", 18);
-                            row.start = record->start;
-                            row.end = record->end;
+                            row.start = record->start + toffset;
+                            row.end = record->end + toffset;
                             row.description_id = EMPTY_STRING_ID;
                             row.opType_id = logger.stringTable().getOrCreate("Memcpy");
                             row.api_id = record->correlationId;
@@ -269,8 +314,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.sequenceId = record->streamId;
                             //row.completionSignal = "";    //strcpy
                             strncpy(row.completionSignal, "", 18);
-                            row.start = record->start;
-                            row.end = record->end;
+                            row.start = record->start + toffset;
+                            row.end = record->end + toffset;
                             row.description_id = EMPTY_STRING_ID;
                             row.opType_id = logger.stringTable().getOrCreate("Memset");
                             row.api_id = record->correlationId;
@@ -287,8 +332,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.sequenceId = record->streamId;
                             //row.completionSignal = "";    //strcpy
                             strncpy(row.completionSignal, "", 18);
-                            row.start = record->start;
-                            row.end = record->end;
+                            row.start = record->start + toffset;
+                            row.end = record->end + toffset;
                             row.description_id = logger.stringTable().getOrCreate(cxx_demangle(record->name));
                             row.opType_id = logger.stringTable().getOrCreate(name);
                             row.api_id = record->correlationId;
