@@ -13,18 +13,18 @@ RPD_INCLUDES =
 RPD_SRCS = Table.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp Logger.cpp
 
 ifneq (,$(HIP_PATH))
-	$(info Building with roctracer)
-	RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64
-	RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-	RPD_SRCS += RoctracerDataSource.cpp
-	RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
+        $(info Building with roctracer)
+        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64
+        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
+        RPD_SRCS += RoctracerDataSource.cpp
+        RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
 endif
 
 ifneq ($(CUDA_PATH),)
-	$(info Building with cupti)
-	RPD_LIBS += -L/usr/local/cuda/lib64 -lcupti
-	RPD_INCLUDES += -I/usr/local/cuda/include
-	RPD_SRCS += CuptiDataSource.cpp
+        $(info Building with cupti)
+        RPD_LIBS += -L/usr/local/cuda/lib64 -lcupti
+        RPD_INCLUDES += -I/usr/local/cuda/include
+        RPD_SRCS += CuptiDataSource.cpp
 endif
 
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
