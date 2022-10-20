@@ -50,7 +50,6 @@ typedef uint64_t timestamp_t;
 
 
 #include <roctracer_hip.h>
-#include <roctracer_hcc.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
 #include <roctx.h>
@@ -1025,7 +1024,7 @@ void rpdFinalize()
         s_copyApiTable->finalize();
         s_apiTable->finalize();
         const timestamp_t end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-        printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
+        fprintf(stderr, "rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
     }
 }
 

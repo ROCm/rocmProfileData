@@ -129,7 +129,7 @@ void StringTable::finalize()
     // FIXME: to empty string or not to empty string?  multi-session issue?
     //ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string where id != 1", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string", NULL, NULL, NULL);
-    printf("rocpd_string: %d\n", ret);
+    fprintf(stderr, "rocpd_string: %d\n", ret);
 }
 
 

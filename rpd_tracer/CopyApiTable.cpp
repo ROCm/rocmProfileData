@@ -90,7 +90,7 @@ void CopyApiTable::finalize()
     flush();
     int ret = 0;
     ret = sqlite3_exec(m_connection, "insert into rocpd_copyapi select * from temp_rocpd_copyapi", NULL, NULL, NULL);
-    printf("rocpd_copyapi: %d\n", ret);
+    fprintf(stderr, "rocpd_copyapi: %d\n", ret);
 }
 
 
