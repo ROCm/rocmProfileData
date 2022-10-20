@@ -123,7 +123,7 @@ void Logger::init()
         "CuptiDataSourceFactory"
         };
 
-    void (*dl) = dlopen(NULL, RTLD_LAZY);
+    void (*dl) = dlopen("librpd_tracer.so", RTLD_LAZY);
     if (dl) {
         for (auto it = factories.begin(); it != factories.end(); ++it) {
             DataSource* (*func) (void) = (DataSource* (*)()) dlsym(dl, (*it).c_str());

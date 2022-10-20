@@ -198,24 +198,227 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         logger.copyApiTable().insert(crow);
                     }
                     break;
-                //case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020:
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2D_v3020:
+                     {
+                        auto &params = *(cudaMemcpy2D_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(params.width);
+                        crow.height = (uint32_t)(params.height);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToArray_v3020:
+                     {
+                        auto &params = *(cudaMemcpyToArray_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", (void *)params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DToArray_v3020:
+                     {
+                        auto &params = *(cudaMemcpy2DToArray_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(params.width);
+                        crow.height = (uint32_t)(params.height);
+                        crow.dst = fmt::format("{}", (void *)params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromArray_v3020:
+                     {
+                        auto &params = *(cudaMemcpyFromArray_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", (void *)params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DFromArray_v3020:
+                     {
+                        auto &params = *(cudaMemcpy2DFromArray_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(params.width);
+                        crow.height = (uint32_t)(params.height);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", (void *)params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyArrayToArray_v3020:
+                     {
+                        auto &params = *(cudaMemcpyArrayToArray_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", (void *)params.dst);
+                        crow.src = fmt::format("{}", (void *)params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DArrayToArray_v3020:
+                     {
+                        auto &params = *(cudaMemcpy2DArrayToArray_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(params.width);
+                        crow.height = (uint32_t)(params.height);
+                        crow.dst = fmt::format("{}", (void *)params.dst);
+                        crow.src = fmt::format("{}", (void *)params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToSymbol_v3020:
+                     {
+                        auto &params = *(cudaMemcpyToSymbol_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.symbol);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromSymbol_v3020:
-                //case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020:
+                     {
+                        auto &params = *(cudaMemcpyFromSymbol_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", params.symbol);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.sync = true;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToArrayAsync_v3020:
+                     {
+                        auto &params = *(cudaMemcpyToArrayAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", (void *)params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
+
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromArrayAsync_v3020:
+                     {
+                        auto &params = *(cudaMemcpyFromArrayAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", (void *)params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DAsync_v3020:
+                     {
+                        auto &params = *(cudaMemcpy2DAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(params.width);
+                        crow.height = (uint32_t)(params.height);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DToArrayAsync_v3020:
+                     {
+                        auto &params = *(cudaMemcpy2DToArrayAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.width = (uint32_t)(params.width);
+                        crow.height = (uint32_t)(params.height);
+                        crow.dst = fmt::format("{}", (void *)params.dst);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy2DFromArrayAsync_v3020:
+                     {
+                        auto &params = *(cudaMemcpyFromArrayAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", (void *)params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                     }
+                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyToSymbolAsync_v3020:
+                    {
+                        auto &params = *(cudaMemcpyToSymbolAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.symbol);
+                        crow.src = fmt::format("{}", params.src);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                    }
+                    break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyFromSymbolAsync_v3020:
+                    {
+                        auto &params = *(cudaMemcpyFromSymbolAsync_v3020_params_st *)(cbInfo->functionParams);
+                        CopyApiTable::row crow;
+                        crow.api_id = row.api_id;
+                        crow.size = (uint32_t)(params.count);
+                        crow.dst = fmt::format("{}", params.dst);
+                        crow.src = fmt::format("{}", params.symbol);
+                        crow.kind = (uint32_t)(params.kind);
+                        crow.stream = fmt::format("{}", (void *)params.stream);
+                        crow.sync = false;
+                        logger.copyApiTable().insert(crow);
+                    }
                     break;
                 default:
                     break;
