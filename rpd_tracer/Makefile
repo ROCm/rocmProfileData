@@ -1,17 +1,34 @@
-HIP_PATH?= $(wildcard /opt/rocm/hip)
+
 PREFIX = /usr/local
-ifeq (,$(HIP_PATH))
-    HIP_PATH=../../..
-endif
+
+HIP_PATH?= $(wildcard /opt/rocm/hip)
+CUDA_PATH?= $(wildcard /usr/local/cuda/)
 
 HIPCC=$(HIP_PATH)/bin/hipcc
 
 TARGET=hcc
 
-ROC_LIBS = -lroctracer64 -lroctx64 -lsqlite3 -lfmt
-ROC_INCLUDE = -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
+RPD_LIBS = -lsqlite3 -lfmt
+RPD_INCLUDES =
+RPD_SRCS = Table.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp Logger.cpp
 
-CXX=$(HIPCC)
+ifneq (,$(HIP_PATH))
+        $(info Building with roctracer)
+        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64
+        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
+        RPD_SRCS += RoctracerDataSource.cpp
+        RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
+endif
+
+ifneq ($(CUDA_PATH),)
+        $(info Building with cupti)
+        RPD_LIBS += -L/usr/local/cuda/lib64 -lcupti
+        RPD_INCLUDES += -I/usr/local/cuda/include
+        RPD_SRCS += CuptiDataSource.cpp
+endif
+
+RPD_OBJS = $(RPD_SRCS:.cpp=.o)
+
 
 RPD_MAIN = librpd_tracer.so
 RTG_MAIN = librtg_tracer.so
@@ -31,15 +48,12 @@ $(RTG_DIR):
 	@echo "rtg_tracer exists.  Building"
 	$(MAKE) $(RTG_MAIN)
 
-RPD_SRCS = Table.cpp OpTable.cpp  KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp
-RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 
-
-$(RPD_MAIN): rpd_tracer.o $(RPD_OBJS)
-	$(CXX) -o $@ $< $(RPD_OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
+$(RPD_MAIN): $(RPD_OBJS)
+	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -g
 
 .cpp.o:
-	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
 
 RTG_SRCS =
 RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_printf_lockless.cpp
@@ -49,7 +63,7 @@ RTG_SRCS += ../rtg_tracer/rtg_tracer/missing_ostream_definitions.cpp
 RTG_OBJS = $(RTG_SRCS:.cpp=.o)
 
 ../rtg_tracer/rtg_tracer/rtg_tracer.o: ../rtg_tracer/rtg_tracer/rtg_tracer.cpp
-	$(CXX) -o $@ -c $< $(ROC_INCLUDE) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3 -DRPD_TRACER
+	$(CXX) -o $@ -c $< $(ROC_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3 -DRPD_TRACER
 
 $(RTG_MAIN): ../rtg_tracer/rtg_tracer/rtg_tracer.o $(RTG_OBJS) $(RPD_OBJS)
 	$(CXX) -o $@ $< $(RPD_OBJS) $(RTG_OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g

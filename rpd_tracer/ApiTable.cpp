@@ -2,13 +2,13 @@
  * Copyright (c) 2022 Advanced Micro Devices, Inc.
  **************************************************************************/
 #include "Table.h"
+
 #include <thread>
 #include <deque>
+#include <map>
+
 #include "rpd_tracer.h"
-
-#include "hsa_rsrc_factory.h"
-
-typedef uint64_t timestamp_t;
+#include "Utility.h"
 
 
 const char *SCHEMA_API = "CREATE TEMPORARY TABLE \"temp_rocpd_api\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"pid\" integer NOT NULL, \"tid\" integer NOT NULL, \"start\" integer NOT NULL, \"end\" integer NOT NULL, \"apiName_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"args_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED)";
@@ -72,11 +72,15 @@ void ApiTable::insert(const ApiTable::row &row)
 
     if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
-        const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+	//FIXME
+        const timestamp_t start = clocktime_ns();
         // FIXME: overhead record here
         m_wait.notify_one();  // make sure working is running
         m_wait.wait(lock);
-        const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+	//FIXME
+        const timestamp_t end = clocktime_ns();
         lock.unlock();
         createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::ApiTable::insert");
         lock.lock();
@@ -96,10 +100,14 @@ void ApiTable::insertRoctx(ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
-        const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+	//FIXME
+        const timestamp_t start = clocktime_ns();
         m_wait.notify_one();
         m_wait.wait(lock);
-        const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+	//FIXME
+        const timestamp_t end = clocktime_ns();
         lock.unlock();
         createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::ApiTable::insert");
         lock.lock();
@@ -125,10 +133,14 @@ void ApiTable::popRoctx(const ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
-        const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+	//FIXME
+        const timestamp_t start = clocktime_ns();
         m_wait.notify_one();
         m_wait.wait(lock);
-        const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+	//FIXME
+        const timestamp_t end = clocktime_ns();
         lock.unlock();
         createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::ApiTable::insert");
         lock.lock();
@@ -221,7 +233,9 @@ void ApiTablePrivate::writeRows()
     if (head == tail)
         return;
 
-    const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //FIXME
+    const timestamp_t cb_begin_time = clocktime_ns();
 
     int start = tail + 1;
     int end = tail + BATCHSIZE;
@@ -250,7 +264,9 @@ void ApiTablePrivate::writeRows()
 
     //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //FIXME
+    const timestamp_t cb_end_time = clocktime_ns();
     // FIXME: write the overhead record
     if (done == false) {
         char buff[4096];

@@ -2,12 +2,11 @@
  * Copyright (c) 2022 Advanced Micro Devices, Inc.
  **************************************************************************/
 #include "Table.h"
+
 #include <thread>
+
 #include "rpd_tracer.h"
-
-#include "hsa_rsrc_factory.h"
-
-typedef uint64_t timestamp_t;
+#include "Utility.h"
 
 
 const char *SCHEMA_KERNELAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_kernelapi\" (\"api_ptr_id\" integer NOT NULL PRIMARY KEY, \"stream\" varchar(18) NOT NULL, \"gridX\" integer NOT NULL, \"gridY\" integer NOT NULL, \"gridz\" integer NOT NULL, \"workgroupX\" integer NOT NULL, \"workgroupY\" integer NOT NULL, \"workgroupZ\" integer NOT NULL, \"groupSegmentSize\" integer NOT NULL, \"privateSegmentSize\" integer NOT NULL, \"kernelArgAddress\" varchar(18) NOT NULL, \"aquireFence\" varchar(8) NOT NULL, \"releaseFence\" varchar(8) NOT NULL, \"codeObject_id\" integer, \"kernelName_id\" integer NOT NULL)";
@@ -102,7 +101,9 @@ void KernelApiTablePrivate::writeRows()
     if (head == tail)
         return;
 
-    const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME
+    const timestamp_t cb_begin_time = clocktime_ns();
 
     int start = tail + 1;
     int end = tail + BATCHSIZE;
@@ -138,7 +139,9 @@ void KernelApiTablePrivate::writeRows()
 
     //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    // FIXME
+    const timestamp_t cb_end_time = clocktime_ns() + 1;
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "KernelApiTable::writeRows", buff);
