@@ -25,7 +25,7 @@ static timestamp_t timespec_to_ns(const timespec& time) {
 
 static timestamp_t clocktime_ns() {
     timespec ts;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     return ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
 }
 
