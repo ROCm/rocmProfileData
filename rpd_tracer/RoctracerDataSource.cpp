@@ -729,6 +729,16 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
 
     int batchSize = 0;
 
+    // Roctracer uses CLOCK_MONOTONIC for timestamps, which matches our timestamps.
+    // However, the Roctracer developer thinks it is using CLOCK_MONOTONIC_RAW, which it isn't
+    // Go ahead and convert timestamps here just in case this gets "fixed" at some point
+    timestamp_t t0, t1, t00;
+    roctracer_get_timestamp(&t1);	// first call is really slow, throw it away
+    t0 = clocktime_ns();
+    roctracer_get_timestamp(&t1);
+    t00 = clocktime_ns();
+    const timestamp_t toffset = (t0 >> 1) + (t00 >> 1) - t1;
+
     Logger &logger = Logger::singleton();
 
     while (record < end_record) {
@@ -743,8 +753,8 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
         row.sequenceId = 0;
         //row.completionSignal = "";	//strcpy
         strncpy(row.completionSignal, "", 18);
-        row.start = record->begin_ns;
-        row.end = record->end_ns;
+        row.start = record->begin_ns + toffset;
+        row.end = record->end_ns + toffset;
         row.description_id = EMPTY_STRING_ID;
         row.opType_id = name_id;
         row.api_id = record->correlation_id; 
