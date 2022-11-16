@@ -171,9 +171,9 @@ void Logger::finalize()
         const timestamp_t begin_time = clocktime_ns();
         m_stringTable->finalize();
         m_opTable->finalize();		// OpTable before subclassOpTables
+        m_apiTable->finalize();
         m_kernelApiTable->finalize();
         m_copyApiTable->finalize();
-        m_apiTable->finalize();
         const timestamp_t end_time = clocktime_ns();
         printf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
     }

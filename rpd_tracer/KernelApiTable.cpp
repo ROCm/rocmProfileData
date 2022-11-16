@@ -114,7 +114,7 @@ void KernelApiTablePrivate::writeRows()
 
     for (int i = start; i <= end; ++i) {
         int index = 1;
-        KernelApiTable::row &r = rows[(tail + i) % BUFFERSIZE];
+        KernelApiTable::row &r = rows[i % BUFFERSIZE];
         sqlite3_bind_int64(apiInsert, index++, r.api_id + p->m_idOffset);
         sqlite3_bind_text(apiInsert, index++, r.stream.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(apiInsert, index++, r.gridX);
