@@ -560,7 +560,7 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
       size_t dropped;
       cuptiActivityGetNumDroppedRecords(ctx, streamId, &dropped);
       if (dropped != 0) {
-          fprintf("Dropped %u activity records\n", (unsigned int) dropped);
+          printf("Dropped %u activity records\n", (unsigned int) dropped);
       }
     }
     free(buffer);
