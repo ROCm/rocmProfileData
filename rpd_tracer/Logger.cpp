@@ -175,7 +175,7 @@ void Logger::finalize()
         m_kernelApiTable->finalize();
         m_copyApiTable->finalize();
         const timestamp_t end_time = clocktime_ns();
-        fprintf("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
+        fprintf(stderr, "rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
     }
 }
 
@@ -191,7 +191,7 @@ return;
     row.args_id = m_stringTable->getOrCreate(args);
     row.api_id = 0;
 
-    //fprintf("overhead: %s (%s) - %f usec\n", name.c_str(), args.c_str(), (end-start) / 1000.0);
+    //fprintf(stderr, "overhead: %s (%s) - %f usec\n", name.c_str(), args.c_str(), (end-start) / 1000.0);
 
     m_apiTable->insertRoctx(row);
 }
