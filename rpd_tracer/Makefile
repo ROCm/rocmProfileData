@@ -31,22 +31,15 @@ RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 
 
 RPD_MAIN = librpd_tracer.so
-RTG_MAIN = librtg_tracer.so
 RPD_SCRIPT = runTracer.sh
 
 PYTHON = python3
 PIP = pip3
 
 
-RTG_DIR = $(wildcard ../rtg_tracer/rtg_tracer)
+all: | $(RPD_MAIN) 
 
-all: | $(RPD_MAIN) $(RTG_DIR)
-
-.PHONY: all $(RTG_DIR)
-
-$(RTG_DIR):
-	@echo "rtg_tracer exists.  Building"
-	$(MAKE) $(RTG_MAIN)
+.PHONY: all 
 
 
 $(RPD_MAIN): $(RPD_OBJS)
@@ -54,19 +47,6 @@ $(RPD_MAIN): $(RPD_OBJS)
 
 .cpp.o:
 	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
-
-RTG_SRCS =
-RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_printf_lockless.cpp
-RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_printf.cpp
-RTG_SRCS += ../rtg_tracer/rtg_tracer/rtg_out_rpd.cpp
-RTG_SRCS += ../rtg_tracer/rtg_tracer/missing_ostream_definitions.cpp
-RTG_OBJS = $(RTG_SRCS:.cpp=.o)
-
-../rtg_tracer/rtg_tracer/rtg_tracer.o: ../rtg_tracer/rtg_tracer/rtg_tracer.cpp
-	$(CXX) -o $@ -c $< $(ROC_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3 -DRPD_TRACER
-
-$(RTG_MAIN): ../rtg_tracer/rtg_tracer/rtg_tracer.o $(RTG_OBJS) $(RPD_OBJS)
-	$(CXX) -o $@ $< $(RPD_OBJS) $(RTG_OBJS) -shared -rdynamic -std=c++11 -L/opt/rocm/lib $(ROC_LIBS) -g
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):
 #	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@
@@ -85,4 +65,4 @@ uninstall:
 	rm $(PREFIX)/bin/$(RPD_SCRIPT)
 .PHONY: clean
 clean:
-	rm -f *.o *.so ../rtg_tracer/rtg_tracer/*.o
+	rm -f *.o *.so 
