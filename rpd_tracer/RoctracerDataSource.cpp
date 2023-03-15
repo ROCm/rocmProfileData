@@ -762,23 +762,23 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
     while (record < end_record) {
         const char *name = roctracer_op_string(record->domain, record->op, record->kind);
 
-        // FIXME: get_create string_id for 'name' from stringTable
-        sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
+        if (strcmp("Marker", name) != 0) {  // Don't log markers
+            sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
 
-        OpTable::row row;
-        row.gpuId = record->device_id;
-        row.queueId = record->queue_id;
-        row.sequenceId = 0;
-        //row.completionSignal = "";	//strcpy
-        strncpy(row.completionSignal, "", 18);
-        row.start = record->begin_ns + toffset;
-        row.end = record->end_ns + toffset;
-        row.description_id = EMPTY_STRING_ID;
-        row.opType_id = name_id;
-        row.api_id = record->correlation_id; 
+            OpTable::row row;
+            row.gpuId = record->device_id;
+            row.queueId = record->queue_id;
+            row.sequenceId = 0;
+            //row.completionSignal = "";	//strcpy
+            strncpy(row.completionSignal, "", 18);
+            row.start = record->begin_ns + toffset;
+            row.end = record->end_ns + toffset;
+            row.description_id = EMPTY_STRING_ID;
+            row.opType_id = name_id;
+            row.api_id = record->correlation_id;
 
-        logger.opTable().insert(row);
-
+            logger.opTable().insert(row);
+        }
         roctracer_next_record(record, &record);
         ++batchSize;
     }
