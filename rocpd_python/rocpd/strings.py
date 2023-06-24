@@ -26,6 +26,14 @@ def cleanStrings(imp, fix_autograd):
         imp.connection.execute("""
             UPDATE rocpd_string_original set string = SUBSTR(string, 1, INSTR(string, ", op_id") - 1) where string like "%, op_id%"
         """)
+        imp.connection.execute("""
+            UPDATE rocpd_string_original set string = SUBSTR(string, 1, INSTR(string, ", sizes") - 1) where string like "%, sizes%"
+        """)
+        imp.connection.execute("""
+            UPDATE rocpd_string_original set string = SUBSTR(string, 1, INSTR(string, ", input_op_ids") - 1) where string like "%, input_op_ids%"
+        """)
+
+
 
     # Drop, recreate, and populate the string table
     imp.connection.execute("""
@@ -63,6 +71,7 @@ def cleanStrings(imp, fix_autograd):
         """)
 
     imp.connection.commit()
+    imp.resumeExisting(imp.connection)	# reload state
 
 if __name__ == "__main__":
 
