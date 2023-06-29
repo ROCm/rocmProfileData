@@ -10,10 +10,15 @@
 import argparse
 import sqlite3
 from rocpd.importer import RocpdImportData
+from rocpd.metadata import Metadata
 
 from collections import deque
 
 def generateCallStacks(imp):
+    meta = Metadata(imp)
+    if meta.get("Callstack::Generated") != None:
+        raise Exception("Callstack data has already been generated")
+
     count = 0
     call_inserts = []
 
@@ -35,7 +40,6 @@ def generateCallStacks(imp):
         stack = deque()
         maxdepth = 0;
 
-        #for row in imp.connection.execute("select id, start as ts, '1' from rocpd_api where pid=? and tid=? UNION ALL select id, end as ts, '-1' from rocpd_api where pid=? and tid=? order by ts", (pidtid[0], pidtid[1], pidtid[0], pidtid[1])):
         for row in imp.connection.execute("select id, start as ts, '1', '' from rocpd_api where pid=? and tid=? UNION ALL select X.id, X.end as timestamp, '-1', Y.gpu_time from rocpd_api X LEFT JOIN (select A.api_id, sum(B.end - B.start) as gpu_time from rocpd_api_ops A join rocpd_op B on B.id = A.op_id group by A.api_id) Y on Y.api_id = X.id where pid=? and tid=? order by ts", (pidtid[0], pidtid[1], pidtid[0], pidtid[1])):
             if row[2] == '1':
                 stack.append(StackFrame(row[0], row[1]))
@@ -57,28 +61,25 @@ def generateCallStacks(imp):
 
         print(f"pid {pidtid[0]}  tid {pidtid[1]}  maxDepth {maxdepth}")
 
+    meta.set("Callstack::Generated", "True")
     commitRecords()
-
-    # populate cpu and gpu times
-
-    #imp.connection.execute('update ext_callstack set cpu_time = (select end-start from rocpd_api A where A.id = child_id)')
-    #imp.connection.execute('create index "temp_api_ops_idx" on rocpd_api_ops(api_id);')
-    #imp.connection.execute('update ext_callstack set gpu_time = (select sum(B.end-B.start) from rocpd_api_ops A join rocpd_op B on B.id = A.op_id where A.api_id = child_id) where child_id in (select api_id from rocpd_api_ops)')
-    #imp.connection.execute('drop index "temp_api_ops_idx"')
-    imp.connection.commit()
 
 
 def createCallStackTable(imp):
-    # FIXME: check metadata, see if already generated
+    meta = Metadata(imp)
+    if meta.get("Callstack::Table") != None:
+        raise Exception("Callstack table has already been created")
 
     #Create table
     imp.connection.execute('CREATE TABLE IF NOT EXISTS "ext_callstack" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "parent_id" integer NOT NULL REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "child_id" integer NOT NULL REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "depth" integer NOT NULL, "cpu_time" integer NOT NULL DEFAULT 0, "gpu_time" integer NOT NULL DEFAULT 0)')
 
     # Make some working views
-    imp.connection.execute('CREATE VIEW callStack_inclusive as select parent_id, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack group by parent_id')
-    imp.connection.execute('CREATE VIEW callStack_exclusive as select parent_id, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack where depth = 0 group by parent_id')
-    imp.connection.execute('CREATE VIEW callStack_inclusive_name as select A.parent_id, B.apiName, B.args, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack A join api B on B.id = A.parent_id group by parent_id')
-    imp.connection.execute('CREATE VIEW callStack_exclusive_name as select A.parent_id, B.apiName, B.args, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack A join api B on B.id = A.parent_id where A.depth = 0 group by parent_id')
+    imp.connection.execute('CREATE VIEW IF NOT EXISTS callStack_inclusive as select parent_id, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack group by parent_id')
+    imp.connection.execute('CREATE VIEW IF NOT EXISTS callStack_exclusive as select parent_id, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack where depth = 0 group by parent_id')
+    imp.connection.execute('CREATE VIEW IF NOT EXISTS callStack_inclusive_name as select A.parent_id, B.apiName, B.args, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack A join api B on B.id = A.parent_id group by parent_id')
+    imp.connection.execute('CREATE VIEW IF NOT EXISTS callStack_exclusive_name as select A.parent_id, B.apiName, B.args, sum(cpu_time) as cpu_time, sum(gpu_time) as gpu_time from ext_callstack A join api B on B.id = A.parent_id where A.depth = 0 group by parent_id')
+
+    meta.set("Callstack::Table", "True")
 
 
 

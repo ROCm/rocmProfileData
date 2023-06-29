@@ -18,6 +18,25 @@ def cleanStrings(imp, fix_autograd):
     imp.connection.execute('INSERT into rocpd_string_original SELECT * from rocpd_string')
 
 
+    # Make a list of all columns that reference rocpd_string
+    #   These will need to be updated and relinked
+    #   Also, we can detect and remove unreferences strings
+
+    # Well known references
+    string_users = [
+    ("rocpd_op", "description_id"),
+    ("rocpd_op", "opType_id"),
+    ("rocpd_api", "apiName_id"),
+    ("rocpd_api", "args_id"),
+    ("rocpd_kernelapi", "kernelName_id"),
+    ]
+    # Explicity declared in rocpd_metadata.   Format is: tag = 'references::rocpd_string.id', value = '("table_name", "column_name")'
+    for row in imp.connection.execute("SELECT value from rocpd_metadata where tag='references::rocpd_string.id'"):
+        value = eval(row[0])
+        if type(value) == tuple:
+            if value not in string_users:
+                string_users.append(value)
+
     # Normalize autograd strings
     if fix_autograd:
         imp.connection.execute("""
@@ -34,6 +53,15 @@ def cleanStrings(imp, fix_autograd):
         """)
 
 
+    # Clean up unrefferenced strings.  Tools can change strings (names, args, etc) and may leave strings that are no longer being used.
+    imp.connection.execute("""
+        CREATE TEMPORARY TABLE IF NOT EXISTS "temp.activeString" ("id" integer NOT NULL PRIMARY KEY);
+        """)
+    for column in string_users:
+        query = f"""INSERT OR IGNORE INTO "temp.activeString" SELECT {column[1]} from {column[0]}"""
+        #print(query)
+        imp.connection.execute(query)
+
 
     # Drop, recreate, and populate the string table
     imp.connection.execute("""
@@ -46,28 +74,26 @@ def cleanStrings(imp, fix_autograd):
         CREATE INDEX "rocpd_strin_string_c7b9cd_idx" ON "rocpd_string" ("string");
         """)
     imp.connection.execute("""
-        INSERT into rocpd_string(string) SELECT distinct string from rocpd_string_original order by id;
+        INSERT into rocpd_string(string) SELECT distinct string from rocpd_string_original where id in (SELECT id FROM "temp.activeString") order by id;
         """)
+
 
     # Map from old id to new; UPDATE all table with new string id
     imp.connection.execute("""
-        create temporary view mapper as SELECT A.id as before, B.id as after from rocpd_string_original A join rocpd_string B on B.string = A.string;
+        CREATE TEMPORARY VIEW IF NOT EXISTS mapper as SELECT A.id as before, B.id as after from rocpd_string_original A join rocpd_string B on B.string = A.string;
         """)
 
+    for column in string_users:
+        query = f"""UPDATE {column[0]} set {column[1]} = (SELECT after from mapper A where {column[1]}=A.before) """
+        #print(query)
+        imp.connection.execute(query)
+
+    # cleanup
     imp.connection.execute("""
-        UPDATE rocpd_api set apiName_id = (SELECT after from mapper A where apiName_id=A.before);
+        DROP TABLE rocpd_string_original
         """)
     imp.connection.execute("""
-        UPDATE rocpd_api set args_id = (SELECT after from mapper A where args_id=A.before);
-        """)
-    imp.connection.execute("""
-        UPDATE rocpd_op set opType_id = (SELECT after from mapper A where opType_id=A.before);
-        """)
-    imp.connection.execute("""
-        UPDATE rocpd_op set description_id = (SELECT after from mapper A where description_id=A.before);
-        """)
-    imp.connection.execute("""
-        UPDATE rocpd_kernelapi set kernelName_id = (SELECT after from mapper A where kernelName_id=A.before);
+        DROP TABLE "temp.activeString"
         """)
 
     imp.connection.commit()
