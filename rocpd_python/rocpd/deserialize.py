@@ -57,7 +57,7 @@ def deserializeApis(imp, srcApis):
 
     for row in imp.connection.execute("select A.id, A.pid, A.tid, A.start, A.end, A.args_id, B.string, C.string from rocpd_api A join rocpd_string B on B.id = A.apiName_id join rocpd_string C on C.id = A.args_id where A.apiName_id in (select id from rocpd_string where string in (%s))" % str(srcApis)[1:-1]):
         args = {}
-        for line in row[7].split(','):
+        for line in row[7].split('|'):
             key, value = line.partition("=")[::2]
             args[key.strip()] = value.strip()
 

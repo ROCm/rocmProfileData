@@ -55,14 +55,11 @@ def createSubclassTable(importData, baseClass, subClass, events, argTypes):
     for row in importData.connection.execute(queryString % str(events)[1:-1]):
         for line in row[0].split('|'):
             key,value = line.partition("=")[::2]
-            args[key.strip()] = True
-    try:
-        args.pop('s_api')
-    except KeyError: pass
-    try:
-        args.pop('s_op')
-    except KeyError: pass
-
+            args[key.strip().strip('"')] = True   # May need to deal with mixed case
+    # cleanup columns that are not allowed/relevent
+    args.pop('s_api', '')
+    args.pop('s_op', '')
+    args.pop('', '')
 
     # Create the subclass table
     elements = []
@@ -102,7 +99,7 @@ def createSubclassTable(importData, baseClass, subClass, events, argTypes):
     else:   # baseClass == 'op'
         insertQueryString = insertQueryString + 'op_ptr_id,'
     for arg in args:
-        insertQueryString = insertQueryString + f'{arg},'
+        insertQueryString = insertQueryString + f'"{arg}",'
     insertQueryString = insertQueryString.strip(',') + ') values (?,'
     for arg in args:
         insertQueryString = insertQueryString + '?,'

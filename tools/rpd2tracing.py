@@ -115,7 +115,7 @@ for row in connection.execute("select A.string as apiName, B.string as args, pid
             else:
                 outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], row[1].replace('"',''), row[4], row[5], row[1].replace('"','')))
         else:
-          outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], row[0], row[4], row[5], row[1].replace('"','')))
+          outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], row[0], row[4], row[5], row[1].replace('"','').replace('\t','')))
     except ValueError:
         outfile.write("")
 
