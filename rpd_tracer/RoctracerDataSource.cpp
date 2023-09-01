@@ -314,6 +314,9 @@ void RoctracerDataSource::api_callback(
                         krow.groupSegmentSize = 0;
                         krow.privateSegmentSize = 0;
                         krow.kernelName_id = logger.stringTable().getOrCreate(kernelName);
+
+                        logger.kernelApiTable().insert(krow);
+
                         // Don't associate kernel name, would require a rework to support multiple
                         //   ops using the same entry.
                     }
