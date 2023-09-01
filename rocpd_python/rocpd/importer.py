@@ -62,7 +62,8 @@ class RocpdImportData:
         self.connection.execute("insert into rocpd_string(id, string) values (?,?)", (self.empty_string_id, ""))
 
     def buildStringCache(self):
-        # Find the emptry string, create if needed
+        self.strings = {}
+        # Find the empty string, create if needed
         self.empty_string_id = -1
         for row in self.connection.execute("select id from rocpd_string where string=''"):
             self.empty_string_id = row[0]
@@ -73,7 +74,7 @@ class RocpdImportData:
             self.string_id = row[0] + 1
 
         for row in self.connection.execute("select id, string from rocpd_string"):
-            self.strings[row[0]] = row[1]
+            self.strings[row[1]] = row[0]
 
     def buildCurrentIds(self):
         for row in self.connection.execute("select id from rocpd_op order by id desc limit 1"):

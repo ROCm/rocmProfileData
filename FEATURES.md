@@ -8,10 +8,96 @@ This is a changelog that describes new features as they are added.  Newest first
 Contents:
 <!-- toc -->
 
+- [Pytorch Autograd Subclass](#pytorch-autograd-subclass)
+- [Call Stack Accounting](#call-stack-accounting)
 - [Rpd_tracer Start/stop](#rpd_tracer-startstop)
 - [Schema v2](#schema-v2)
 
 <!-- tocstop -->
+
+
+--------------------------------------------------------------------------------
+## Pytorch Autograd Subclass
+Autograd analysis is available via a post-processing tool.  This is designed to work with the torch.autograd.profiler.emit_nvtx() feature.  The UserMarker ranges inserted by the pytorch profiler are formatted and presented in a dedicated 'api-subclass' table.  This allows for querying against thing like operator name, kernel name, or tensor size.  This makes heavy use of call stack accounting to compute execution times based on operator, kernel, and tensor size.
+
+#### Augment an rpd file with autograd info
+```
+python -m rocpd.autograd <inputfile.rpd>
+```
+
+This creates an "ext_autogradapi" subclass table that contains (autogradName, seq, op_id, sizes, input_op_ids) columns for each autograd api call.  It also creates some intermediate views with per event callstack data + autograd info.  For advanced users.  
+
+#### autogradKernel view
+This view contains an aggregated summary of cpu + gpu usage based on the (autograd function, kernel name, tensor size) triple.  This lets you see which kernels each operator is using and what tensor sizes are in play.
+
+```
+sqlite> select * from autogradKernel;
+autogradName     kernelName                      sizes                      calls       avg_gpu     total_gpu
+---------------  ------------------------------  -------------------------  -------  ----------  ----------
+aten::addmm      void at::native::legacy::elem   [[768], [12, 768], [768,   5        3328.0      16640
+aten::add_       void at::native::modern::elem   [[30522, 768], [], []]     5        180640.8    903204
+aten::mul        void at::native::modern::elem   [[12, 1, 1, 224], []]      5        2048.0      10240
+aten::addcmul_   void at::native::modern::elem   [[512, 768], [512, 768],   5        1536.0      7680
+aten::fill_      void at::native::modern::elem   [[512, 768], []]           10       1392.0      13920
+aten::addmm      void at::native::legacy::elem   [[3072], [2688, 768], [76  60       34909.3333  2094560
+aten::mm         Cijk_Ailk_Bljk_SB_MT128x96x16   [[2688, 768], [768, 768]]  240      118810.116  28514428
+aten::addcdiv_   void at::native::modern::elem   [[512, 768], [512, 768],   5        4000.0      20000
+aten::index_sel  void at::native::(anonymous n   [[30522, 768], [], [2688]  5        34336.0     171680
+aten::bmm        Cijk_Ailk_Bljk_SB_MT64x32x16_   [[144, 224, 224], [144, 2  60       60690.7333  3641444
+```
+
+#### Html summary
+There is a (rough) sample tool to format the autogradKernel table as interactive html:
+```
+python tools/rpd_autograd_summary.py trace.rpd autograd.html
+```
+
+
+--------------------------------------------------------------------------------
+## Call Stack Accounting
+Callstack analysis is available via a post-processing tool.  This materializes the caller/callee relationship of cpu events. It also attaches the cpu and gpu execution time of each event.  This allow computing inclusive and exclusive times for each function.  Instrumented applications can use roctx/nvtx ranges to pass function call information into the profile.
+
+#### Augment an rpd file with callstack info
+
+```
+python -m rocpd.callstack <inputfile.rpd>
+```
+
+This creates an "ext_callstack" table (which you will probably not use directly).  It contains the cpu + gpu time for each function and mirrors that time up to each parent caller.
+
+#### callStack_inclusive_name view
+This view contains each cpu function with total time spent by it and it's children
+
+#### callStack_exclusive_name view 
+This view contains only the 'exclusive' time spent by each function.  This does not count time used by any child functions it called
+
+```
+sqlite> select * from callStack_inclusive_name order by random()
+parent_id     apiName                    args                       cpu_time    gpu_time
+------------  -------------------------  -------------------------  ----------  ----------
+7969          hipLaunchKernel                                       3620        1280
+2147505467    UserMarker                 aten::add_                 11080       6240
+2147508236    UserMarker                 aten::addcdiv_             24170       1280
+2147508777    UserMarker                 aten::zero_                20750       1760
+2147505415    UserMarker                 aten::empty                4480        0
+2147508453    UserMarker                 aten::addcdiv_             15590       1280
+2147490247    UserMarker                 aten::transpose            13210       0
+2089          hipLaunchKernel                                       4090        1280
+13336         hipLaunchKernel                                       5490        1280
+2147496480    UserMarker                 autograd::engine::evaluat  36530       0
+```
+
+These tables(views) contain an entry for each function called.  You will likely want to aggregate them by apiName and/or args.
+
+E.g. "select args, avg(cpu_time), avg(gpu_time) from callStack_inclusive_name group by args;"
+or
+```
+import sqlite3
+connection = sqlite3.connect("profile.rpd")
+for row in connection.execute("select args, avg(cpu_time), avg(gpu_time) from callStack_inclusive_name group by args"):
+        print(f"{row[0]}: {row[1]}, {row[2]}")
+```
+
 
 
 --------------------------------------------------------------------------------
