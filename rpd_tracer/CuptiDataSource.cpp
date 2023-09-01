@@ -190,6 +190,76 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         logger.kernelApiTable().insert(krow);
                     }
                     break;
+#if CUDART_VERSION >= 11060
+                case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernelExC_v11060:
+                    {
+                        auto &params = *(cudaLaunchKernelExC_v11060_params_st *)(cbInfo->functionParams);
+                        auto &config = *(cudaLaunchConfig_t *)(params.config);
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)config.stream);
+                        krow.gridX = config.gridDim.x;
+                        krow.gridY = config.gridDim.y;
+                        krow.gridZ = config.gridDim.z;
+                        krow.workgroupX = config.blockDim.x;
+                        krow.workgroupY = config.blockDim.y;
+                        krow.workgroupZ = config.blockDim.z;
+                        krow.groupSegmentSize = config.dynamicSmemBytes;
+                        krow.privateSegmentSize = 0;
+                        if (cbInfo->symbolName != nullptr)  // Happens, why?  "" duh
+                            krow.kernelName_id = logger.stringTable().getOrCreate(cxx_demangle(cbInfo->symbolName));
+                        else
+                            krow.kernelName_id = EMPTY_STRING_ID;
+                        logger.kernelApiTable().insert(krow);
+                    }
+                    break;
+#endif
+                case CUPTI_RUNTIME_TRACE_CBID_cudaGraphLaunch_v10000:
+                    {
+                        auto &params = *(cudaGraphLaunch_v10000_params_st *)(cbInfo->functionParams);
+                        std::string kernelName(fmt::format("Graph Kernel ({})", (void*)params.graphExec));
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
+                        krow.gridX = 0;
+                        krow.gridY = 0;
+                        krow.gridZ = 0;
+                        krow.workgroupX = 0;
+                        krow.workgroupY = 0;
+                        krow.workgroupZ = 0;
+                        krow.groupSegmentSize = 0;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = logger.stringTable().getOrCreate(kernelName);
+
+                        logger.kernelApiTable().insert(krow);
+
+                        // Don't associate kernel name, would require a rework to support multiple
+                        //   ops using the same entry.
+                    }
+                    break;
+                case CUPTI_RUNTIME_TRACE_CBID_cudaGraphLaunch_ptsz_v10000:
+                    {
+                        auto &params = *(cudaGraphLaunch_ptsz_v10000_params_st *)(cbInfo->functionParams);
+                        std::string kernelName(fmt::format("Graph Kernel ({})", (void*)params.graphExec));
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
+                        krow.gridX = 0;
+                        krow.gridY = 0;
+                        krow.gridZ = 0;
+                        krow.workgroupX = 0;
+                        krow.workgroupY = 0;
+                        krow.workgroupZ = 0;
+                        krow.groupSegmentSize = 0;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = logger.stringTable().getOrCreate(kernelName);
+
+                        logger.kernelApiTable().insert(krow);
+
+                        // Don't associate kernel name, would require a rework to support multiple
+                        //   ops using the same entry.
+                    }
+                    break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020:
                     {
                         auto &params = *(cudaMemcpy_v3020_params *)(cbInfo->functionParams);

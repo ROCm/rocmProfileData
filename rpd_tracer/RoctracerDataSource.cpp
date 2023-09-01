@@ -298,6 +298,30 @@ void RoctracerDataSource::api_callback(
                     }
                     break;
 
+                case HIP_API_ID_hipGraphLaunch:
+                    {
+                        auto &params = data->args.hipGraphLaunch;
+                        std::string kernelName(fmt::format("Graph Kernel ({})", (void*)params.graphExec));
+                        KernelApiTable::row krow;
+                        krow.api_id = row.api_id;
+                        krow.stream = fmt::format("{}", (void*)params.stream);
+                        krow.gridX = 0;
+                        krow.gridY = 0;
+                        krow.gridZ = 0;
+                        krow.workgroupX = 0;
+                        krow.workgroupY = 0;
+                        krow.workgroupZ = 0;
+                        krow.groupSegmentSize = 0;
+                        krow.privateSegmentSize = 0;
+                        krow.kernelName_id = logger.stringTable().getOrCreate(kernelName);
+
+                        logger.kernelApiTable().insert(krow);
+
+                        // Don't associate kernel name, would require a rework to support multiple
+                        //   ops using the same entry.
+                    }
+                    break;
+
                 case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
                         auto &params = data->args.hipExtModuleLaunchKernel;
