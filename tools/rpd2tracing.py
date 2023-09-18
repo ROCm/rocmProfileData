@@ -102,7 +102,7 @@ if args.end:
     rangeStringOp = rangeStringOp + " and rocpd_op.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_op.start/1000 <= %s"%(end_time)
 
 print("Filter: %s"%(rangeStringApi))
-quit()
+
 # Output Ops
 '''
 # Hack for busted rocprofiler that can't populate kernel names
