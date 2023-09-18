@@ -86,7 +86,7 @@ print("min_time = ", min_time, " max_time = ", max_time)
 if args.start:
     start_time = None
     if "%" in args.start:
-        start_time = (max_time - min_time) * ( int( args.start.replace("%","") ) ) + min_time
+        start_time = ( (max_time - min_time) * ( int( args.start.replace("%","") )/100 ) + min_time )/1000
     else:
         start_time = int(args.start)
     rangeStringApi = "where rocpd_api.start/1000 >= %s"%(start_time)
@@ -94,7 +94,7 @@ if args.start:
 if args.end:
     end_time = None
     if "%" in args.end:
-        end_time = (max_time - min_time) * ( int( args.end.replace("%","") ) ) + min_time
+        end_time = ( (max_time - min_time) * ( int( args.end.replace("%","") )/100 ) + min_time )/1000
     else:
         end_time = int(args.start)
 
