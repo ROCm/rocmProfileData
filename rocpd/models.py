@@ -99,6 +99,25 @@ class BarrierOp(Op):
     aquireFence = models.CharField(max_length=8)   #(none, agent, system)
     releaseFence = models.CharField(max_length=8)  #(none, agent, system)
 
+class Monitor(models.Model):
+    class DeviceType(models.TextChoices):
+        GPU = 'gpu'
+        CPU = 'cpu'
+    class MonitorType(models.TextChoices):
+        MCLK = "mclk"
+        SCLK = "sclk"
+        TEMP = "temp"
+        POWER = "power"
+        FAN = "fan%"
+        VRAM = "vram%"
+        GPU = "gpu%"
+    deviceType = models.CharField(max_length = 16, choices = DeviceType.choices)
+    deviceId = models.IntegerField(default=0)
+    monitorType = models.CharField(max_length = 16, choices = MonitorType.choices)
+    start = models.IntegerField(default=0)
+    end = models.IntegerField(default=0)
+    value = models.CharField(max_length=255)
+
 #class InputSignal(models.Model)
 #    op = models.ForeignKey(Ops, on_delete=models.PROTECT)
 #    inputOp = models.ForeignKey(Ops, on_delete=models.PROTECT)

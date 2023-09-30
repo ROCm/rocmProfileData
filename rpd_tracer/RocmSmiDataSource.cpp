@@ -1,0 +1,126 @@
+/**************************************************************************
+ * Copyright (c) 2022 Advanced Micro Devices, Inc.
+ **************************************************************************/
+#include "RocmSmiDataSource.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "rocm_smi/rocm_smi.h"
+
+#include <fmt/format.h>
+
+#include "Logger.h"
+#include "Utility.h"
+
+
+// Create a factory for the Logger to locate and use
+extern "C" {
+    DataSource *RocmSmiDataSourceFactory() { return new RocmSmiDataSource(); }
+}  // extern "C"
+
+
+
+void RocmSmiDataSource::init()
+{
+    rsmi_status_t ret;
+    ret = rsmi_init(0);
+
+#if 1
+    uint32_t num_devices;
+    uint16_t dev_id;
+
+    rsmi_num_monitor_devices(&num_devices);
+    for (int i = 0; i < num_devices; ++i) {
+        rsmi_dev_id_get(i, &dev_id);
+        fprintf(stderr, "device: %d\n", dev_id);
+    }
+#endif
+
+    // FIXME: decide how many gpus and what values to log
+
+    m_done = false;
+    m_period = 1000;
+
+    m_worker = new std::thread(&RocmSmiDataSource::work, this);
+}
+
+void RocmSmiDataSource::end()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    m_done = true;
+    lock.unlock();
+    m_worker->join();
+    delete m_worker;
+
+    rsmi_status_t ret;
+    ret = rsmi_shut_down();
+}
+
+void RocmSmiDataSource::startTracing()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    m_loggingActive = true;
+}
+
+void RocmSmiDataSource::stopTracing()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    m_loggingActive = false;
+
+    // Tell the monitor table that it should terminate any outstanding ranges...
+    //    since we are paused/stopped.
+    Logger &logger = Logger::singleton();
+    logger.monitorTable().endCurrentRuns(clocktime_ns());
+}
+
+
+void RocmSmiDataSource::work()
+{
+    Logger &logger = Logger::singleton();
+    std::unique_lock<std::mutex> lock(m_mutex);
+
+    sqlite3_int64 startTime = clocktime_ns()/1000;
+    
+    while (m_done == false) {
+        if (m_loggingActive) {
+            lock.unlock();
+            rsmi_frequencies_t freqs;
+            auto ret = rsmi_dev_gpu_clk_freq_get(0, RSMI_CLK_TYPE_SYS, &freqs);
+            if (ret == RSMI_STATUS_SUCCESS) {
+                MonitorTable::row mrow;
+                mrow.deviceId = 0;
+                mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
+                mrow.monitorType = "sclk";	// FIXME, use enums or somthing fancy
+                mrow.start = clocktime_ns();
+                mrow.end = 0;
+                mrow.value = fmt::format("{}", freqs.frequency[freqs.current] / 1000000);
+                logger.monitorTable().insert(mrow);
+            }
+#if 0
+            uint64_t pow;
+            ret = rsmi_dev_power_ave_get(0, 0, &pow);
+            if (ret == RSMI_STATUS_SUCCESS) {
+                MonitorTable::row mrow;
+                mrow.deviceId = 0;
+                mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
+                mrow.monitorType = "power";	// FIXME, use enums or somthing fancy
+                mrow.start = clocktime_ns();
+                mrow.end = 0;
+                mrow.value = fmt::format("{}", pow / 1000000.0);
+                logger.monitorTable().insert(mrow);
+            }
+#endif
+            lock.lock();
+        }
+        
+        sqlite3_int64 sleepTime = startTime + m_period - clocktime_ns()/1000;
+        sleepTime = (sleepTime > 0) ? sleepTime : 0;
+        //fprintf(stderr, "sleepTime: %lld (done = %s)\n", sleepTime, m_done ? "true" : "false");
+        lock.unlock();
+        usleep(sleepTime);
+        lock.lock();
+        startTime = clocktime_ns()/1000;
+    }
+}

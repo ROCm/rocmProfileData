@@ -41,6 +41,7 @@ public:
     KernelApiTable &kernelApiTable() { return *m_kernelApiTable; }
     CopyApiTable &copyApiTable() { return *m_copyApiTable; }
     ApiTable &apiTable() { return *m_apiTable; }
+    MonitorTable &monitorTable() { return *m_monitorTable; }
 
 
     // External control to stop/stop logging
@@ -68,6 +69,7 @@ private:
     KernelApiTable *m_kernelApiTable {nullptr};
     CopyApiTable *m_copyApiTable {nullptr};
     ApiTable *m_apiTable {nullptr};
+    MonitorTable *m_monitorTable {nullptr};
 
     void init();
     void finalize();

@@ -125,6 +125,7 @@ void Logger::init()
     m_copyApiTable = new CopyApiTable(filename);
     m_opTable = new OpTable(filename);
     m_apiTable = new ApiTable(filename);
+    m_monitorTable = new MonitorTable(filename);
 
     // Offset primary keys so they do not collide between sessions
     sqlite3_int64 offset = m_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
@@ -138,7 +139,8 @@ void Logger::init()
     // Create one instance of each available datasource
     std::list<std::string> factories = {
         "RoctracerDataSourceFactory",
-        "CuptiDataSourceFactory"
+        "CuptiDataSourceFactory",
+        "RocmSmiDataSourceFactory"
         };
 
     void (*dl) = dlopen("librpd_tracer.so", RTLD_LAZY);
@@ -192,6 +194,7 @@ void Logger::finalize()
         m_apiTable->finalize();
         m_kernelApiTable->finalize();
         m_copyApiTable->finalize();
+        m_monitorTable->finalize();
         const timestamp_t end_time = clocktime_ns();
         fprintf(stderr, "rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
     }
