@@ -190,7 +190,7 @@ void MonitorTable::finalize()
     int ret = 0;
     // FIXME: to empty string or not to empty string?  multi-session issue?
     //ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string where id != 1", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "insert into rocpd_monitor select * from temp_rocpd_monitor", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "insert into rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) select deviceType, deviceId, monitorType, start, end, value from temp_rocpd_monitor", NULL, NULL, NULL);
     fprintf(stderr, "rocpd_monitor: %d\n", ret);
 }
 

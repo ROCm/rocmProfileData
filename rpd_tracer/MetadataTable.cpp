@@ -48,7 +48,6 @@ int sessionCallback(void *data, int argc, char **argv, char **colName)
 {
     sqlite3_int64 &sessionId = *(sqlite3_int64*)data;
     sessionId = atoll(argv[0]);
-    fflush(stdout);
     return 0;
 }
 

@@ -27,7 +27,7 @@ void RocmSmiDataSource::init()
     rsmi_status_t ret;
     ret = rsmi_init(0);
 
-#if 1
+#if 0
     uint32_t num_devices;
     uint16_t dev_id;
 
@@ -43,6 +43,7 @@ void RocmSmiDataSource::init()
     m_done = false;
     m_period = 1000;
 
+    m_resource = new DbResource(Logger::singleton().filename(), std::string("smi_logger_active"));
     m_worker = new std::thread(&RocmSmiDataSource::work, this);
 }
 
@@ -53,6 +54,8 @@ void RocmSmiDataSource::end()
     lock.unlock();
     m_worker->join();
     delete m_worker;
+
+    m_resource->unlock();
 
     rsmi_status_t ret;
     ret = rsmi_shut_down();
@@ -82,11 +85,15 @@ void RocmSmiDataSource::work()
     std::unique_lock<std::mutex> lock(m_mutex);
 
     sqlite3_int64 startTime = clocktime_ns()/1000;
+
+    bool haveResource = m_resource->tryLock();
+    fprintf(stderr, "trylock %s\n", haveResource ? "true":"false");
     
     while (m_done == false) {
-        if (m_loggingActive) {
+        if (haveResource && m_loggingActive) {
             lock.unlock();
             rsmi_frequencies_t freqs;
+#if 1
             auto ret = rsmi_dev_gpu_clk_freq_get(0, RSMI_CLK_TYPE_SYS, &freqs);
             if (ret == RSMI_STATUS_SUCCESS) {
                 MonitorTable::row mrow;
@@ -98,6 +105,7 @@ void RocmSmiDataSource::work()
                 mrow.value = fmt::format("{}", freqs.frequency[freqs.current] / 1000000);
                 logger.monitorTable().insert(mrow);
             }
+#endif
 #if 0
             uint64_t pow;
             ret = rsmi_dev_power_ave_get(0, 0, &pow);
@@ -117,10 +125,17 @@ void RocmSmiDataSource::work()
         
         sqlite3_int64 sleepTime = startTime + m_period - clocktime_ns()/1000;
         sleepTime = (sleepTime > 0) ? sleepTime : 0;
-        //fprintf(stderr, "sleepTime: %lld (done = %s)\n", sleepTime, m_done ? "true" : "false");
+        // sleep longer if we aren't the active instance
+        if (haveResource == false)
+            sleepTime += m_period * 10;
         lock.unlock();
         usleep(sleepTime);
         lock.lock();
+        // Try to become the active logging instance
+        if (haveResource == false) {
+            haveResource = m_resource->tryLock();
+            if (haveResource)
+        }
         startTime = clocktime_ns()/1000;
     }
 }

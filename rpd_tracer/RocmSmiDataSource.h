@@ -4,11 +4,14 @@
 #pragma once
 
 #include "DataSource.h"
+#include "DbResource.h"
 
 #include <sqlite3.h>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+
+
 
 
 class RocmSmiDataSource : public DataSource
@@ -24,6 +27,7 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_wait;
     bool m_loggingActive {false};
+    DbResource *m_resource {nullptr};
 
     void work();                // work thread
     std::thread *m_worker {nullptr};
