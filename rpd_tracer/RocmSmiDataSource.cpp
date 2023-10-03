@@ -134,7 +134,6 @@ void RocmSmiDataSource::work()
         // Try to become the active logging instance
         if (haveResource == false) {
             haveResource = m_resource->tryLock();
-            if (haveResource)
         }
         startTime = clocktime_ns()/1000;
     }
