@@ -87,7 +87,6 @@ void RocmSmiDataSource::work()
     sqlite3_int64 startTime = clocktime_ns()/1000;
 
     bool haveResource = m_resource->tryLock();
-    fprintf(stderr, "trylock %s\n", haveResource ? "true":"false");
     
     while (m_done == false) {
         if (haveResource && m_loggingActive) {
