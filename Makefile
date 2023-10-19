@@ -24,3 +24,6 @@ rpd:
 rocpd:
 	$(MAKE) -c rocpd_python
 
+.PHONY: config
+config:
+	$(MAKE) config -C rpd_tracer

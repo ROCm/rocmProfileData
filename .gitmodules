@@ -1,3 +1,6 @@
 [submodule "rtg_tracer"]
 	path = rtg_tracer
 	url = https://github.com/jeffdaily/rocm-timeline-generator
+[submodule "smu_trace"]
+	path = smutrace
+	url = https://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@github.amd.com/AGS-ROCm-CI/smutrace.git

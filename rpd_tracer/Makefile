@@ -3,6 +3,12 @@ PREFIX = /usr/local
 
 HIP_PATH?= $(wildcard /opt/rocm/hip)
 CUDA_PATH?= $(wildcard /usr/local/cuda/)
+SMUDUMP?= $(wildcard ../smutrace/Makefile)
+ROOT_DIR = $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+
+ifeq (,$(HIP_PATH))
+HIP_PATH= $(wildcard /opt/rocm)
+endif
 
 HIPCC=$(HIP_PATH)/bin/hipcc
 
@@ -16,7 +22,7 @@ ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
         RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-        RPD_SRCS += RoctracerDataSource.cpp RocmSmiDataSource.cpp
+        RPD_SRCS += RoctracerDataSource.cpp RocmSmiDataSource.cpp SmuDumpDataSource.cpp
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
 endif
 
@@ -44,6 +50,9 @@ all: | $(RPD_MAIN)
 
 $(RPD_MAIN): $(RPD_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -g
+ifneq (,$(SMUDUMP))
+	sudo make -C $(ROOT_DIR)../smutrace
+endif
 
 .cpp.o:
 	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g
@@ -58,6 +67,15 @@ install:
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
 	ldconfig
 	$(PYTHON) setup.py install
+ifneq (,$(SMUDUMP))
+	sudo make install -C $(ROOT_DIR)../smutrace
+endif
+
+.PHONY: config
+config:
+ifneq (,$(SMUDUMP))
+	sudo make config -C $(ROOT_DIR)../smutrace
+endif
 
 .PHONY: uninstall
 uninstall:

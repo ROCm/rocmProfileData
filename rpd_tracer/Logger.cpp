@@ -142,7 +142,8 @@ void Logger::init()
     std::list<std::string> factories = {
         "RoctracerDataSourceFactory",
         "CuptiDataSourceFactory",
-        "RocmSmiDataSourceFactory"
+        "RocmSmiDataSourceFactory",
+        "SmuDumpDataSourceFactory"
         };
 
     void (*dl) = dlopen("librpd_tracer.so", RTLD_LAZY);
