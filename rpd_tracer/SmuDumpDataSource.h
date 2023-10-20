@@ -27,6 +27,7 @@ public:
     void stopTracing() override;
     static SmuDumpDataSource& singleton();
     timestamp_t getTimeStamp();
+    bool isLoggingEnabled();
 
 private:
     std::mutex m_mutex;
