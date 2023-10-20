@@ -32,7 +32,7 @@ timestamp_t SmuDumpDataSource::getTimeStamp()
 void SmuDumpDataSource::init()
 {
     m_singleton=this;
-    void (*dl) = dlopen("libsmudmp.so", RTLD_LAZY);
+    void (*dl) = dlopen("libsmutrace.so", RTLD_LAZY);
     if (dl) {
         f_smuDumpInit = (SmuDumpInitFunc) dlsym(dl, "smuDumpInit");
         f_smuDumpEnd = (SmuDumpEndFunc) dlsym(dl, "smuDumpEnd");
