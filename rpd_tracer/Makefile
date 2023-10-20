@@ -84,3 +84,6 @@ uninstall:
 .PHONY: clean
 clean:
 	rm -f *.o *.so 
+ifneq (,$(SMUDUMP))
+	sudo make clean -C $(ROOT_DIR)../smutrace
+endif
