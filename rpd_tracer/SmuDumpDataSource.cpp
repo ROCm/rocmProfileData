@@ -12,7 +12,7 @@
 
 #include "Logger.h"
 
-static SmuDumpDataSource *g_singleton;
+static SmuDumpDataSource *g_singleton = nullptr;
 
 // Create a factory for the Logger to locate and use
 extern "C" {
@@ -28,6 +28,11 @@ SmuDumpDataSource& SmuDumpDataSource::singleton()
 timestamp_t SmuDumpDataSource::getTimeStamp()
 {
     return m_timestamp;
+}
+
+bool SmuDumpDataSource::isLoggingEnabled()
+{
+    return m_loggingEnabled;
 }
 
 void SmuDumpDataSource::init()

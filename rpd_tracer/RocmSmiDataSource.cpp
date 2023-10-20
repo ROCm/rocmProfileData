@@ -13,6 +13,7 @@
 
 #include "Logger.h"
 #include "Utility.h"
+#include "SmuDumpDataSource.h"
 
 
 // Create a factory for the Logger to locate and use
@@ -25,6 +26,7 @@ extern "C" {
 void RocmSmiDataSource::init()
 {
     rsmi_status_t ret;
+    if (SmuDumpDataSource::singleton().isLoggingEnabled()) return; 
     ret = rsmi_init(0);
 
 #if 0
@@ -49,6 +51,7 @@ void RocmSmiDataSource::init()
 
 void RocmSmiDataSource::end()
 {
+    if (SmuDumpDataSource::singleton().isLoggingEnabled()) return; 
     std::unique_lock<std::mutex> lock(m_mutex);
     m_done = true;
     lock.unlock();
@@ -63,12 +66,14 @@ void RocmSmiDataSource::end()
 
 void RocmSmiDataSource::startTracing()
 {
+    if (SmuDumpDataSource::singleton().isLoggingEnabled()) return; 
     std::unique_lock<std::mutex> lock(m_mutex);
     m_loggingActive = true;
 }
 
 void RocmSmiDataSource::stopTracing()
 {
+    if (SmuDumpDataSource::singleton().isLoggingEnabled()) return; 
     std::unique_lock<std::mutex> lock(m_mutex);
     m_loggingActive = false;
 
