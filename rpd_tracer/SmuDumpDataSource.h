@@ -34,7 +34,6 @@ private:
     SmuDumpEndFunc f_smuDumpEnd;
     SmuDumpOnceFunc f_smuDumpOnce;
     DbResource *m_resource {nullptr};
-    static SmuDumpDataSource *m_singleton;
     timestamp_t m_timestamp;
 
     bool m_loggingActive {false};

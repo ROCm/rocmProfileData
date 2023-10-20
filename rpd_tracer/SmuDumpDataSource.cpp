@@ -12,16 +12,17 @@
 
 #include "Logger.h"
 
+static SmuDumpDataSource *g_singleton;
 
 // Create a factory for the Logger to locate and use
 extern "C" {
-    DataSource *SmuDumpDataSourceFactory() { return new SmuDumpDataSource(); }
+    DataSource *SmuDumpDataSourceFactory() { return (g_singleton = new SmuDumpDataSource()); }
 }  // extern "C"
 
 
 SmuDumpDataSource& SmuDumpDataSource::singleton()
 {
-    return *m_singleton;
+    return *g_singleton;
 }
 
 timestamp_t SmuDumpDataSource::getTimeStamp()
@@ -31,7 +32,6 @@ timestamp_t SmuDumpDataSource::getTimeStamp()
 
 void SmuDumpDataSource::init()
 {
-    m_singleton=this;
     void (*dl) = dlopen("libsmutrace.so", RTLD_LAZY);
     if (dl) {
         f_smuDumpInit = (SmuDumpInitFunc) dlsym(dl, "smuDumpInit");
