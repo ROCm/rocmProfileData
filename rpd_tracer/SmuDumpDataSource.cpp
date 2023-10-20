@@ -11,7 +11,6 @@
 #include <fmt/format.h>
 
 #include "Logger.h"
-#include "Utility.h"
 
 
 // Create a factory for the Logger to locate and use

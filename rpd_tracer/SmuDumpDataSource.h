@@ -5,6 +5,7 @@
 
 #include "DataSource.h"
 #include "DbResource.h"
+#include "Utility.h"
 
 #include <sqlite3.h>
 #include <thread>
