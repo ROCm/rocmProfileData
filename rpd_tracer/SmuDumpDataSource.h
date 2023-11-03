@@ -16,6 +16,10 @@ typedef void (*SmuDumpCallback)(uint64_t, const char*, const char*, double);
 typedef bool (*SmuDumpInitFunc) (SmuDumpCallback callback);
 typedef void (*SmuDumpEndFunc) (void);
 typedef void (*SmuDumpOnceFunc) (void);
+typedef void (*RegDumpOnceFunc) (void);
+typedef uint32_t (*RegGetTraceRate) (void);
+typedef uint32_t (*SmuGetTraceRate) (void);
+
 
 class SmuDumpDataSource : public DataSource
 {
@@ -34,7 +38,11 @@ private:
     SmuDumpInitFunc f_smuDumpInit;
     SmuDumpEndFunc f_smuDumpEnd;
     SmuDumpOnceFunc f_smuDumpOnce;
-    DbResource *m_resource {nullptr};
+    RegDumpOnceFunc f_regDumpOnce;
+    RegGetTraceRate f_regGetTraceRate;
+    SmuGetTraceRate f_smuGetTraceRate;
+    DbResource *m_smu_resource {nullptr};
+    DbResource *m_reg_resource {nullptr};
     timestamp_t m_timestamp;
 
     bool m_loggingActive {false};
@@ -42,9 +50,12 @@ private:
     static void addSMUValueToSqliteDb(uint64_t, const char* type ,const char* name, double value);
 
 
-    void work();                // work thread
-    std::thread *m_worker {nullptr};
+    void smuwork(); 
+    void regwork();                
+    std::thread *m_smu_worker {nullptr};
+    std::thread *m_reg_worker {nullptr};
     volatile bool m_done {false};
-    sqlite3_int64 m_period { 1000 };
+    sqlite3_int64 m_smu_period { 1000 };
+    sqlite3_int64 m_reg_period { 1000 };
 };
 

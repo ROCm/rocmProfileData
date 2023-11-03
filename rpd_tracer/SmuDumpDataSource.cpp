@@ -42,20 +42,27 @@ void SmuDumpDataSource::init()
         f_smuDumpInit = (SmuDumpInitFunc) dlsym(dl, "smuDumpInit");
         f_smuDumpEnd = (SmuDumpEndFunc) dlsym(dl, "smuDumpEnd");
         f_smuDumpOnce = (SmuDumpOnceFunc) dlsym(dl, "smuDumpOnce");
+        f_regDumpOnce = (RegDumpOnceFunc) dlsym(dl, "regDumpOnce");
+        f_smuGetTraceRate = (SmuGetTraceRate) dlsym(dl, "getSmuVariablesCaptureRate");
+        f_regGetTraceRate = (RegGetTraceRate) dlsym(dl, "getRegisterExpressionCaptureRate");
         m_loggingEnabled = (f_smuDumpInit && f_smuDumpEnd && f_smuDumpOnce &&
+                            f_smuGetTraceRate && f_regGetTraceRate && f_regDumpOnce  &&
                             f_smuDumpInit(addSMUValueToSqliteDb));
     }
 
     // FIXME: decide how many gpus and what values to log
 
     m_done = false;
-    m_period = 1000;
+    m_smu_period = f_smuGetTraceRate();
+    m_reg_period = f_regGetTraceRate();
     m_timestamp=0;
 
     if (m_loggingEnabled)
     {
-        m_resource = new DbResource(Logger::singleton().filename(), std::string("smudump_logger_active"));
-        m_worker = new std::thread(&SmuDumpDataSource::work, this);
+        m_smu_resource = new DbResource(Logger::singleton().filename(), std::string("smudump_logger_active"));
+        m_reg_resource = new DbResource(Logger::singleton().filename(), std::string("regdump_logger_active"));
+        m_smu_worker = new std::thread(&SmuDumpDataSource::smuwork, this);
+        m_reg_worker = new std::thread(&SmuDumpDataSource::regwork, this);
     }
 }
 
@@ -66,9 +73,12 @@ void SmuDumpDataSource::end()
         std::unique_lock<std::mutex> lock(m_mutex);
         m_done = true;
         lock.unlock();
-        m_worker->join();
-        delete m_worker;
-        m_resource->unlock();
+        m_smu_worker->join();
+        m_reg_worker->join();
+        delete m_smu_worker;
+        delete m_reg_worker;
+        m_smu_resource->unlock();
+        m_reg_resource->unlock();   
         f_smuDumpEnd();
     }
 }
@@ -112,12 +122,12 @@ void SmuDumpDataSource::addSMUValueToSqliteDb(uint64_t did, const char* type ,co
     logger.monitorTable().insert(mrow);
 }
 
-void SmuDumpDataSource::work()
+void SmuDumpDataSource::smuwork()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     sqlite3_int64 startTime = clocktime_ns()/1000;
 
-    bool haveResource = m_resource->tryLock();
+    bool haveResource = m_smu_resource->tryLock();
     
     while (m_done == false) {
 
@@ -128,16 +138,16 @@ void SmuDumpDataSource::work()
             lock.lock();
         }
         
-        sqlite3_int64 sleepTime = startTime + m_period - clocktime_ns()/1000;
+        sqlite3_int64 sleepTime = startTime + m_smu_period  - clocktime_ns()/1000;
         sleepTime = (sleepTime > 0) ? sleepTime : 0;
         if (haveResource == false)
-            sleepTime += m_period * 10;
+            sleepTime += m_smu_period * 10;
 
         lock.unlock();
         usleep(sleepTime);
         lock.lock();
         if (haveResource == false) {
-            haveResource = m_resource->tryLock();
+            haveResource = m_smu_resource->tryLock();
         }
         startTime = clocktime_ns()/1000;
     }
