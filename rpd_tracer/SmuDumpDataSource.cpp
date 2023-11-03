@@ -153,3 +153,34 @@ void SmuDumpDataSource::smuwork()
     }
 }
 
+void SmuDumpDataSource::regwork()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    sqlite3_int64 startTime = clocktime_ns()/1000;
+
+    bool haveResource = m_reg_resource->tryLock();
+    
+    while (m_done == false) {
+
+        if (haveResource && m_loggingActive) {
+            lock.unlock();
+            m_timestamp=clocktime_ns();
+            f_regDumpOnce();
+            lock.lock();
+        }
+        
+        sqlite3_int64 sleepTime = startTime + m_reg_period - clocktime_ns()/1000;
+        sleepTime = (sleepTime > 0) ? sleepTime : 0;
+        if (haveResource == false)
+            sleepTime += m_reg_period * 10;
+        lock.unlock();
+        usleep(sleepTime);
+        lock.lock();
+        if (haveResource == false) {
+            haveResource = m_reg_resource->tryLock();
+        }
+        startTime = clocktime_ns()/1000;
+    }
+}
+
+
