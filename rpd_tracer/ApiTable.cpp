@@ -48,13 +48,6 @@ public:
     sqlite3_stmt *apiInsert;
     sqlite3_stmt *apiInsertNoId;
 
-    void writeRows();
-
-    void work();                // work thread
-    std::thread *worker;
-    bool workerRunning;
-    bool done;
-
     sqlite3_int64 roctxResumeTime;
 
     ApiTable *p;
@@ -62,7 +55,7 @@ public:
 
 
 ApiTable::ApiTable(const char *basefile)
-: Table(basefile)
+: BufferedTable(basefile, ApiTablePrivate::BUFFERSIZE, ApiTablePrivate::BATCHSIZE)
 , d(new ApiTablePrivate(this))
 {
     int ret;
@@ -72,23 +65,21 @@ ApiTable::ApiTable(const char *basefile)
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api(id, pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?,?)", -1, &d->apiInsert, NULL);
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api(pid, tid, start, end, apiName_id, args_id) values (?,?,?,?,?,?)", -1, &d->apiInsertNoId, NULL);
 
-    d->head = 0;
-    d->tail = 0;
-
-    d->worker = NULL;
-    d->done = false;
-    d->workerRunning = true;
-
     d->roctxResumeTime = 0;
-
-    d->worker = new std::thread(&ApiTablePrivate::work, d);
 }
+
+
+ApiTable::~ApiTable()
+{
+    delete d;
+}
+
 
 void ApiTable::insert(const ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
         //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
 	//FIXME
@@ -104,9 +95,9 @@ void ApiTable::insert(const ApiTable::row &row)
         lock.lock();
     }
 
-    d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = row;
 
-    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE) {
         lock.unlock();
         m_wait.notify_one();
     }
@@ -117,7 +108,7 @@ static sqlite3_int64 roctx_id_hack = sqlite3_int64(1) << 31;
 void ApiTable::insertRoctx(ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
         //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
 	//FIXME
         const timestamp_t start = clocktime_ns();
@@ -131,9 +122,9 @@ void ApiTable::insertRoctx(ApiTable::row &row)
         lock.lock();
     }
     row.api_id = ++roctx_id_hack;
-    d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = row;
 
-    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE) {
         lock.unlock();
         m_wait.notify_one();
     }
@@ -150,7 +141,7 @@ void ApiTable::pushRoctx(const ApiTable::row &row)
 void ApiTable::popRoctx(const ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
         //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
 	//FIXME
         const timestamp_t start = clocktime_ns();
@@ -169,17 +160,17 @@ void ApiTable::popRoctx(const ApiTable::row &row)
         ApiTable::row &r = stack.front();
         r.end = row.end;
         r.api_id = ++roctx_id_hack;
-        d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+        d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = r;
         stack.pop_front();
     }
     else {  // Pop without a push.  This is due to suspend/resume.  Fudge the start.
         ApiTable::row &r = const_cast<ApiTable::row&>(row);
         r.start = d->roctxResumeTime;
         r.api_id = ++roctx_id_hack;
-        d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+        d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = r;
     }
 
-    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE) {
         lock.unlock();
         m_wait.notify_one();
     }
@@ -188,7 +179,7 @@ void ApiTable::popRoctx(const ApiTable::row &row)
 void ApiTable::suspendRoctx(sqlite3_int64 atTime)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
         m_wait.notify_one();
         m_wait.wait(lock);
     }
@@ -199,20 +190,20 @@ void ApiTable::suspendRoctx(sqlite3_int64 atTime)
         auto &stack = it->second;
         while (stack.empty() == false) {
             // Make sure there is room
-            if (d->head - d->tail >= ApiTablePrivate::BUFFERSIZE) {
+            if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
                 m_wait.notify_one();
                 m_wait.wait(lock);
             }
             ApiTable::row &r = stack.front();
             r.end = atTime;
             r.api_id = ++roctx_id_hack;
-            d->rows[(++d->head) % ApiTablePrivate::BUFFERSIZE] = r;
+            d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = r;
             stack.pop_front();
         }
         ++it;
     }
 
-    if (d->workerRunning == false && (d->head - d->tail) >= ApiTablePrivate::BATCHSIZE)
+    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE)
         m_wait.notify_one();
 }
 
@@ -221,95 +212,61 @@ void ApiTable::resumeRoctx(sqlite3_int64 atTime)
     d->roctxResumeTime = atTime;
 }
 
-void ApiTable::flush()
-{
-    while (d->head > d->tail)
-        d->writeRows();
-}
 
-void ApiTable::finalize()
+void ApiTable::flushRows()
 {
-    std::unique_lock<std::mutex> lock(m_mutex);
-    d->done = true;
-    m_wait.notify_one();
-    lock.unlock();
-    d->worker->join();
-    delete d->worker;
-    flush();
     int ret = 0;
+    ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_api select * from temp_rocpd_api", NULL, NULL, NULL);
     fprintf(stderr, "rocpd_api: %d\n", ret);
+    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_api", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }
 
 
-void ApiTablePrivate::writeRows()
+void ApiTable::writeRows()
 {
-    int i = 1;
+    std::unique_lock<std::mutex> wlock(m_writeMutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
 
-    std::unique_lock<std::mutex> lock(p->m_mutex);
-
-    if (head == tail)
+    if (m_head == m_tail)
         return;
 
     //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     //FIXME
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = tail + 1;
-    int end = tail + BATCHSIZE;
-    end = (end > head) ? head : end;
+    int start = m_tail + 1;
+    int end = m_tail + BATCHSIZE;
+    end = (end > m_head) ? m_head : end;
     lock.unlock();
 
-    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+    sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
-    for (i = start; i <= end; ++i) {
+    for (int i = start; i <= end; ++i) {
         // insert rocpd_api
         int index = 1;
-        ApiTable::row &r = rows[i % BUFFERSIZE];
-        sqlite3_bind_int64(apiInsert, index++, r.api_id + p->m_idOffset);
-        sqlite3_bind_int(apiInsert, index++, r.pid);
-        sqlite3_bind_int(apiInsert, index++, r.tid);
-        sqlite3_bind_int64(apiInsert, index++, r.start);
-        sqlite3_bind_int64(apiInsert, index++, r.end);
-        sqlite3_bind_int64(apiInsert, index++, r.apiName_id + p->m_idOffset);
-        sqlite3_bind_int64(apiInsert, index++, r.args_id + p->m_idOffset);
-        int ret = sqlite3_step(apiInsert);
-        sqlite3_reset(apiInsert);
+        ApiTable::row &r = d->rows[i % BUFFERSIZE];
+        sqlite3_bind_int64(d->apiInsert, index++, r.api_id + m_idOffset);
+        sqlite3_bind_int(d->apiInsert, index++, r.pid);
+        sqlite3_bind_int(d->apiInsert, index++, r.tid);
+        sqlite3_bind_int64(d->apiInsert, index++, r.start);
+        sqlite3_bind_int64(d->apiInsert, index++, r.end);
+        sqlite3_bind_int64(d->apiInsert, index++, r.apiName_id + m_idOffset);
+        sqlite3_bind_int64(d->apiInsert, index++, r.args_id + m_idOffset);
+        int ret = sqlite3_step(d->apiInsert);
+        sqlite3_reset(d->apiInsert);
     }
     lock.lock();
-    tail = end;
+    m_tail = end;
     lock.unlock();
 
     //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
+    sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
     //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     //FIXME
     const timestamp_t cb_end_time = clocktime_ns();
-    // FIXME: write the overhead record
-    if (done == false) {
-        char buff[4096];
-        std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
-        createOverheadRecord(cb_begin_time, cb_end_time, "ApiTable::writeRows", buff);
-    }
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
+    createOverheadRecord(cb_begin_time, cb_end_time, "ApiTable::writeRows", buff);
 }
-
-
-void ApiTablePrivate::work()
-{
-    std::unique_lock<std::mutex> lock(p->m_mutex);
-
-    while (done == false) {
-        while ((head - tail) >= ApiTablePrivate::BATCHSIZE) {
-            lock.unlock();
-            writeRows();
-            p->m_wait.notify_all();
-            lock.lock();
-        }
-        workerRunning = false;
-        if (done == false)
-          p->m_wait.wait(lock);
-        workerRunning = true;
-    }
-}
-
-

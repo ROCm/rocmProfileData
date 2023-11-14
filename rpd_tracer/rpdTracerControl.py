@@ -99,6 +99,9 @@ class rpdTracerControl:
     def stop(self):
         rpdTracerControl.__rpd.rpdstop()
 
+    def flush(self):
+        rpdTracerControl.__rpd.rpdflush()
+
     def __enter__(self):
         self.start()
 

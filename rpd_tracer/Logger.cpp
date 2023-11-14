@@ -57,6 +57,11 @@ void rpdstop()
 {
     Logger::singleton().rpdstop();
 }
+
+void rpdflush()
+{
+    Logger::singleton().rpdflush();
+}
 }  // extern "C"
 
 // GFH - This mirrors the function in the pre-refactor code.  Allows both code paths to compile.
@@ -106,6 +111,16 @@ void Logger::rpdstop()
     --m_activeCount;
 }
 
+void Logger::rpdflush()
+{
+    std::unique_lock<std::mutex> lock(m_activeMutex);
+    //fprintf(stderr, "rpd_tracer: FLUSH\n");
+    m_stringTable->flush();
+    m_kernelApiTable->flush();
+    m_copyApiTable->flush();
+    m_opTable->flush();
+    m_apiTable->flush();
+}
 
 
 
