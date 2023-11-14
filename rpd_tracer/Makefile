@@ -1,7 +1,7 @@
 
 PREFIX = /usr/local
 
-HIP_PATH?= $(wildcard /opt/rocm/hip)
+HIP_PATH?= $(wildcard /opt/rocm/)
 CUDA_PATH?= $(wildcard /usr/local/cuda/)
 
 HIPCC=$(HIP_PATH)/bin/hipcc
