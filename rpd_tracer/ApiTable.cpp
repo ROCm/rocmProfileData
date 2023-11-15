@@ -39,9 +39,6 @@ public:
     static const int BUFFERSIZE = 4096 * 16;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<ApiTable::row, BUFFERSIZE> rows; // Circular buffer
-    int head;
-    int tail;
-    int count;
 
     std::map<std::pair<sqlite3_int64, sqlite3_int64>, std::deque<ApiTable::row>> roctxStacks;
 

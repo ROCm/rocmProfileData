@@ -47,7 +47,8 @@ void BufferedTable::flush()
         m_wait.wait(lock);
 
     // Worker paused, clear the buffer ourselves
-    while (m_head > m_tail) {
+    auto flushPoint = m_head;
+    while (flushPoint > m_tail) {
         lock.unlock();
         writeRows();
         lock.lock();

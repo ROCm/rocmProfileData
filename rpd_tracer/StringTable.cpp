@@ -103,7 +103,7 @@ void StringTablePrivate::insert(StringTable::row &row)
 	//FIXME
         const timestamp_t end = clocktime_ns();
         lock.unlock();
-        createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::StringTable::insert");
+        //createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::StringTable::insert");
         lock.lock();
     }
 

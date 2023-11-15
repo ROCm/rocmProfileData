@@ -31,4 +31,5 @@ public:
     virtual void end() = 0;
     virtual void startTracing() = 0;
     virtual void stopTracing() = 0;
+    virtual void flush() = 0;
 };

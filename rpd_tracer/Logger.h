@@ -72,4 +72,6 @@ private:
 
     void init();
     void finalize();
+
+    bool m_writeOverheadRecords {true};
 };
