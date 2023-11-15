@@ -44,8 +44,7 @@ public:
     void end() override;
     void startTracing() override;
     void stopTracing() override;
-
-
+    void flush() override;
 
 private:
     CudaApiIdList m_apiList;

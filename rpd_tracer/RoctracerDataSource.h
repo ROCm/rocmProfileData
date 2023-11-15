@@ -42,6 +42,7 @@ public:
     void end() override;
     void startTracing() override;
     void stopTracing() override;
+    void flush() override;
 
 private:
     RocmApiIdList m_apiList;

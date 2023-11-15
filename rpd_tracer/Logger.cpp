@@ -57,6 +57,11 @@ void rpdstop()
 {
     Logger::singleton().rpdstop();
 }
+
+void rpdflush()
+{
+    Logger::singleton().rpdflush();
+}
 }  // extern "C"
 
 // GFH - This mirrors the function in the pre-refactor code.  Allows both code paths to compile.
@@ -106,6 +111,25 @@ void Logger::rpdstop()
     --m_activeCount;
 }
 
+void Logger::rpdflush()
+{
+    std::unique_lock<std::mutex> lock(m_activeMutex);
+    //fprintf(stderr, "rpd_tracer: FLUSH\n");
+    const timestamp_t cb_begin_time = clocktime_ns();
+
+    // Have the data sources flush out whatever they have available
+    for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
+            (*it)->flush();
+
+    m_stringTable->flush();
+    m_kernelApiTable->flush();
+    m_copyApiTable->flush();
+    m_opTable->flush();
+    m_apiTable->flush();
+
+    const timestamp_t cb_end_time = clocktime_ns();
+    createOverheadRecord(cb_begin_time, cb_end_time, "rpdflush", "");
+}
 
 
 
@@ -187,11 +211,13 @@ void Logger::finalize()
 
         // Flush recorders
         const timestamp_t begin_time = clocktime_ns();
-        m_stringTable->finalize();
         m_opTable->finalize();		// OpTable before subclassOpTables
-        m_apiTable->finalize();
         m_kernelApiTable->finalize();
         m_copyApiTable->finalize();
+        m_writeOverheadRecords = false;	// Don't make any new overhead records (api calls)
+        m_apiTable->finalize();
+        m_stringTable->finalize();	// String table last
+
         const timestamp_t end_time = clocktime_ns();
         fprintf(stderr, "rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
     }
@@ -199,7 +225,8 @@ void Logger::finalize()
 
 void Logger::createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args)
 {
-return;
+    if (m_writeOverheadRecords == false)
+        return;
     ApiTable::row row;
     row.pid = GetPid();
     row.tid = GetTid();

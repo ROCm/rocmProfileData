@@ -898,6 +898,11 @@ void RoctracerDataSource::stopTracing() {
     roctracer_stop();
 }
 
+void RoctracerDataSource::flush() {
+    roctracer_flush_activity();
+    roctracer_flush_activity_expl(m_hccPool);
+}
+
 void RoctracerDataSource::end() {
     roctracer_stop();
     roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);

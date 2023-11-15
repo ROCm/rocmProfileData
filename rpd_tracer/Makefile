@@ -1,7 +1,7 @@
 
 PREFIX = /usr/local
 
-HIP_PATH?= $(wildcard /opt/rocm/hip)
+HIP_PATH?= $(wildcard /opt/rocm/)
 CUDA_PATH?= $(wildcard /usr/local/cuda/)
 
 HIPCC=$(HIP_PATH)/bin/hipcc
@@ -10,7 +10,7 @@ TARGET=hcc
 
 RPD_LIBS = -lsqlite3 -lfmt
 RPD_INCLUDES =
-RPD_SRCS = Table.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp Logger.cpp
+RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp Logger.cpp
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
