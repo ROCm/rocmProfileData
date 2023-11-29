@@ -156,7 +156,7 @@ for row in connection.execute("SELECT DISTINCT gpuId FROM rocpd_op"):
 
 for gpuId in gpuIdsPresent:
     print(f"Creating counters for: {gpuId}")
-
+'''
     #Create the queue depth counter
     depth = 0
     idle = 1
@@ -175,6 +175,7 @@ for gpuId in gpuIdsPresent:
     if T_end > 0:
             outfile.write(',{"pid":"%s","name":"Idle","ph":"C","ts":%s,"args":{"idle":%s}}\n'%(gpuId, T_end, idle))
             outfile.write(',{"pid":"%s","name":"QueueDepth","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(gpuId, T_end, depth))
+'''
 
 # Create SMI counters
 try:
