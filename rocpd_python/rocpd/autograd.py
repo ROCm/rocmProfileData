@@ -72,7 +72,12 @@ def generateAutograd(imp):
         if m:
             ag_inserts.append((row[0], importData.getStringId(m.group(1)), "", m.group(2), m.group(3), m.group(4)))
             continue
-        #just op_id
+        # seq and ops (size reporting not enabled)
+        m = re.match('^(.+), seq = ([0-9]+), op_id = ([0-9]+)$', row[1])
+        if m:
+            ag_inserts.append((row[0], importData.getStringId(m.group(1)), m.group(2), m.group(3), "",""))
+            continue
+        # just op_id
         m = re.match('^(.+), op_id = ([0-9]+)$', row[1])
         if m:
             ag_inserts.append((row[0], importData.getStringId(m.group(1)), "", m.group(2), "", ""))

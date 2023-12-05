@@ -40,7 +40,7 @@ connection = sqlite3.connect(args.input_rpd)
 
 outfile = open(args.output_html, 'w', encoding="utf-8")
 
-print("""
+outfile.write("""
 <!DOCTYPE html>
 <html>
 <head>
@@ -49,7 +49,7 @@ print("""
 
 
 <h2>Kernels by Autograd Operator</h2>
-<p>description here</p>
+<p></p>
 
 
 <style>
@@ -67,7 +67,7 @@ th {
 }
 
 .caret::before {
-  content: "\25B6";
+  content: "\\25B6";
   color: black;
   display: inline-block;
   margin-right: 6px;
@@ -110,13 +110,13 @@ for row in connection.execute('select "0" as ordinal, count(*) as count, autogra
     count = int(row[1])
     labels = [row[2], row[3]]
 
-    #print(f'         {depth} {count} {labels[0][:80]} {labels[1][:80]}')
+    #outfile.write(f'         {depth} {count} {labels[0][:80]} {labels[1][:80]}')
     #doit = "now";
 
     # Detect start of groupings
     #for i in [0,1]:
     #    if depth == i and count > 1:
-    #        print("<tbody>")
+    #        outfile.write("<tbody>")
     #        group_active[i] = True
 
     # Detect end of groupings
@@ -126,16 +126,16 @@ for row in connection.execute('select "0" as ordinal, count(*) as count, autogra
             if labels[i] != last_labels[i]:
                 changed = True
         if changed and group_active[i]:
-            print("</tbody>")
+            outfile.write("</tbody>")
             group_active[i] = False
 
     # Detect start of groupings
     for i in [0,1]:
         if depth == i and count > 1:
-            print("<tbody>")
+            outfile.write("<tbody>")
             group_active[i] = True
 
-    # Don't print out single leaf branches
+    # Don't outfile.write out single leaf branches
     if depth < 2 and count < 2:
         continue
 
@@ -150,15 +150,15 @@ for row in connection.execute('select "0" as ordinal, count(*) as count, autogra
     if group_active[0] or group_active[1]: class_string = ' class="nested"><td></td'
     for i in [0,1]:
         if depth == i and group_active[i]: class_string = ' class="caret"'
-    print(f'<tr{class_string}><td>{labels[0]}</td><td>{labels[1][:60]}</td><td>{row[4]}</td><td>{row[5]}</td><td>{row[6]}</td><td>{row[7]}</td></tr>')
+    outfile.write(f'<tr{class_string}><td>{labels[0]}</td><td>{labels[1][:60]}</td><td>{row[4]}</td><td>{row[5]}</td><td>{row[6]}</td><td>{row[7]}</td></tr>')
 
 #clean up groupings
 for i in [1,0]:
     if group_active[i]:
-            print("</tbody>")
+            outfile.write("</tbody>")
             group_active[i] = False
 
-print("""
+outfile.write("""
 </table>
 <script>
 var toggler = document.getElementsByClassName("caret");

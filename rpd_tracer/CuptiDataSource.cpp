@@ -121,6 +121,11 @@ void CuptiDataSource::stopTracing()
     cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
 }
 
+void CuptiDataSource::flush()
+{
+    cuptiActivityFlushAll(0);
+}
+
 void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbid, const CUpti_CallbackData *cbInfo)
 {
     Logger &logger = Logger::singleton();
