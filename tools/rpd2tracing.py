@@ -36,8 +36,8 @@ import argparse
 parser = argparse.ArgumentParser(description='convert RPD to json for chrome tracing')
 parser.add_argument('input_rpd', type=str, help="input rpd db")
 parser.add_argument('output_json', type=str, help="chrome tracing json output")
-parser.add_argument('--start', type=int, help="start timestamp")
-parser.add_argument('--end', type=int, help="end timestamp")
+parser.add_argument('--start', type=str, help="start time - default ms or percentage %. Number only is interpreted as ms. Number with % is interpreted as percentage")
+parser.add_argument('--end', type=str, help="end time - defaults ms or percentage %. See help for --start")
 parser.add_argument('--format', type=str, default="array", help="chome trace format, array or object")
 args = parser.parse_args()
 
@@ -79,12 +79,27 @@ except:
 
 rangeStringApi = ""
 rangeStringOp = ""
+min_time = connection.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
+max_time = connection.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
+print("min_time = ", min_time, " max_time = ", max_time)
+
 if args.start:
-    rangeStringApi = "where rocpd_api.start/1000 >= %s"%(args.start)
-    rangeStringOp = "where rocpd_op.start/1000 >= %s"%(args.start)
+    start_time = None
+    if "%" in args.start:
+        start_time = ( (max_time - min_time) * ( int( args.start.replace("%","") )/100 ) + min_time )/1000
+    else:
+        start_time = int(args.start)
+    rangeStringApi = "where rocpd_api.start/1000 >= %s"%(start_time)
+    rangeStringOp = "where rocpd_op.start/1000 >= %s"%(start_time)
 if args.end:
-    rangeStringApi = rangeStringApi + " and rocpd_api.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_api.start/1000 <= %s"%(args.end)
-    rangeStringOp = rangeStringOp + " and rocpd_op.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_op.start/1000 <= %s"%(args.end)
+    end_time = None
+    if "%" in args.end:
+        end_time = ( (max_time - min_time) * ( int( args.end.replace("%","") )/100 ) + min_time )/1000
+    else:
+        end_time = int(args.start)
+
+    rangeStringApi = rangeStringApi + " and rocpd_api.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_api.start/1000 <= %s"%(end_time)
+    rangeStringOp = rangeStringOp + " and rocpd_op.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_op.start/1000 <= %s"%(end_time)
 
 print("Filter: %s"%(rangeStringApi))
 
