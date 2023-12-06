@@ -140,6 +140,7 @@ void Logger::init()
     const char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
         filename = "./trace.rpd";
+    m_filename = filename;
 
     // Create table recorders
 

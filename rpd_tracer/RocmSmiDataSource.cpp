@@ -78,6 +78,11 @@ void RocmSmiDataSource::stopTracing()
     logger.monitorTable().endCurrentRuns(clocktime_ns());
 }
 
+void RocmSmiDataSource::flush() {
+    Logger &logger = Logger::singleton();
+    logger.monitorTable().endCurrentRuns(clocktime_ns());
+}
+
 
 void RocmSmiDataSource::work()
 {

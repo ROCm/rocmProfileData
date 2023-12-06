@@ -58,6 +58,8 @@ public:
     static void rpdInit() __attribute__((constructor));
     static void rpdFinalize() __attribute__((destructor));
 
+    const std::string filename() { return m_filename; };
+
 private:
     int m_activeCount {0};
     std::mutex m_activeMutex;
@@ -75,5 +77,6 @@ private:
     void init();
     void finalize();
 
+    std::string m_filename;
     bool m_writeOverheadRecords {true};
 };

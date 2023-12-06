@@ -252,11 +252,13 @@ private:
     friend class MetadataTablePrivate;
 };
 
+
 class MonitorTablePrivate;
-class MonitorTable: public Table
+class MonitorTable: public BufferedTable
 {
 public:
     MonitorTable(const char *basefile);
+    virtual ~MonitorTable();
 
     struct row {
         std::string deviceType;
@@ -268,12 +270,12 @@ public:
     };
 
     void insert(const row&);
-    void flush();
-    void finalize();
-
     void endCurrentRuns(sqlite3_int64 endTimestamp);
 
 private:
     MonitorTablePrivate *d;
     friend class MonitorTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };
