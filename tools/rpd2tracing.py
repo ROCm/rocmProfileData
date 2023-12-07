@@ -36,12 +36,12 @@ import argparse
 parser = argparse.ArgumentParser(description='convert RPD to json for chrome tracing')
 parser.add_argument('input_rpd', type=str, help="input rpd db")
 parser.add_argument('output_json', type=str, help="chrome tracing json output")
-parser.add_argument('--start', type=str, help="start time - default ms or percentage %. Number only is interpreted as ms. Number with % is interpreted as percentage")
-parser.add_argument('--end', type=str, help="end time - defaults ms or percentage %. See help for --start")
+parser.add_argument('--start', type=str, help="start time - default us or percentage %%. Number only is interpreted as us. Number with %% is interpreted as percentage")
+parser.add_argument('--end', type=str, help="end time - default us or percentage %%. See help for --start")
 parser.add_argument('--format', type=str, default="array", help="chome trace format, array or object")
 args = parser.parse_args()
 
-print(args)
+#print(args)
 
 connection = sqlite3.connect(args.input_rpd)
 
@@ -81,10 +81,18 @@ rangeStringApi = ""
 rangeStringOp = ""
 min_time = connection.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
 max_time = connection.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
-print("min_time = ", min_time, " max_time = ", max_time)
+if (min_time == None):
+    raise Exception("Trace file is empty.")
+
+print("Timestamps:")
+print(f"\t    first: \t{min_time/1000} us")
+print(f"\t     last: \t{max_time/1000} us")
+print(f"\t duration: \t{(max_time-min_time) / 1000000000} seconds")
+
+start_time = min_time/1000
+end_time = max_time/1000
 
 if args.start:
-    start_time = None
     if "%" in args.start:
         start_time = ( (max_time - min_time) * ( int( args.start.replace("%","") )/100 ) + min_time )/1000
     else:
@@ -92,16 +100,16 @@ if args.start:
     rangeStringApi = "where rocpd_api.start/1000 >= %s"%(start_time)
     rangeStringOp = "where rocpd_op.start/1000 >= %s"%(start_time)
 if args.end:
-    end_time = None
     if "%" in args.end:
         end_time = ( (max_time - min_time) * ( int( args.end.replace("%","") )/100 ) + min_time )/1000
     else:
-        end_time = int(args.start)
+        end_time = int(args.end)
 
-    rangeStringApi = rangeStringApi + " and rocpd_api.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_api.start/1000 <= %s"%(end_time)
-    rangeStringOp = rangeStringOp + " and rocpd_op.start/1000 <= %s"%(args.end) if args.start != None else "where rocpd_op.start/1000 <= %s"%(end_time)
+    rangeStringApi = rangeStringApi + " and rocpd_api.start/1000 <= %s"%(end_time) if args.start != None else "where rocpd_api.start/1000 <= %s"%(end_time)
+    rangeStringOp = rangeStringOp + " and rocpd_op.start/1000 <= %s"%(end_time) if args.start != None else "where rocpd_op.start/1000 <= %s"%(end_time)
 
-print("Filter: %s"%(rangeStringApi))
+print("\nFilter: %s"%(rangeStringApi))
+print(f"Output duration: {(end_time-start_time)/1000000} seconds")
 
 # Output Ops
 '''
@@ -170,7 +178,7 @@ for row in connection.execute("SELECT DISTINCT gpuId FROM rocpd_op"):
     gpuIdsPresent.append(row[0])
 
 for gpuId in gpuIdsPresent:
-    print(f"Creating counters for: {gpuId}")
+    #print(f"Creating counters for: {gpuId}")
 
     #Create the queue depth counter
     depth = 0
@@ -234,7 +242,7 @@ class GpuFrame:
         self.totalOps = 0
 
 # FIXME: include 'start' (in ns) so we can ORDER BY it and break ties?
-for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 UNION ALL SELECT '1', end/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 UNION ALL SELECT '2', rocpd_api.start/1000, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000, rocpd_op.end/1000 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id ORDER BY start/1000 asc"):
+for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 %s UNION ALL SELECT '1', end/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 %s UNION ALL SELECT '2', rocpd_api.start/1000, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000, rocpd_op.end/1000 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id %s ORDER BY start/1000 asc"%(rangeStringApi, rangeStringApi, rangeStringApi)):
     try:
         key = (row[2], row[3])    # Key is 'pid,tid'
         if row[0] == '0':  # Frame start
@@ -277,7 +285,7 @@ for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as lab
                         gpuFrame = currentFrame[key]
                         for dest in gpuFrame.gpus:
                             #print(f"2: OUTPUT: dest={dest} time={gpuFrame.start} -> {gpuFrame.end} Duration={gpuFrame.end - gpuFrame.start} TotalOps={gpuFrame.totalOps}")
-                            outfile.write(',{"pid":"%s","tid":"%s","name":"%s","ts":"%s","dur":"%s","ph":"X","args":{"desc":"%s"}}\n'%(dest[0], dest[1], gpuFrame.name, gpuFrame.start - 1, gpuFrame.end - gpuFrame.start + 1, f"UserMarker frame: {gpuFrame.totalOps} ops"))
+                            outfile.write(',{"pid":"%s","tid":"%s","name":"%s","ts":"%s","dur":"%s","ph":"X","args":{"desc":"%s"}}\n'%(dest[0], dest[1], gpuFrame.name.replace('"',''), gpuFrame.start - 1, gpuFrame.end - gpuFrame.start + 1, f"UserMarker frame: {gpuFrame.totalOps} ops"))
                         currentFrame.pop(key)
 
                         # make the first op under the new frame
