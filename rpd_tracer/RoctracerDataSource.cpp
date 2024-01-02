@@ -67,7 +67,8 @@ typedef enum {
 
 typedef enum {
   HIP_OP_DISPATCH_KIND_UNKNOWN_ = 0,
-  HIP_OP_DISPATCH_KIND_KERNEL_ = 0x11F0
+  HIP_OP_DISPATCH_KIND_KERNEL_ = 0x11F0,
+  HIP_OP_DISPATCH_KIND_TASK_ = 0x11F1
 } hip_op_dispatch_kind_t_;
 
 typedef enum {
@@ -843,7 +844,8 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
             strncpy(row.completionSignal, "", 18);
             row.start = record->begin_ns + toffset;
             row.end = record->end_ns + toffset;
-            row.description_id = (record->kind == HIP_OP_DISPATCH_KIND_KERNEL_)
+            row.description_id = ((record->kind == HIP_OP_DISPATCH_KIND_KERNEL_)
+                               || (record->kind == HIP_OP_DISPATCH_KIND_TASK_))
                 ? logger.stringTable().getOrCreate(cxx_demangle(record->kernel_name))
                 : EMPTY_STRING_ID;
             row.opType_id = name_id;
