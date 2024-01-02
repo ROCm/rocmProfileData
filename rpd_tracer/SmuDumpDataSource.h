@@ -17,6 +17,7 @@ typedef bool (*SmuDumpInitFunc) (SmuDumpCallback callback);
 typedef void (*SmuDumpEndFunc) (void);
 typedef void (*SmuDumpOnceFunc) (void);
 typedef void (*RegDumpOnceFunc) (void);
+typedef void (*SviDumpOnceFunc) (void);
 typedef uint32_t (*RegGetTraceRate) (void);
 typedef uint32_t (*SmuGetTraceRate) (void);
 
@@ -39,10 +40,12 @@ private:
     SmuDumpEndFunc f_smuDumpEnd;
     SmuDumpOnceFunc f_smuDumpOnce;
     RegDumpOnceFunc f_regDumpOnce;
+    SviDumpOnceFunc f_sviDumpOnce;
     RegGetTraceRate f_regGetTraceRate;
     SmuGetTraceRate f_smuGetTraceRate;
     DbResource *m_smu_resource {nullptr};
     DbResource *m_reg_resource {nullptr};
+    DbResource *m_svi_resource {nullptr};
     timestamp_t m_timestamp;
 
     bool m_loggingActive {false};
@@ -51,11 +54,14 @@ private:
 
 
     void smuwork(); 
-    void regwork();                
+    void regwork();     
+    void sviwork();           
     std::thread *m_smu_worker {nullptr};
     std::thread *m_reg_worker {nullptr};
+    std::thread *m_svi_worker {nullptr};
     volatile bool m_done {false};
     sqlite3_int64 m_smu_period { 1000 };
-    sqlite3_int64 m_reg_period { 1000 };
+    sqlite3_int64 m_reg_period { 10 };
+    sqlite3_int64 m_svi_period { 1 };
 };
 

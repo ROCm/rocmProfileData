@@ -43,10 +43,11 @@ void SmuDumpDataSource::init()
         f_smuDumpEnd = (SmuDumpEndFunc) dlsym(dl, "smuDumpEnd");
         f_smuDumpOnce = (SmuDumpOnceFunc) dlsym(dl, "smuDumpOnce");
         f_regDumpOnce = (RegDumpOnceFunc) dlsym(dl, "regDumpOnce");
+        f_sviDumpOnce = (SviDumpOnceFunc) dlsym(dl, "sviDumpOnce");
         f_smuGetTraceRate = (SmuGetTraceRate) dlsym(dl, "getSmuVariablesCaptureRate");
         f_regGetTraceRate = (RegGetTraceRate) dlsym(dl, "getRegisterExpressionCaptureRate");
         m_loggingEnabled = (f_smuDumpInit && f_smuDumpEnd && f_smuDumpOnce &&
-                            f_smuGetTraceRate && f_regGetTraceRate && f_regDumpOnce  &&
+                            f_smuGetTraceRate && f_regGetTraceRate && f_regDumpOnce  && f_sviDumpOnce  &&
                             f_smuDumpInit(addSMUValueToSqliteDb));
     }
 
@@ -61,8 +62,10 @@ void SmuDumpDataSource::init()
     {
         m_smu_resource = new DbResource(Logger::singleton().filename(), std::string("smudump_logger_active"));
         m_reg_resource = new DbResource(Logger::singleton().filename(), std::string("regdump_logger_active"));
+        m_svi_resource = new DbResource(Logger::singleton().filename(), std::string("svidump_logger_active"));
         m_smu_worker = new std::thread(&SmuDumpDataSource::smuwork, this);
         m_reg_worker = new std::thread(&SmuDumpDataSource::regwork, this);
+        m_svi_worker = new std::thread(&SmuDumpDataSource::sviwork, this);
     }
 }
 
@@ -75,10 +78,13 @@ void SmuDumpDataSource::end()
         lock.unlock();
         m_smu_worker->join();
         m_reg_worker->join();
+        m_svi_worker->join();
         delete m_smu_worker;
         delete m_reg_worker;
+        delete m_svi_worker;
         m_smu_resource->unlock();
         m_reg_resource->unlock();   
+        m_svi_resource->unlock();
         f_smuDumpEnd();
     }
 }
@@ -178,6 +184,36 @@ void SmuDumpDataSource::regwork()
         lock.lock();
         if (haveResource == false) {
             haveResource = m_reg_resource->tryLock();
+        }
+        startTime = clocktime_ns()/1000;
+    }
+}
+
+void SmuDumpDataSource::sviwork()
+{
+    std::unique_lock<std::mutex> lock(m_mutex);
+    sqlite3_int64 startTime = clocktime_ns()/1000;
+
+    bool haveResource = m_svi_resource->tryLock();
+    
+    while (m_done == false) {
+
+        if (haveResource && m_loggingActive) {
+            lock.unlock();
+            m_timestamp=clocktime_ns();
+            f_sviDumpOnce();
+            lock.lock();
+        }
+        
+        sqlite3_int64 sleepTime = startTime + m_svi_period - clocktime_ns()/1000;
+        sleepTime = (sleepTime > 0) ? sleepTime : 0;
+        if (haveResource == false)
+            sleepTime += m_svi_period * 10;
+        lock.unlock();
+        usleep(sleepTime);
+        lock.lock();
+        if (haveResource == false) {
+            haveResource = m_svi_resource->tryLock();
         }
         startTime = clocktime_ns()/1000;
     }
