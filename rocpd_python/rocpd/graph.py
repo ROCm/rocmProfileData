@@ -20,7 +20,7 @@
 # THE SOFTWARE.
 ################################################################################
 
-# Create subclass table for autograd operators
+# Create graph tables
 #
 
 import sys
@@ -45,6 +45,12 @@ def generateGraph(imp):
         'hipStreamEndCapture',
         'hipGraphInstantiate',
         'hipGraphInstantiateWithFlags',
+        'cudaStreamBeginCapture_v10000',
+        'cudaStreamBeginCapture_ptsz_v10000',
+        'cudaStreamEndCapture_v10000',
+        'cudaStreamEndCapture_ptsz_v10000',
+        'cudaGraphInstantiate_v10000',
+        'cudaGraphInstantiateWithFlags_v11040',
         #'hipGraphLaunch',
     ]
 
@@ -60,6 +66,8 @@ def generateGraph(imp):
     # create a subclass table for graph launches
     graphApis = [
         'hipGraphLaunch',
+        'cudaGraphLaunch_v10000',
+        'cudaGraphLaunch_ptsz_v10000',
     ]
 
     print(f"Creating subclass table for 'graphLaunch' apis: {graphApis}")
