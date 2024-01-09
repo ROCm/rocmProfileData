@@ -703,6 +703,7 @@ void RoctracerDataSource::api_callback(
                     row.args_id = logger.stringTable().getOrCreate(
                         fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiate.pGraphExec), (void *)data->args.hipGraphInstantiate.graph)
                     );
+                    break;
                 case HIP_API_ID_hipGraphInstantiateWithFlags:
                     row.args_id = logger.stringTable().getOrCreate(
                         fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiateWithFlags.pGraphExec), (void *)data->args.hipGraphInstantiateWithFlags.graph)
