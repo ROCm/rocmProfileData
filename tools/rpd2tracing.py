@@ -129,6 +129,16 @@ for row in connection.execute("select A.string as optype, B.string as descriptio
     except ValueError:
         outfile.write("")
 
+#Output Graph executions on GPU
+try:
+    for row in connection.execute('select graphExec, gpuId, queueId, min(start)/1000, (max(end)-min(start))/1000, count(*) from rocpd_graphLaunchapi A join rocpd_api_ops B on B.api_id = A.api_ptr_id join rocpd_op C on C.id = B.op_id group by api_ptr_id'):
+        try:
+            outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"kernels\":\"%s\"}}\n"%(row[1], row[2], f'Graph {row[0]}', row[3], row[4], row[5]))
+        except ValueError:
+            outfile.write("")
+except:
+    pass
+
 #Output apis
 for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000, (rocpd_api.end-rocpd_api.start) / 1000, (rocpd_api.end != rocpd_api.start) as has_duration from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeStringApi)):
     try:

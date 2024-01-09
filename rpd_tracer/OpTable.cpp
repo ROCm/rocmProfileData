@@ -90,10 +90,11 @@ void OpTable::insert(const OpTable::row &row)
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)
 {
-    // FIXME: double buffer this?
-    // writeRows uses this structure heavily, intermittently.  May matter
+// Disable this for now.  Getting kernel names from roctracer op records now.
+#if 0
     std::lock_guard<std::mutex> guard(d->descriptionLock);
     d->descriptions[api_id] = string_id;
+#endif
 }
 
 void OpTable::flushRows()
@@ -118,8 +119,6 @@ void OpTable::writeRows()
     if (m_head == m_tail)
         return;
 
-    // FIXME
-    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     const timestamp_t cb_begin_time = clocktime_ns();
 
     int start = m_tail + 1;
@@ -135,8 +134,9 @@ void OpTable::writeRows()
         OpTable::row &r = d->rows[i % BUFFERSIZE];
         sqlite3_int64 primaryKey = i + m_idOffset;
 
+// Disable this for now.  Getting kernel names from roctracer op records now.
+#if 0
         // check for description override
-#if 1
         {
             std::lock_guard<std::mutex> guard(d->descriptionLock);
             auto it = d->descriptions.find(r.api_id);
@@ -170,10 +170,7 @@ void OpTable::writeRows()
     m_tail = end;
     lock.unlock();
 
-    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    // FIXME
-    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     const timestamp_t cb_end_time = clocktime_ns() + 1;
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);

@@ -8,12 +8,67 @@ This is a changelog that describes new features as they are added.  Newest first
 Contents:
 <!-- toc -->
 
+- [Graph Subclass](#graph-subclass)
 - [Pytorch Autograd Subclass](#pytorch-autograd-subclass)
 - [Call Stack Accounting](#call-stack-accounting)
 - [Rpd_tracer Start/stop](#rpd_tracer-startstop)
 - [Schema v2](#schema-v2)
 
 <!-- tocstop -->
+
+
+--------------------------------------------------------------------------------
+## Graph Subclass
+Additional graph analysis is available via a post-processing tool.  This uses graph api calls to identify graph captures, kernels, and subsequent launches.  
+
+#### Augment an rpd file with graph info
+```
+python -m rocpd.graph <inputfile.rpd>
+```
+
+This creates and "ext_graph" table with an entry for each captured graph.  It also creates a view to show the kernel makeup of each graph and a view to show timing data for each launch.
+
+#### graphLaunch view
+This view contains information for each graph launch that occured.  This includes wall-time spent launching the graph, wall-time spent executing the kernels on the gpu, and the total gpuTime (busy time).
+
+```
+sqlite> select * from graphLaunch;
+pid  tid  apiName         graphExec       stream  gpuId  queueId  apiDuration  opDuration  gpuTime
+---  ---  --------------  --------------  ------  -----  -------  -----------  ----------  -------
+713  713  hipGraphLaunch  0x5602c48aa700  0x0     2      0        2808         3689        246
+713  713  hipGraphLaunch  0x5602c48aa700  0x0     2      0        245          471         166
+713  713  hipGraphLaunch  0x5602c48aa700  0x0     2      0        200          453         152
+713  713  hipGraphLaunch  0x5602c48aa700  0x0     2      0        212          452         153
+713  713  hipGraphLaunch  0x5602c48aa700  0x0     2      0        199          452         152
+713  713  hipGraphLaunch  0x5602c48aa700  0x0     2      0        195          466         158
+
+```
+
+#### graphKernel view
+This view shows the kernel composition of each graph, including launch parameters.
+
+```
+sqlite> select * from graphkernel;
+
+graphExec         sequence  kernelName                      gridX  gridY  gridZ  workgroupX  workgroupY ...
+----------------  --------  ------------------------------  -----  -----  -----  ----------  ----------
+0x5602c5107450    1         void at::native::legacy::eleme  1      1      1      128         1
+                            ntwise_kernel<128, 4, at::nati
+
+0x5602c5107450    2         Cijk_Alik_Bljk_SB_MT32x32x16_S  128    1      1      128         1
+                            E_1LDSB0_APM1_ABV0_ACED0_AF0EM
+
+0x5602c5107450    3         void at::native::(anonymous na  1      1      1      256         1
+                            mespace)::fused_dropout_kernel
+
+0x5602c5107450    4         void at::native::legacy::eleme  1      1      1      128         1
+                            ntwise_kernel<128, 4, at::nati
+
+0x5602c5107450    5         Cijk_Alik_Bljk_SB_MT32x32x16_S  128    1      1      128         1
+                            E_1LDSB0_APM1_ABV0_ACED0_AF0EM
+
+```
+
 
 
 --------------------------------------------------------------------------------
