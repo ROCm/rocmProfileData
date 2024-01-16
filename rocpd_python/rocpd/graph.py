@@ -77,7 +77,7 @@ def generateGraph(imp):
     # Fill the graph list table
     # If something goes wrong look here.  Assume graph apis were called correctly by application
 
-    imp.connection.execute('INSERT into "ext_graph"("graph","graphExec","stream","start","end") select B.graphExec, B.graph, stream, start, end from (select stream, graph, lag(start) over (order by stream,start asc) as start, end from (select * from rocpd_graphapi A join rocpd_api B on B.id = A.api_ptr_id where stream != "" order by stream,start asc)) A join (select graph, graphExec from rocpd_graphapi where graph != "" and graphExec != "") B on B.graph = A.graph');
+    imp.connection.execute('INSERT into "ext_graph"("graph","graphExec","stream","start","end") select B.graph, B.graphExec, stream, start, end from (select stream, graph, lag(start) over (order by stream,start asc) as start, end from (select * from rocpd_graphapi A join rocpd_api B on B.id = A.api_ptr_id where stream != "" order by stream,start asc)) A join (select graph, graphExec from rocpd_graphapi where graph != "" and graphExec != "") B on B.graph = A.graph');
 
 
     # Populate the graph -> kernel bridge table
