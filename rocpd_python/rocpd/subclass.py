@@ -133,9 +133,9 @@ def createSubclassTable(importData, baseClass, subClass, events, argTypes):
 
     # Create a subclass view
     if baseClass == 'api':
-        importData.connection.execute(f"create view {subClass} as select * from api A join rocpd_{subClass}{baseClass} B on B.api_ptr_id=A.id") 
+        importData.connection.execute(f"create view {subClass+baseClass} as select * from api A join rocpd_{subClass}{baseClass} B on B.api_ptr_id=A.id") 
     else: # baseClass == 'op'
-        importData.connection.execute(f"create view {subClass} as select * from op A join rocpd_{subClass}{baseClass} B on B.op_ptr_id=A.id") 
+        importData.connection.execute(f"create view {subClass+baseClass} as select * from op A join rocpd_{subClass}{baseClass} B on B.op_ptr_id=A.id") 
     importData.connection.commit()
 
 
