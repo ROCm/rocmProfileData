@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS "rocpd_api" ("id" integer NOT NULL PRIMARY KEY AUTOIN
 CREATE TABLE IF NOT EXISTS "rocpd_api_ops" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "api_id" integer NOT NULL REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "op_id" integer NOT NULL REFERENCES "rocpd_op" ("id") DEFERRABLE INITIALLY DEFERRED);
 CREATE TABLE IF NOT EXISTS "rocpd_kernelapi" ("api_ptr_id" integer NOT NULL PRIMARY KEY REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "stream" varchar(18) NOT NULL, "gridX" integer NOT NULL, "gridY" integer NOT NULL, "gridZ" integer NOT NULL, "workgroupX" integer NOT NULL, "workgroupY" integer NOT NULL, "workgroupZ" integer NOT NULL, "groupSegmentSize" integer NOT NULL, "privateSegmentSize" integer NOT NULL, "kernelArgAddress" varchar(18) NOT NULL, "aquireFence" varchar(8) NOT NULL, "releaseFence" varchar(8) NOT NULL, "codeObject_id" integer NOT NULL REFERENCES "rocpd_kernelcodeobject" ("id") DEFERRABLE INITIALLY DEFERRED, "kernelName_id" integer NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED);
 CREATE TABLE IF NOT EXISTS "rocpd_metadata" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "tag" varchar(4096) NOT NULL, "value" varchar(4096) NOT NULL);
+CREATE TABLE IF NOT EXISTS "rocpd_monitor" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "deviceType" varchar(16) NOT NULL, "deviceId" integer NOT NULL, "monitorType" varchar(16) NOT NULL, "start" integer NOT NULL, "end" integer NOT NULL, "value" varchar(255) NOT NULL);
+
 
 INSERT INTO "rocpd_metadata"(tag, value) VALUES ("schema_version", "2")
 

@@ -209,6 +209,16 @@ for gpuId in gpuIdsPresent:
             outfile.write(',{"pid":"%s","name":"Idle","ph":"C","ts":%s,"args":{"idle":%s}}\n'%(gpuId, T_end, idle))
             outfile.write(',{"pid":"%s","name":"QueueDepth","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(gpuId, T_end, depth))
 
+# Create SMI counters
+try:
+    for row in connection.execute("select deviceId, monitorType, start/1000, value from rocpd_monitor"):
+        outfile.write(',{"pid":"%s","name":"%s","ph":"C","ts":%s,"args":{"%s":%s}}\n'%(row[0], row[1], row[2], row[1], row[3]))
+    # Output the endpoints of the last range
+    for row in connection.execute("select distinct deviceId, monitorType, max(end)/1000, value from rocpd_monitor group by deviceId, monitorType"):
+        outfile.write(',{"pid":"%s","name":"%s","ph":"C","ts":%s,"args":{"%s":%s}}\n'%(row[0], row[1], row[2], row[1], row[3]))
+except:
+    print("Did not find SMI data")
+
 #Create the (global) memory counter
 sizes = {}    # address -> size
 totalSize = 0

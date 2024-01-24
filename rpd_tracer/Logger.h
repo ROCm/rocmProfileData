@@ -41,6 +41,7 @@ public:
     KernelApiTable &kernelApiTable() { return *m_kernelApiTable; }
     CopyApiTable &copyApiTable() { return *m_copyApiTable; }
     ApiTable &apiTable() { return *m_apiTable; }
+    MonitorTable &monitorTable() { return *m_monitorTable; }
 
 
     // External control to stop/stop logging
@@ -57,6 +58,8 @@ public:
     static void rpdInit() __attribute__((constructor));
     static void rpdFinalize() __attribute__((destructor));
 
+    const std::string filename() { return m_filename; };
+
 private:
     int m_activeCount {0};
     std::mutex m_activeMutex;
@@ -69,9 +72,11 @@ private:
     KernelApiTable *m_kernelApiTable {nullptr};
     CopyApiTable *m_copyApiTable {nullptr};
     ApiTable *m_apiTable {nullptr};
+    MonitorTable *m_monitorTable {nullptr};
 
     void init();
     void finalize();
 
+    std::string m_filename;
     bool m_writeOverheadRecords {true};
 };

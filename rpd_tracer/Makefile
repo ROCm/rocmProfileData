@@ -10,13 +10,13 @@ TARGET=hcc
 
 RPD_LIBS = -lsqlite3 -lfmt
 RPD_INCLUDES =
-RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp ApiIdList.cpp Logger.cpp
+RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp MonitorTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
-        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64
+        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-        RPD_SRCS += RoctracerDataSource.cpp
+        RPD_SRCS += RoctracerDataSource.cpp RocmSmiDataSource.cpp
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
 endif
 
@@ -46,7 +46,7 @@ $(RPD_MAIN): $(RPD_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -g
 
 .cpp.o:
-	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):
 #	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@

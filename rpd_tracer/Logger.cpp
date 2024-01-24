@@ -140,6 +140,7 @@ void Logger::init()
     const char *filename = getenv("RPDT_FILENAME");
     if (filename == NULL)
         filename = "./trace.rpd";
+    m_filename = filename;
 
     // Create table recorders
 
@@ -149,6 +150,7 @@ void Logger::init()
     m_copyApiTable = new CopyApiTable(filename);
     m_opTable = new OpTable(filename);
     m_apiTable = new ApiTable(filename);
+    m_monitorTable = new MonitorTable(filename);
 
     // Offset primary keys so they do not collide between sessions
     sqlite3_int64 offset = m_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
@@ -162,7 +164,8 @@ void Logger::init()
     // Create one instance of each available datasource
     std::list<std::string> factories = {
         "RoctracerDataSourceFactory",
-        "CuptiDataSourceFactory"
+        "CuptiDataSourceFactory",
+        "RocmSmiDataSourceFactory"
         };
 
     void (*dl) = dlopen("librpd_tracer.so", RTLD_LAZY);
@@ -214,6 +217,7 @@ void Logger::finalize()
         m_opTable->finalize();		// OpTable before subclassOpTables
         m_kernelApiTable->finalize();
         m_copyApiTable->finalize();
+        m_monitorTable->finalize();
         m_writeOverheadRecords = false;	// Don't make any new overhead records (api calls)
         m_apiTable->finalize();
         m_stringTable->finalize();	// String table last
