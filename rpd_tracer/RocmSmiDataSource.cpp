@@ -40,8 +40,6 @@ void RocmSmiDataSource::init()
     }
 #endif
 
-    // FIXME: decide how many gpus and what values to log
-
     m_done = false;
     m_period = 1000;
 
@@ -83,6 +81,11 @@ void RocmSmiDataSource::stopTracing()
     logger.monitorTable().endCurrentRuns(clocktime_ns());
 }
 
+void RocmSmiDataSource::flush() {
+    Logger &logger = Logger::singleton();
+    logger.monitorTable().endCurrentRuns(clocktime_ns());
+}
+
 
 void RocmSmiDataSource::work()
 {
@@ -96,34 +99,57 @@ void RocmSmiDataSource::work()
     while (m_done == false) {
         if (haveResource && m_loggingActive) {
             lock.unlock();
-            rsmi_frequencies_t freqs;
+
+            uint32_t num_devices = 1;
+            uint16_t dev_id = 0;
+
+            rsmi_num_monitor_devices(&num_devices);
+            for (int i = 0; i < num_devices; ++i) {
+                rsmi_status_t ret;
+
 #if 1
-            auto ret = rsmi_dev_gpu_clk_freq_get(0, RSMI_CLK_TYPE_SYS, &freqs);
-            if (ret == RSMI_STATUS_SUCCESS) {
-                MonitorTable::row mrow;
-                mrow.deviceId = 0;
-                mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
-                mrow.monitorType = "sclk";	// FIXME, use enums or somthing fancy
-                mrow.start = clocktime_ns();
-                mrow.end = 0;
-                mrow.value = fmt::format("{}", freqs.frequency[freqs.current] / 1000000);
-                logger.monitorTable().insert(mrow);
-            }
+                rsmi_frequencies_t freqs;
+                ret = rsmi_dev_gpu_clk_freq_get(i, RSMI_CLK_TYPE_SYS, &freqs);
+                if (ret == RSMI_STATUS_SUCCESS) {
+                    MonitorTable::row mrow;
+                    mrow.deviceId = i;
+                    mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
+                    mrow.monitorType = "sclk";	// FIXME, use enums or somthing fancy
+                    mrow.start = clocktime_ns();
+                    mrow.end = 0;
+                    mrow.value = fmt::format("{}", freqs.frequency[freqs.current] / 1000000);
+                    logger.monitorTable().insert(mrow);
+                }
 #endif
 #if 0
-            uint64_t pow;
-            ret = rsmi_dev_power_ave_get(0, 0, &pow);
-            if (ret == RSMI_STATUS_SUCCESS) {
-                MonitorTable::row mrow;
-                mrow.deviceId = 0;
-                mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
-                mrow.monitorType = "power";	// FIXME, use enums or somthing fancy
-                mrow.start = clocktime_ns();
-                mrow.end = 0;
-                mrow.value = fmt::format("{}", pow / 1000000.0);
-                logger.monitorTable().insert(mrow);
-            }
+                uint64_t pow;
+                ret = rsmi_dev_power_ave_get(i, 0, &pow);
+                if (ret == RSMI_STATUS_SUCCESS) {
+                    MonitorTable::row mrow;
+                    mrow.deviceId = i;
+                    mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
+                    mrow.monitorType = "power";	// FIXME, use enums or somthing fancy
+                    mrow.start = clocktime_ns();
+                    mrow.end = 0;
+                    mrow.value = fmt::format("{}", pow / 1000000.0);
+                    logger.monitorTable().insert(mrow);
+                }
 #endif
+#if 0
+                int64_t temp;
+                ret = rsmi_dev_temp_metric_get(i, RSMI_TEMP_TYPE_FIRST, RSMI_TEMP_CURRENT, &temp);
+                if (ret == RSMI_STATUS_SUCCESS) {
+                    MonitorTable::row mrow;
+                    mrow.deviceId = i;
+                    mrow.deviceType = "gpu";	// FIXME, use enums or somthing fancy
+                    mrow.monitorType = "temp";	// FIXME, use enums or somthing fancy
+                    mrow.start = clocktime_ns();
+                    mrow.end = 0;
+                    mrow.value = fmt::format("{}", temp/1000);
+                    logger.monitorTable().insert(mrow);
+                }
+#endif
+            }
             lock.lock();
         }
         

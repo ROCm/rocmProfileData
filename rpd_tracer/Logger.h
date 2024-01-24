@@ -47,6 +47,7 @@ public:
     // External control to stop/stop logging
     void rpdstart();
     void rpdstop();
+    void rpdflush();
 
     // Insert an api event.  Used to log internal state or performance
     void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
@@ -75,5 +76,7 @@ private:
 
     void init();
     void finalize();
+
     std::string m_filename;
+    bool m_writeOverheadRecords {true};
 };

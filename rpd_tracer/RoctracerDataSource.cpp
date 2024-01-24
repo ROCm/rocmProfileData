@@ -53,6 +53,30 @@ static std::once_flag registerAgain_once;
 //{
 //}
 
+// Local copy of hip op types.  These are public (and stable) in later rocm releases
+typedef enum {
+  HIP_OP_COPY_KIND_UNKNOWN_ = 0,
+  HIP_OP_COPY_KIND_DEVICE_TO_HOST_ = 0x11F3,
+  HIP_OP_COPY_KIND_HOST_TO_DEVICE_ = 0x11F4,
+  HIP_OP_COPY_KIND_DEVICE_TO_DEVICE_ = 0x11F5,
+  HIP_OP_COPY_KIND_DEVICE_TO_HOST_2D_ = 0x1201,
+  HIP_OP_COPY_KIND_HOST_TO_DEVICE_2D_ = 0x1202,
+  HIP_OP_COPY_KIND_DEVICE_TO_DEVICE_2D_ = 0x1203,
+  HIP_OP_COPY_KIND_FILL_BUFFER_ = 0x1207
+} hip_op_copy_kind_t_;
+
+typedef enum {
+  HIP_OP_DISPATCH_KIND_UNKNOWN_ = 0,
+  HIP_OP_DISPATCH_KIND_KERNEL_ = 0x11F0,
+  HIP_OP_DISPATCH_KIND_TASK_ = 0x11F1
+} hip_op_dispatch_kind_t_;
+
+typedef enum {
+  HIP_OP_BARRIER_KIND_UNKNOWN_ = 0
+} hip_op_barrier_kind_t_;
+// end hip op defines
+
+
 void RoctracerDataSource::api_callback(
     uint32_t domain,
     uint32_t cid,
@@ -120,7 +144,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -149,7 +173,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -178,7 +202,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -207,7 +231,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -236,7 +260,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -265,7 +289,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -294,10 +318,10 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
-
+#if 0
                 case HIP_API_ID_hipGraphLaunch:
                     {
                         auto &params = data->args.hipGraphLaunch;
@@ -321,6 +345,7 @@ void RoctracerDataSource::api_callback(
                         //   ops using the same entry.
                     }
                     break;
+#endif
 
                 case HIP_API_ID_hipExtModuleLaunchKernel:
                     {
@@ -347,7 +372,7 @@ void RoctracerDataSource::api_callback(
                         logger.kernelApiTable().insert(krow);
 
                         // Associate kernel name with op
-                        logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
+                        //logger.opTable().associateDescription(row.api_id, krow.kernelName_id);
                     }
                     break;
 
@@ -664,6 +689,31 @@ void RoctracerDataSource::api_callback(
                         logger.copyApiTable().insert(crow);
                     }
                     break;
+                case HIP_API_ID_hipStreamBeginCapture:
+                    row.args_id = logger.stringTable().getOrCreate(
+                        fmt::format("stream = {} | mode = {}", (void*)data->args.hipStreamBeginCapture.stream, data->args.hipStreamBeginCapture.mode)
+                    );
+                    break;
+                case HIP_API_ID_hipStreamEndCapture:
+                    row.args_id = logger.stringTable().getOrCreate(
+                        fmt::format("stream = {} | graph = {}", (void*)data->args.hipStreamEndCapture.stream, (void*)*(data->args.hipStreamEndCapture.pGraph))
+                    );
+                    break;
+                case HIP_API_ID_hipGraphInstantiate:
+                    row.args_id = logger.stringTable().getOrCreate(
+                        fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiate.pGraphExec), (void *)data->args.hipGraphInstantiate.graph)
+                    );
+                    break;
+                case HIP_API_ID_hipGraphInstantiateWithFlags:
+                    row.args_id = logger.stringTable().getOrCreate(
+                        fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiateWithFlags.pGraphExec), (void *)data->args.hipGraphInstantiateWithFlags.graph)
+                    );
+                    break;
+                case HIP_API_ID_hipGraphLaunch:
+                    row.args_id = logger.stringTable().getOrCreate(
+                        fmt::format("graphExec = {} | stream = {}", (void *)data->args.hipGraphLaunch.graphExec, (void *)data->args.hipGraphLaunch.stream)
+                    );
+                    break;
                 default:
                     break;
             }
@@ -785,19 +835,20 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
 
     while (record < end_record) {
         const char *name = roctracer_op_string(record->domain, record->op, record->kind);
-
-        if (strcmp("Marker", name) != 0) {  // Don't log markers
+        if (record->op != HIP_OP_ID_BARRIER) { // Don't log markers
             sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
 
             OpTable::row row;
             row.gpuId = record->device_id;
             row.queueId = record->queue_id;
             row.sequenceId = 0;
-            //row.completionSignal = "";	//strcpy
             strncpy(row.completionSignal, "", 18);
             row.start = record->begin_ns + toffset;
             row.end = record->end_ns + toffset;
-            row.description_id = EMPTY_STRING_ID;
+            row.description_id = ((record->kind == HIP_OP_DISPATCH_KIND_KERNEL_)
+                               || (record->kind == HIP_OP_DISPATCH_KIND_TASK_))
+                ? logger.stringTable().getOrCreate(cxx_demangle(record->kernel_name))
+                : EMPTY_STRING_ID;
             row.opType_id = name_id;
             row.api_id = record->correlation_id;
 
@@ -810,16 +861,7 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d", batchSize);
     logger.createOverheadRecord(cb_begin_time, cb_end_time, "hcc_activity_callback", buff);
-    //printf("### activity_callback hcc ### tid=%d ### %d (%d) %lu \n", GetTid(), count++, batchSize, (cb_end_time - cb_begin_time)/1000);
 
-#if 0
-    // Make a tracer overhead record
-    sqlite3_exec(connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
-    create_overhead_record("overhead (hcc)", cb_begin_time, cb_end_time);
-    create_overhead_record("prepare", cb_begin_time, cb_mid_time);
-    create_overhead_record("commit", cb_mid_time, cb_end_time);
-    sqlite3_exec(connection, "END TRANSACTION", NULL, NULL, NULL);
-#endif
     std::call_once(registerAgain_once, atexit, Logger::rpdFinalize);
 }
 
@@ -896,6 +938,11 @@ void RoctracerDataSource::startTracing() {
 void RoctracerDataSource::stopTracing() {
     //printf("# STOP #############################\n");
     roctracer_stop();
+}
+
+void RoctracerDataSource::flush() {
+    roctracer_flush_activity();
+    roctracer_flush_activity_expl(m_hccPool);
 }
 
 void RoctracerDataSource::end() {

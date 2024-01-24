@@ -37,20 +37,8 @@ public:
     static const int BUFFERSIZE = 4096 * 8;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<MonitorTable::row, BUFFERSIZE> rows; // Circular buffer
-    int head;
-    int tail;
-    int count;
 
     sqlite3_stmt *monitorInsert;
-
-    void insert(MonitorTable::row&);
-    void writeRows();
-
-    void work();		// work thread
-    std::thread *worker;
-    bool done;
-    bool workerRunning;
-    std::mutex cacheMutex;
 
     class rowCompare
     {
@@ -71,7 +59,7 @@ public:
 
 
 MonitorTable::MonitorTable(const char *basefile)
-: Table(basefile)
+: BufferedTable(basefile, MonitorTablePrivate::BUFFERSIZE, MonitorTablePrivate::BATCHSIZE)
 , d(new MonitorTablePrivate(this))
 {
     int ret;
@@ -80,41 +68,19 @@ MonitorTable::MonitorTable(const char *basefile)
 
     // prepare queries to insert row
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) values (?,?,?,?,?,?)", -1, &d->monitorInsert, NULL);
-    
-    d->head = 0;	// last produced by insert()
-    d->tail = 0;    // last consumed by 
-
-    d->worker = NULL;
-    d->done = false;
-    d->workerRunning = true;
-
-    d->worker = new std::thread(&MonitorTablePrivate::work, d);
 }
 
-#if 0
-sqlite3_int64 MonitorTable::getOrCreate(const std::string &key)
+
+MonitorTable::~MonitorTable()
 {
-    std::lock_guard<std::mutex> guard(d->cacheMutex);
-    auto it = d->cache.find(key);
-    if (it == d->cache.end()) {
-        // new string, create a row
-        MonitorTable::row row;
-        row.string_id = 0;
-        row.string = key;
-        d->insert(row);		// string_id gets updated with id
-        // update cache
-        d->cache.insert({row.string, row.string_id});
-        return row.string_id;
-    }
-    return it->second;
+    delete d;
 }
-#endif
+
 
 void MonitorTable::insert(const MonitorTable::row &row)
 {
     auto it = d->values.find(row);
     if (it == d->values.end()) {
-        //d->values.insert(row, true);
         d->values.insert(std::pair<MonitorTable::row, bool>(row, true));
         it = d->values.find(row);
     }
@@ -137,24 +103,21 @@ void MonitorTable::insert(const MonitorTable::row &row)
 void MonitorTablePrivate::insertInternal(MonitorTable::row &row)
 {
     std::unique_lock<std::mutex> lock(p->m_mutex);
-    if (head - tail >= MonitorTablePrivate::BUFFERSIZE) {
+    if (p->m_head - p->m_tail >= MonitorTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
-        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
         const timestamp_t start = clocktime_ns();
         p->m_wait.notify_one();  // make sure working is running
         p->m_wait.wait(lock);
-        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
+
         const timestamp_t end = clocktime_ns();
         lock.unlock();
         createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::MonitorTable::insert");
         lock.lock();
     }
 
-    rows[++head % MonitorTablePrivate::BUFFERSIZE] = row;
+    rows[(++(p->m_head)) % MonitorTablePrivate::BUFFERSIZE] = row;
 
-    if (workerRunning == false && (head - tail) >= MonitorTablePrivate::BATCHSIZE) {
+    if (p->workerRunning() == false && (p->m_head - p->m_tail) >= MonitorTablePrivate::BATCHSIZE) {
         lock.unlock();
         p->m_wait.notify_one();
     }
@@ -171,94 +134,54 @@ void MonitorTable::endCurrentRuns(sqlite3_int64 endTimestamp)
     d->values.clear();
 }
 
-void MonitorTable::flush()
-{
-    while (d->head > d->tail)
-        d->writeRows();
-}
 
-void MonitorTable::finalize()
+void MonitorTable::flushRows()
 {
-    std::unique_lock<std::mutex> lock(m_mutex);
-    d->done = true;
-    m_wait.notify_one();
-    lock.unlock();
-    d->worker->join();
-    delete d->worker;
-
-    flush();
     int ret = 0;
-    // FIXME: to empty string or not to empty string?  multi-session issue?
-    //ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string where id != 1", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) select deviceType, deviceId, monitorType, start, end, value from temp_rocpd_monitor", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_monitor: %d\n", ret);
+    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_monitor", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }
 
 
-void MonitorTablePrivate::writeRows()
+void MonitorTable::writeRows()
 {
-    std::unique_lock<std::mutex> lock(p->m_mutex);
+    std::unique_lock<std::mutex> wlock(m_writeMutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (head == tail)
+    if (m_head == m_tail)
         return;
 
-    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    //FIXME
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = tail + 1;
-    int end = tail + BATCHSIZE;
-    end = (end > head) ? head : end;
+    int start = m_tail + 1;
+    int end = m_tail + BATCHSIZE;
+    end = (end > m_head) ? m_head : end;
     lock.unlock();
 
-    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+    sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
     for (int i = start; i <= end; ++i) {
-        // insert rocpd_string
         int index = 1;
-        MonitorTable::row &r = rows[i % BUFFERSIZE];
-        //printf("%lld %s\n", r.string_id, r.string.c_str());
-        sqlite3_bind_text(monitorInsert, index++, r.deviceType.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int64(monitorInsert, index++, r.deviceId);
-        sqlite3_bind_text(monitorInsert, index++, r.monitorType.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int64(monitorInsert, index++, r.start);
-        sqlite3_bind_int64(monitorInsert, index++, r.end);
-        sqlite3_bind_text(monitorInsert, index++, r.value.c_str(), -1, SQLITE_STATIC);
+        MonitorTable::row &r = d->rows[i % BUFFERSIZE];
+        sqlite3_bind_text(d->monitorInsert, index++, r.deviceType.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(d->monitorInsert, index++, r.deviceId);
+        sqlite3_bind_text(d->monitorInsert, index++, r.monitorType.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(d->monitorInsert, index++, r.start);
+        sqlite3_bind_int64(d->monitorInsert, index++, r.end);
+        sqlite3_bind_text(d->monitorInsert, index++, r.value.c_str(), -1, SQLITE_STATIC);
 
-        int ret = sqlite3_step(monitorInsert);
-        sqlite3_reset(monitorInsert);
+        int ret = sqlite3_step(d->monitorInsert);
+        sqlite3_reset(d->monitorInsert);
     }
     lock.lock();
-    tail = end;
+    m_tail = end;
     lock.unlock();
 
-    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    //FIXME
+    sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = clocktime_ns();
-    if (done == false) {
-        char buff[4096];
-        std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
-        createOverheadRecord(cb_begin_time, cb_end_time, "MonitorTable::writeRows", buff);
-    }
-}
-
-
-void MonitorTablePrivate::work()
-{
-    std::unique_lock<std::mutex> lock(p->m_mutex);
-
-    while (done == false) {
-        while ((head - tail) >= MonitorTablePrivate::BATCHSIZE) {
-            lock.unlock();
-            writeRows();
-            p->m_wait.notify_all();
-            lock.lock();
-        }
-        workerRunning = false;
-        if (done == false)
-            p->m_wait.wait(lock);
-        workerRunning = true;
-    }
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
+    createOverheadRecord(cb_begin_time, cb_end_time, "MonitorTable::writeRows", buff);
 }

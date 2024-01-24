@@ -22,6 +22,7 @@ public:
     void end() override;
     void startTracing() override;
     void stopTracing() override;
+    virtual void flush() override;
 
 private:
     std::mutex m_mutex;

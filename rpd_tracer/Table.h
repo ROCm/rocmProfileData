@@ -11,7 +11,7 @@ class Table
 {
 public:
     Table(const char *basefile);
-    ~Table();
+    virtual ~Table();
     
     virtual void flush() = 0;
     virtual void finalize() = 0;
@@ -21,16 +21,47 @@ public:
 protected:
     sqlite3 *m_connection;
     std::mutex m_mutex;
+    //std::mutex m_writeMutex;
     std::condition_variable m_wait;
     sqlite3_int64 m_idOffset;
 };
 
+class BufferedTablePrivate;
+class BufferedTable: public Table
+{
+public:
+    void flush() override;
+    void finalize() override;
+
+protected:
+    BufferedTablePrivate *d;
+    friend class BufferedTablePrivate;
+
+    BufferedTable(const char *basefile, int bufferSize, int batchsize);
+    virtual ~BufferedTable();
+
+    std::mutex m_mutex;
+    std::mutex m_writeMutex;
+    std::condition_variable m_wait;
+
+    const int BUFFERSIZE;
+    const int BATCHSIZE;
+    int m_head {0};
+    int m_tail {0};
+
+    bool workerRunning();
+
+    virtual void writeRows() = 0;	// "write" to buffers (cache db)
+    virtual void flushRows() = 0;	// "flush" to disk (main db)
+};
+
 
 class StringTablePrivate;
-class StringTable: public Table
+class StringTable: public BufferedTable
 {
 public:
     StringTable(const char *basefile);
+    virtual ~StringTable();
 
     struct row {
         std::string string;
@@ -39,20 +70,22 @@ public:
 
     //void insert(const row&);
     sqlite3_int64 getOrCreate(const std::string&);
-    void flush();
-    void finalize();
 
 private:
     StringTablePrivate *d;
     friend class StringTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };
 
 
 class ApiTablePrivate;
-class ApiTable: public Table
+class ApiTable: public BufferedTable
 {
 public:
     ApiTable(const char *basefile);
+    virtual ~ApiTable();
 
     struct row {
         int pid;
@@ -70,20 +103,22 @@ public:
     void popRoctx(const row&);
     void suspendRoctx(sqlite3_int64 atTime);
     void resumeRoctx(sqlite3_int64 atTime);
-    void flush();
-    void finalize();
 
 private:
     ApiTablePrivate *d;
     friend class ApiTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };
 
 
 class KernelApiTablePrivate;
-class KernelApiTable: public Table
+class KernelApiTable: public BufferedTable
 {
 public:
     KernelApiTable(const char *basefile);
+    virtual ~KernelApiTable();
 
     struct row {
         std::string stream;
@@ -104,20 +139,22 @@ public:
     };
 
     void insert(const row&);
-    void flush();
-    void finalize();
 
 private:
     KernelApiTablePrivate *d;
     friend class KernelApiTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };
 
 
 class CopyApiTablePrivate;
-class CopyApiTable: public Table
+class CopyApiTable: public BufferedTable
 {
 public:
     CopyApiTable(const char *basefile);
+    virtual ~CopyApiTable();
 
     struct row {
         std::string stream;
@@ -134,12 +171,13 @@ public:
         sqlite3_int64 api_id {0};   // Baseclass ApiTable primary key (correlation id)
     };
     void insert(const row&);
-    void flush();
-    void finalize();
 
 private:
     CopyApiTablePrivate *d;
     friend class CopyApiTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };
 
 
@@ -168,10 +206,11 @@ private:
 
 
 class OpTablePrivate;
-class OpTable: public Table
+class OpTable: public BufferedTable
 {
 public:
     OpTable(const char *basefile);
+    virtual ~OpTable();
 
     struct row {
         int gpuId;
@@ -187,12 +226,13 @@ public:
 
     void insert(const row&);
     void associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id);
-    void flush();
-    void finalize();
 
 private:
     OpTablePrivate *d;
     friend class OpTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };
 
 
@@ -212,11 +252,13 @@ private:
     friend class MetadataTablePrivate;
 };
 
+
 class MonitorTablePrivate;
-class MonitorTable: public Table
+class MonitorTable: public BufferedTable
 {
 public:
     MonitorTable(const char *basefile);
+    virtual ~MonitorTable();
 
     struct row {
         std::string deviceType;
@@ -228,12 +270,12 @@ public:
     };
 
     void insert(const row&);
-    void flush();
-    void finalize();
-
     void endCurrentRuns(sqlite3_int64 endTimestamp);
 
 private:
     MonitorTablePrivate *d;
     friend class MonitorTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
 };

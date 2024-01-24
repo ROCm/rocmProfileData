@@ -41,27 +41,17 @@ public:
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<OpTable::row, BUFFERSIZE> rows; // Circular buffer
     std::map<sqlite3_int64, sqlite3_int64> descriptions;
-    std::mutex m_descriptionLock;
-    int head;
-    int tail;
-    int count;
+    std::mutex descriptionLock;
 
     sqlite3_stmt *opInsert;
     sqlite3_stmt *apiOpInsert;
-
-    void writeRows();
-
-    void work();		// work thread
-    std::thread *worker;
-    bool workerRunning;
-    bool done;
 
     OpTable *p;
 };
 
 
 OpTable::OpTable(const char *basefile)
-: Table(basefile)
+: BufferedTable(basefile, OpTablePrivate::BUFFERSIZE, OpTablePrivate::BATCHSIZE)
 , d(new OpTablePrivate(this))
 {
     int ret;
@@ -72,149 +62,117 @@ OpTable::OpTable(const char *basefile)
     // prepare queries to insert row
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, completionSignal, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api_ops(api_id, op_id) values (?,?)", -1, &d->apiOpInsert, NULL);
-    
-    d->head = 0;    // last produced by insert()
-    d->tail = 0;    // last consumed by 
-
-    d->worker = NULL;
-    d->done = false;
-    d->workerRunning = true;
-
-    d->worker = new std::thread(&OpTablePrivate::work, d);
 }
+
+
+OpTable::~OpTable()
+{
+    delete d;
+}
+
 
 void OpTable::insert(const OpTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    while (d->head - d->tail >= OpTablePrivate::BUFFERSIZE) {
+    while (m_head - m_tail >= OpTablePrivate::BUFFERSIZE) {
         // buffer is full; insert in-line or wait
         m_wait.notify_one();  // make sure working is running
         m_wait.wait(lock);
     }
 
-    d->rows[(++d->head) % OpTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_head) % OpTablePrivate::BUFFERSIZE] = row;
 
-    if (d->workerRunning == false && (d->head - d->tail) >= OpTablePrivate::BATCHSIZE) {
-        lock.unlock();
+    if (workerRunning() == false && (m_head - m_tail) >= OpTablePrivate::BATCHSIZE) {
+        //lock.unlock();
         m_wait.notify_one();
     }
 }
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)
 {
-    // FIXME: double buffer this?
-    // writeRows uses this structure heavily, intermittently.  May matter
-    std::lock_guard<std::mutex> guard(d->m_descriptionLock);
+// Disable this for now.  Getting kernel names from roctracer op records now.
+#if 0
+    std::lock_guard<std::mutex> guard(d->descriptionLock);
     d->descriptions[api_id] = string_id;
+#endif
 }
 
-void OpTable::flush()
+void OpTable::flushRows()
 {
-    while (d->head > d->tail)
-        d->writeRows();
-}
-
-void OpTable::finalize()
-{
-    std::unique_lock<std::mutex> lock(m_mutex);
-    d->done = true;
-    m_wait.notify_one();
-    lock.unlock();
-    d->worker->join();
-    delete d->worker;
-    flush();
     int ret = 0;
+    ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_op select * from temp_rocpd_op", NULL, NULL, NULL);
     fprintf(stderr, "rocpd_op: %d\n", ret);
     ret = sqlite3_exec(m_connection, "insert into rocpd_api_ops (api_id, op_id) select api_id, op_id from temp_rocpd_api_ops", NULL, NULL, NULL);
     fprintf(stderr, "rocpd_api_ops: %d\n", ret);
+    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_op", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_api_ops", NULL, NULL, NULL);
+    ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }
 
 
-void OpTablePrivate::writeRows()
+void OpTable::writeRows()
 {
-    std::unique_lock<std::mutex> lock(p->m_mutex);
+    std::unique_lock<std::mutex> wlock(m_writeMutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (head == tail)
+    if (m_head == m_tail)
         return;
 
-    // FIXME
-    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = tail + 1;
-    int end = tail + BATCHSIZE;
-    end = (end > head) ? head : end;
+    int start = m_tail + 1;
+    int end = m_tail + BATCHSIZE;
+    end = (end > m_head) ? m_head : end;
     lock.unlock();
 
-    sqlite3_exec(p->m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+    sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
     for (int i = start; i <= end; ++i) {
         // insert rocpd_op
         int index = 1;
-        OpTable::row &r = rows[i % BUFFERSIZE];
-        sqlite3_int64 primaryKey = i + p->m_idOffset;
+        OpTable::row &r = d->rows[i % BUFFERSIZE];
+        sqlite3_int64 primaryKey = i + m_idOffset;
 
+// Disable this for now.  Getting kernel names from roctracer op records now.
+#if 0
         // check for description override
-#if 1
         {
-            std::lock_guard<std::mutex> guard(m_descriptionLock);
-            auto it = descriptions.find(r.api_id);
-            if (it != descriptions.end()) {
+            std::lock_guard<std::mutex> guard(d->descriptionLock);
+            auto it = d->descriptions.find(r.api_id);
+            if (it != d->descriptions.end()) {
                 r.description_id = it->second;
-                descriptions.erase(it);
+                d->descriptions.erase(it);
             }
         }
 #endif
-        sqlite3_bind_int64(opInsert, index++, primaryKey);
-        sqlite3_bind_int(opInsert, index++, r.gpuId);
-        sqlite3_bind_int(opInsert, index++, r.queueId);
-        sqlite3_bind_int(opInsert, index++, r.sequenceId);
-        sqlite3_bind_text(opInsert, index++, "", -1, SQLITE_STATIC);
-        sqlite3_bind_int64(opInsert, index++, r.start);
-        sqlite3_bind_int64(opInsert, index++, r.end);
-        sqlite3_bind_int64(opInsert, index++, r.description_id + p->m_idOffset);
-        sqlite3_bind_int64(opInsert, index++, r.opType_id + p->m_idOffset);
-        int ret = sqlite3_step(opInsert);
-        sqlite3_reset(opInsert);
+        sqlite3_bind_int64(d->opInsert, index++, primaryKey);
+        sqlite3_bind_int(d->opInsert, index++, r.gpuId);
+        sqlite3_bind_int(d->opInsert, index++, r.queueId);
+        sqlite3_bind_int(d->opInsert, index++, r.sequenceId);
+        sqlite3_bind_text(d->opInsert, index++, "", -1, SQLITE_STATIC);
+        sqlite3_bind_int64(d->opInsert, index++, r.start);
+        sqlite3_bind_int64(d->opInsert, index++, r.end);
+        sqlite3_bind_int64(d->opInsert, index++, r.description_id + m_idOffset);
+        sqlite3_bind_int64(d->opInsert, index++, r.opType_id + m_idOffset);
+        int ret = sqlite3_step(d->opInsert);
+        sqlite3_reset(d->opInsert);
 
         // Insert rocpd_api_ops
-        //sqlite_int64 rowId = sqlite3_last_insert_rowid(p->m_connection);
+        //sqlite_int64 rowId = sqlite3_last_insert_rowid(m_connection);
         index = 1;
-        sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(r.api_id) + p->m_idOffset);
-        sqlite3_bind_int64(apiOpInsert, index++, sqlite3_int64(i) + p->m_idOffset);
-        ret = sqlite3_step(apiOpInsert);
-        sqlite3_reset(apiOpInsert);
+        sqlite3_bind_int64(d->apiOpInsert, index++, sqlite3_int64(r.api_id) + m_idOffset);
+        sqlite3_bind_int64(d->apiOpInsert, index++, sqlite3_int64(i) + m_idOffset);
+        ret = sqlite3_step(d->apiOpInsert);
+        sqlite3_reset(d->apiOpInsert);
     }
     lock.lock();
-    tail = end;
+    m_tail = end;
     lock.unlock();
 
-    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    sqlite3_exec(p->m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    // FIXME
-    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
+    sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = clocktime_ns() + 1;
     char buff[4096];
-    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, head - tail);
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "OpTable::writeRows", buff);
-}
-
-
-void OpTablePrivate::work()
-{
-    std::unique_lock<std::mutex> lock(p->m_mutex);
-
-    while (done == false) {
-        while ((head - tail) >= OpTablePrivate::BATCHSIZE) {
-            lock.unlock();
-            writeRows();
-            p->m_wait.notify_all();
-            lock.lock();
-        }
-        workerRunning = false;
-        if (done == false)
-            p->m_wait.wait(lock);
-        workerRunning = true;
-    }
 }
