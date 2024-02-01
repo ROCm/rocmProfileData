@@ -54,15 +54,15 @@ void SmuDumpDataSource::init()
     // FIXME: decide how many gpus and what values to log
 
     m_done = false;
-    m_smu_period = f_smuGetTraceRate();
-    m_reg_period = f_regGetTraceRate();
     m_timestamp=0;
 
     if (m_loggingEnabled)
     {
-        m_smu_resource = new DbResource(Logger::singleton().filename(), std::string("smudump_logger_active"));
-        m_reg_resource = new DbResource(Logger::singleton().filename(), std::string("regdump_logger_active"));
-        m_svi_resource = new DbResource(Logger::singleton().filename(), std::string("svidump_logger_active"));
+        m_smu_period = f_smuGetTraceRate();
+        m_reg_period = f_regGetTraceRate();
+        m_smu_resource = new DbResource(Logger::singleton().filename(), std::string("smudump_logger_smu_active"));
+        m_reg_resource = new DbResource(Logger::singleton().filename(), std::string("regdump_logger_reg_active"));
+        m_svi_resource = new DbResource(Logger::singleton().filename(), std::string("svidump_logger_svi_active"));
         m_smu_worker = new std::thread(&SmuDumpDataSource::smuwork, this);
         m_reg_worker = new std::thread(&SmuDumpDataSource::regwork, this);
         m_svi_worker = new std::thread(&SmuDumpDataSource::sviwork, this);
@@ -112,6 +112,15 @@ void SmuDumpDataSource::stopTracing()
         logger.monitorTable().endCurrentRuns(clocktime_ns());
     }
 }
+
+void SmuDumpDataSource::flush() {
+    if (m_loggingEnabled)
+    {
+        Logger &logger = Logger::singleton();
+    logger.monitorTable().endCurrentRuns(clocktime_ns());
+    }
+}
+
 
 
 void SmuDumpDataSource::addSMUValueToSqliteDb(uint64_t did, const char* type ,const char* name, double value)

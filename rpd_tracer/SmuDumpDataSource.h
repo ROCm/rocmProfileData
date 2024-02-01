@@ -30,6 +30,7 @@ public:
     void end() override;
     void startTracing() override;
     void stopTracing() override;
+    virtual void flush() override;
     static SmuDumpDataSource& singleton();
     timestamp_t getTimeStamp();
     bool isLoggingEnabled();

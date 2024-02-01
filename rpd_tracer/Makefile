@@ -22,8 +22,16 @@ ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
         RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-        RPD_SRCS += RoctracerDataSource.cpp RocmSmiDataSource.cpp SmuDumpDataSource.cpp
+        RPD_SRCS += RoctracerDataSource.cpp
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
+endif
+
+ifneq (,$(SMUDUMP))
+        $(info Building with smutrace)
+        RPD_SRCS += SmuDumpDataSource.cpp
+else
+        $(info Could not find smutrace)
+        RPD_SRCS += RocmSmiDataSource.cpp
 endif
 
 ifneq ($(CUDA_PATH),)
@@ -65,7 +73,6 @@ endif
 install:
 	cp $(RPD_MAIN)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
-	echo python3 $(ROOT_DIR)../tools/rpd2tracing.py --format object '$${OUTPUT_FILE}' ./trace.json >> $(PREFIX)/bin/$(RPD_SCRIPT)
 	ldconfig
 	$(PYTHON) setup.py install
 ifneq (,$(SMUDUMP))
