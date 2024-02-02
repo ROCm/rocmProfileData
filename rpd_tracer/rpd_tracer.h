@@ -25,6 +25,9 @@
 extern "C" {
     void rpdstart();
     void rpdstop();
+    void rpdflush();
+    void rpd_rangePush(const char *domain, const char *apiName, const char* args);
+    void rpd_rangePop();
 }
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);

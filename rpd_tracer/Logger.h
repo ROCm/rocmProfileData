@@ -49,6 +49,10 @@ public:
     void rpdstop();
     void rpdflush();
 
+    // External maker api
+    void rpd_rangePush(const char *domain, const char *apiName, const char* args);
+    void rpd_rangePop();
+
     // Insert an api event.  Used to log internal state or performance
     void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
 

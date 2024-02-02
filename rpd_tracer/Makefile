@@ -46,7 +46,7 @@ $(RPD_MAIN): $(RPD_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -g
 
 .cpp.o:
-	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):
 #	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@

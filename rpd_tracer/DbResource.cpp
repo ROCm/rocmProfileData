@@ -100,13 +100,11 @@ bool DbResource::tryLock()
 
 void DbResource::unlock()
 {
-fprintf(stderr, "unlockd %s \n", d->locked ? "true":"false");
     if (d->locked) {
         int ret;
         char *error_msg;
         sqlite3_exec(d->connection, "BEGIN EXCLUSIVE TRANSACTION", NULL, NULL, NULL);
         ret = sqlite3_exec(d->connection, fmt::format("UPDATE rocpd_metadata SET value = '0' WHERE tag = 'resourceLock::{}'", d->resourceName).c_str(), NULL, NULL, &error_msg);
-fprintf(stderr, "unlock %d\n", ret);
         sqlite3_exec(d->connection, "END TRANSACTION", NULL, NULL, NULL);
     }
 }
