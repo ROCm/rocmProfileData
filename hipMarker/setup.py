@@ -9,8 +9,8 @@ from distutils.core import setup, Extension
 
 module2 = Extension('roctxMarker',
                     sources = ['roctxMarkerModule.c'],
-                    include_dirs=['/opt/rocm/rocprofiler/include', '/opt/rocm/roctracer/include'],
-                    library_dirs=['/opt/rocm/rocprofiler/lib', '/opt/rocm/roctracer/lib'],
+                    include_dirs=['/opt/rocm/include'],
+                    library_dirs=['/opt/rocm/lib'],
                     libraries=['roctx64']
 )
 

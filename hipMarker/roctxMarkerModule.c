@@ -1,7 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-#include "roctx.h"
+#include "roctracer/roctx.h"
 
 
 static PyObject *roctxMarker_emitMarker(PyObject *self, PyObject *args)

@@ -38,7 +38,7 @@ This is a tracer that can attach to any process and record hip apis, ops, and ro
         ```
     3) Load dynamic library file:
         ```
-        rocTracer_lib = dlopen("<YOUR_PATH>/librpd_tracer.so", RTLD_LAZY); //defer resolution until the first reference via RTLD_LAZY
+        rocTracer_lib = dlopen("librpd_tracer.so", RTLD_LAZY); //defer resolution until the first reference via RTLD_LAZY
             std::cout << rocTracer_lib << std::endl; // points to some memory location, e.g. 0x89a...
             if (!rocTracer_lib) {
                 fputs (dlerror(), stderr);

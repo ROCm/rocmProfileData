@@ -26,6 +26,7 @@ from ctypes.util import find_library
 import platform
 import multiprocessing
 import os
+import sys
 import sqlite3
 from rocpd.schema import RocpdSchema
 
@@ -107,3 +108,26 @@ class rpdTracerControl:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
+
+    def rangePush(self, domain: str, apiName: str, args: str):
+        rpdTracerControl.__rpd.rpd_rangePush(bytes(domain, encoding='utf-8'), bytes(apiName, encoding='utf-8'), bytes(args, encoding='utf-8'))
+
+    def rangePop(self):
+        rpdTracerControl.__rpd.rpd_rangePop()
+
+
+    # python stack tracing
+
+    def __trace_callback(self, frame, event, arg):
+        if frame.f_code.co_name.startswith("__") or frame.f_code.co_name == "rangePush" or frame.f_code.co_name == "rangePop":
+            return None
+        if event == 'call':
+            self.rangePush("python", frame.f_code.co_name, f"{frame.f_code.co_filename}:{frame.f_code.co_firstlineno}");
+        if event == 'return':
+            self.rangePop()
+
+    def setPythonTrace(self, doTrace: bool):
+        if doTrace:
+            sys.setprofile(self.__trace_callback)
+        else:
+            sys.setprofile(None)
