@@ -554,6 +554,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         );
                     }
                     break;
+#if CUDART_VERSION >= 10000 && CUDART_VERSION < 12000
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiate_v10000:
                     {
                         auto &params = *(cudaGraphInstantiate_v10000_params_st *)(cbInfo->functionParams);
@@ -561,6 +562,23 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                             fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
                         );
                     }
+#endif
+#if CUDART_VERSION >= 12000
+                case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiate_v12000:
+                    {
+                        auto &params = *(cudaGraphInstantiate_v12000_params_st *)(cbInfo->functionParams);
+                        row.args_id = logger.stringTable().getOrCreate(
+                            fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
+                        );
+                    }
+                case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiateWithParams_ptsz_v12000:
+                    {
+                        auto &params = *(cudaGraphInstantiateWithParams_ptsz_v12000_params_st*)(cbInfo->functionParams);
+                        row.args_id = logger.stringTable().getOrCreate(
+                            fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
+                        );
+                    }
+#endif
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiateWithFlags_v11040:
                     {
                         auto &params = *(cudaGraphInstantiateWithFlags_v11040_params_st *)(cbInfo->functionParams);
