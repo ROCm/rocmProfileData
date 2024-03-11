@@ -8,8 +8,18 @@
 #include <cxxabi.h>
 
 typedef uint64_t timestamp_t;
-static inline uint32_t GetPid() { return syscall(__NR_getpid); }
-static inline uint32_t GetTid() { return syscall(__NR_gettid); }
+
+static inline uint32_t GetPid()
+{
+    thread_local uint32_t pid = syscall(__NR_getpid);
+    return pid;
+}
+
+static inline uint32_t GetTid()
+{
+    thread_local uint32_t tid = syscall(__NR_gettid);
+    return tid;
+}
 
 // C++ symbol demangle
 static inline const char* cxx_demangle(const char* symbol) {
