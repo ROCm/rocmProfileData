@@ -8,14 +8,13 @@ ROCm Profile Data is a collection of tools for tracing and analyzing gpu related
 Contents:
 <!-- toc -->
 
-- [Rocm Profile Data](#rocm-profile-data)
-  - [About](#about)
-  - [Installation](#installation)
-  - [Quickstart](#quickstart)
-  - [Tools](#tools)
-      - [runTracer.sh](#runtracersh)
-      - [sqlite3](#sqlite3)
-      - [rpd2tracing.py](#rpd2tracingpy)
+- [About](#about)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Tools](#tools)
+  - [runTracer.sh](#runtracer.sh)
+  - [sqlite3](#sqlite3)
+  - [rpd2tracing.py](#rpd2tracing.py)
 
 <!-- tocstop -->
 
@@ -52,7 +51,7 @@ It will also build and install the native tracer, rpd_tracer.
 
 + Install per the [Installation](#installation) section.
 + Try each of the [Tools](#tools) below, in order.
-+ You can refer to our step-by-step [tutorial](examples/rocm-profile-data/README.md) in this repository to profile and trace your application. Additionally, we have provided a list of key tables and views defined in the generated `rpd` file for your reference.
+
 
 ## Tools
 
