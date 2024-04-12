@@ -112,6 +112,7 @@ static std::mutex activeMutex;
 
 void rpdstart()
 {
+    fprintf(stderr, "JUAN START\n");
     std::unique_lock<std::mutex> lock(activeMutex);
     if (activeCount == 0) {
         //fprintf(stderr, "rpd_tracer: START\n");
@@ -895,7 +896,7 @@ void hcc_activity_callback(const char* begin, const char* end, void* arg)
 roctracer_pool_t *hccPool;
 
 void init_tracing() {
-    //printf("# INIT #############################\n");
+    printf("# INIT #############################\n");
 
     // roctracer properties
     //    Whatever the hell that means.  Magic encantation, thanks.
@@ -1031,7 +1032,7 @@ void rpdFinalize()
     std::lock_guard<std::mutex> guard(finalizeMutex);
     if (doFinalize == true) {
         doFinalize = false;
-        //printf("+++++++++++++++++++  rpdFinalize\n");
+        printf("+++++++++++++++++++  rpdFinalize\n");
         end_tracing();
 
         // Flush recorders

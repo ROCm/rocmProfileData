@@ -48,6 +48,7 @@ public:
     void rpdstart();
     void rpdstop();
     void rpdflush();
+    void rpdResetFinalize();
 
     // External maker api
     void rpd_rangePush(const char *domain, const char *apiName, const char* args);
@@ -80,6 +81,7 @@ private:
 
     void init();
     void finalize();
+    void set_finalize_true();
 
     std::string m_filename;
     bool m_writeOverheadRecords {true};
