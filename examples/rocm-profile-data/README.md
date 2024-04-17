@@ -1,6 +1,6 @@
 ---
 blogpost: true
-date: 22 Mar 2024
+date: 17 April 2024
 author: Douglas Jia, Michael Wootton
 tags: Profiling, HIP, ROCm, Tracing, HPC 
 category: Software tools & optimizations  
@@ -65,7 +65,7 @@ cd ..
 
 ### Profiling a PyTorch multiplication function
 
-In this code example, we'll profile a Python script featuring matrix multiplication implemented using PyTorch. You can locate the script `matrix_mult.py` in the `src` folder of this blog's GitHub repository: [Link](https://github.com/ROCm/rocm-blogs/tree/release/blogs/artificial-intelligence/rocm-profile-data). Alternatively, you can create your own `matrix_mult.py` file by copying the code provided below.
+In this code example, we'll profile a Python script featuring matrix multiplication implemented using PyTorch. You can locate the script `matrix_mult.py` in the `src` folder of this blog's GitHub repository: [Link](https://github.com/ROCm/rocmProfileData/tree/master/examples/rocm-profile-data/src). Alternatively, you can create your own `matrix_mult.py` file by copying the code provided below.
 
 ```python
 import argparse
