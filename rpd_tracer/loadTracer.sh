@@ -41,3 +41,5 @@ fi
 export RPDT_FILENAME=${OUTPUT_FILE}
 export RPDT_AUTOSTART=0
 LD_PRELOAD=librpd_tracer.so "$@"
+python3 -m rocpd.autograd ${OUTPUT_FILE}
+python3 -m rocpd.graph ${OUTPUT_FILE}
