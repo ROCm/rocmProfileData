@@ -51,7 +51,7 @@ class rpdTracerControl:
     @classmethod
     def initializeFile(cls):
         # Only the top parent process will initialize the trace file
-        if isChildProcess():
+        if isChildProcess() or os.getenv("RPDT_FILENAME"):
             cls.__initFile = False
 
         if cls.__initFile == True:
@@ -77,10 +77,16 @@ class rpdTracerControl:
 
     @classmethod
     def setFilename(cls, name, append = False):
+        if os.getenv("RPDT_FILENAME"):
+            cls.__filename = os.getenv("RPDT_FILENAME")
+            raise Warning(f"RPDT_FILENAME is already initialized. Logging into {cls.__filename}")
+            return
+
         if cls.__rpd != None:
             raise RuntimeError("Trace file name can not be changed once logging")
         if isChildProcess():
             raise RuntimeError("Trace file name can not be changed by sub-processes")
+
 
         cls.__filename = name
         if append:
