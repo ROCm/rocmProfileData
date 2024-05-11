@@ -65,7 +65,7 @@ class rpdTracerControl:
             connection.close()
             #
             os.environ["RPDT_FILENAME"] = cls.__filename
-            cls.__initFile = False   
+            cls.__initFile = False
 
 
     # You can set the output filename and optionally append to an exiting file.
@@ -93,9 +93,26 @@ class rpdTracerControl:
             os.environ["RPDT_FILENAME"] = cls.__filename
             cls.__initFile = False
 
-    def __init__(self):
+    @classmethod
+    def rpdReset(cls):
+        rpdTracerControl.__rpd.rpdResetFinalize()
+        rpdTracerControl.__rpd.rpdFinalize()
+        #cls.__initFile = True
+
+    def __init__(self, file_name = None, nvtx = False):
+        if file_name != None:
+            # Force reset filename, if we are getting called in a loop.
+            rpdTracerControl.__initFile = True
+            rpdTracerControl.__filename = file_name
         rpdTracerControl.initializeFile()
         rpdTracerControl.loadLibrary()
+        self.nvtx = None
+        if nvtx:
+            import torch
+            self.nvtx = torch.autograd.profiler.emit_nvtx()
+        if file_name != None:
+            # Reinit for the new file
+            rpdTracerControl.__rpd.rpdInit()
 
     def __del__(self):
         pass
@@ -111,9 +128,46 @@ class rpdTracerControl:
 
     def __enter__(self):
         self.start()
+        if self.nvtx:
+            self.nvtx.__enter__()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.nvtx:
+            self.nvtx.__exit__(exc_type, exc_val, exc_tb)
+        if exc_type != None:
+            #Propagate exception
+            return False
         self.stop()
+        self.flush()
+        rpdTracerControl.rpdReset()
+
+    def top_totals(self):
+        try:
+            conn = sqlite3.connect(rpdTracerControl.__filename)
+            cursor = conn.cursor()
+            cursor.execute("SELECT Name, TotalCalls, TotalDuration, Ave, Percentage FROM top;")
+            rows = cursor.fetchall()
+
+            if rows:
+                from prettytable import PrettyTable
+                import textwrap
+                table = PrettyTable()
+                table.field_names = ["Name", "TotalCalls", "TotalDuration", "Ave", "Percentage"]
+                table.align = "l"
+
+                for row in rows:
+                    wrapped_name = '\n'.join(textwrap.wrap(row[0], 60))
+                    table.add_row([wrapped_name] + list(row[1:]))
+
+                print(table)
+            else:
+                print("No data found in 'top' table.")
+
+        except sqlite3.Error as e:
+            print(f"Error querying database: {e}")
+        finally:
+            conn.close()
 
     def rangePush(self, domain: str, apiName: str, args: str):
         rpdTracerControl.__rpd.rpd_rangePush(bytes(domain, encoding='utf-8'), bytes(apiName, encoding='utf-8'), bytes(args, encoding='utf-8'))

@@ -63,6 +63,20 @@ void rpdflush()
     Logger::singleton().rpdflush();
 }
 
+void rpdFinalize()
+{
+    Logger::singleton().rpdFinalize();
+}
+void rpdInit()
+{
+    Logger::singleton().rpdInit();
+}
+
+void rpdResetFinalize()
+{
+    Logger::singleton().rpdResetFinalize();
+}
+
 void rpd_rangePush(const char *domain, const char *apiName, const char* args)
 {
     Logger::singleton().rpd_rangePush(domain, apiName, args);
@@ -94,6 +108,10 @@ void Logger::rpdInit() {
 
 void Logger::rpdFinalize() {
     Logger::singleton().finalize();
+}
+void Logger::rpdResetFinalize()
+{
+    Logger::singleton().set_finalize_true();
 }
 
 
@@ -248,6 +266,12 @@ void Logger::init()
 
 static bool doFinalize = true;
 std::mutex finalizeMutex;
+
+void Logger::set_finalize_true()
+{
+    std::lock_guard<std::mutex> guard(finalizeMutex);
+    doFinalize = true;
+}
 
 void Logger::finalize()
 {
