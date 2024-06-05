@@ -26,6 +26,7 @@ extern "C" {
     void rpdstart();
     void rpdstop();
     void rpdflush();
+    void rpd_mark(const char *domain, const char *apiName, const char* args);
     void rpd_rangePush(const char *domain, const char *apiName, const char* args);
     void rpd_rangePop();
 }

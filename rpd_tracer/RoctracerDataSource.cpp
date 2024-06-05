@@ -26,6 +26,7 @@
 #include <roctracer_hip.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
+#include "hsa/hsa_ext_amd.h"
 
 #include <sqlite3.h>
 #include <fmt/format.h>
@@ -76,6 +77,34 @@ typedef enum {
 } hip_op_barrier_kind_t_;
 // end hip op defines
 
+namespace {
+    int deviceOffset = 0x7fffffff;
+
+    void createDeviceMap() {
+        int dc = 0;
+        hipGetDeviceCount(&dc);
+        hsa_iterate_agents(
+            [](hsa_agent_t agent, void* data) {
+           auto &deviceOffset = *static_cast<int*>(data);
+           int nodeId;
+           hsa_agent_get_info(
+                agent,
+                static_cast<hsa_agent_info_t>(HSA_AMD_AGENT_INFO_DRIVER_NODE_ID),
+                &nodeId);
+           int deviceType;
+           hsa_agent_get_info(
+                agent,
+                static_cast<hsa_agent_info_t>(HSA_AGENT_INFO_DEVICE),
+                &deviceType);
+           if ((nodeId < deviceOffset) && (deviceType == HSA_DEVICE_TYPE_GPU))
+               deviceOffset = nodeId;
+
+           return HSA_STATUS_SUCCESS;
+      } , &deviceOffset);
+    };
+
+    int mapDeviceId(int id) { return id - deviceOffset; };
+} // namespace
 
 void RoctracerDataSource::api_callback(
     uint32_t domain,
@@ -839,7 +868,7 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
             sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
 
             OpTable::row row;
-            row.gpuId = record->device_id;
+            row.gpuId = mapDeviceId(record->device_id);
             row.queueId = record->queue_id;
             row.sequenceId = 0;
             strncpy(row.completionSignal, "", 18);
@@ -927,6 +956,8 @@ void RoctracerDataSource::init() {
     roctracer_open_pool_expl(&hcc_cb_properties, &m_hccPool);
     roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HCC_OPS, m_hccPool);
 #endif
+
+    createDeviceMap();
     stopTracing();
 }
 
