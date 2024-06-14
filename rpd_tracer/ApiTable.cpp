@@ -25,7 +25,6 @@
 #include <deque>
 #include <map>
 
-#include "rpd_tracer.h"
 #include "Utility.h"
 
 
