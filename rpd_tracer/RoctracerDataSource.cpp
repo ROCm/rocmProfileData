@@ -26,7 +26,7 @@
 #include <roctracer_hip.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
-#include "hsa/hsa_ext_amd.h"
+#include <hsa/hsa_ext_amd.h>
 
 #include <sqlite3.h>
 #include <fmt/format.h>
