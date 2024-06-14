@@ -189,6 +189,9 @@ void Logger::init()
         filename = "./trace.rpd";
     m_filename = filename;
 
+    // Indicate the tracer loaded.  Used for snooping without loading
+    setenv("RPDT_LOADED", "1", 1);
+
     // Create table recorders
 
     m_metadataTable = new MetadataTable(filename);
