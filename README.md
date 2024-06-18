@@ -89,4 +89,43 @@ Trace data can be viewed in chrome://tracing for visualization.  Rpd2tracing.py 
 ```
 python3 tools/rpd2tracing.py trace.rpd trace.json
 ```
+### Autocop submodule setup
 
+The autocoplite submodule contains a visualization toolkit compatible with ```trace.rpd``` files. To use the visualization capabilities of this submodule, from within the main rocmProfileData repository, cd into the autcoplite submodule directory and initialize the submodule:
+
+  ```sh
+  git submodule update --init --recursive
+  ```
+
+This command will initialize, fetch and checkout the submodule to the commit specified in the main repository.
+
+To update the submodule at any time and pull the latest changes, run:
+
+  ```sh
+  git submodule update --remote
+  ```
+You can use the provided Makefile to install the dependencies into a python virtual environment named ```aclite```. Simply run:
+
+```sh
+make install
+```
+
+Alternatively, you can manually install the packages using **pip**:
+
+```sh
+pip install -r requirements.txt
+```
+
+To uninstall the packages and remove the virtual environment, you can use the Makefile:
+
+```sh
+make clean
+```
+
+ or manually remove the virtual env:
+
+ ```sh
+ rm -rf aclite
+```
+
+Follow the README.md file within the autocoplite submodule for additional instructions and examples for how to run. 
