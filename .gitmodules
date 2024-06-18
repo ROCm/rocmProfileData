@@ -1,3 +1,6 @@
 [submodule "rtg_tracer"]
 	path = rtg_tracer
 	url = https://github.com/jeffdaily/rocm-timeline-generator
+[submodule "autocoplite"]
+	path = autocoplite
+	url = https://github.com/brieflynn/autocoplite.git
