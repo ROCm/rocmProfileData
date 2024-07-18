@@ -22,6 +22,7 @@
 #pragma once
 
 #include <deque>
+#include <thread>
 
 #include "Table.h"
 #include "DataSource.h"
@@ -83,4 +84,8 @@ private:
 
     std::string m_filename;
     bool m_writeOverheadRecords {true};
+
+    bool m_done {false};
+    std::thread *m_worker {nullptr};
+    void autoflushWorker();
 };
