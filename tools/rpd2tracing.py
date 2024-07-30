@@ -38,7 +38,7 @@ parser.add_argument('input_rpd', type=str, help="input rpd db")
 parser.add_argument('output_json', type=str, help="chrome tracing json output")
 parser.add_argument('--start', type=str, help="start time - default us or percentage %%. Number only is interpreted as us. Number with %% is interpreted as percentage")
 parser.add_argument('--end', type=str, help="end time - default us or percentage %%. See help for --start")
-parser.add_argument('--format', type=str, default="array", help="chome trace format, array or object")
+parser.add_argument('--format', type=str, default="object", help="chome trace format, array or object")
 args = parser.parse_args()
 
 #print(args)

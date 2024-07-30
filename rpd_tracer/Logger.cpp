@@ -244,9 +244,22 @@ void Logger::init()
     if (startTracing == true) {
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->startTracing();
+        std::unique_lock<std::mutex> lock(m_activeMutex);
+        ++m_activeCount;
     }
     static std::once_flag register_once;
     std::call_once(register_once, atexit, Logger::rpdFinalize);
+
+    // Start autoflush hack
+    const char *autoflush = getenv("RPDT_AUTOFLUSH");
+    if (autoflush != nullptr) {
+        int frequency = atoi(autoflush);
+        if (frequency > 0) {
+            m_period = 1000000 / frequency;  // usecs
+            m_done = false;
+            m_worker = new std::thread(&Logger::autoflushWorker, this);
+        }
+    }
 }
 
 static bool doFinalize = true;
@@ -257,6 +270,10 @@ void Logger::finalize()
     std::lock_guard<std::mutex> guard(finalizeMutex);
     if (doFinalize == true) {
         doFinalize = false;
+
+        m_done = true;
+        if (m_worker != nullptr)
+            m_worker->join();	// deadlock in here.  try skipping if needed
 
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->stopTracing();
@@ -276,6 +293,14 @@ void Logger::finalize()
 
         const timestamp_t end_time = clocktime_ns();
         fprintf(stderr, "rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
+    }
+}
+
+void Logger::autoflushWorker()
+{
+    while (m_done == false) {
+        rpdflush();
+        usleep(1000000);
     }
 }
 
