@@ -162,7 +162,6 @@ class rpdTracerControl:
             try:
                 threading.setprofile_all_threads(None)	#python 3.12+
             except:
-                pass
                 threading.setprofile(None)
                 # FIXME: handle running threads
 
