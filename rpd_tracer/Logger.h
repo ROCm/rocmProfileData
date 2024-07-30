@@ -86,6 +86,7 @@ private:
     bool m_writeOverheadRecords {true};
 
     bool m_done {false};
+    int m_period{1};
     std::thread *m_worker {nullptr};
     void autoflushWorker();
 };

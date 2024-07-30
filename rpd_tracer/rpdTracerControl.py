@@ -25,6 +25,7 @@ from ctypes import CDLL
 from ctypes.util import find_library
 import platform
 import multiprocessing
+import threading
 import os
 import sys
 import sqlite3
@@ -151,5 +152,17 @@ class rpdTracerControl:
     def setPythonTrace(self, doTrace: bool):
         if doTrace:
             sys.setprofile(self.__trace_callback)
+            try:
+                threading.setprofile_all_threads(self.__trace_callback)	#python 3.12+
+            except:
+                threading.setprofile(self.__trace_callback)
+                # FIXME: handle running threads
         else:
             sys.setprofile(None)
+            try:
+                threading.setprofile_all_threads(None)	#python 3.12+
+            except:
+                pass
+                threading.setprofile(None)
+                # FIXME: handle running threads
+

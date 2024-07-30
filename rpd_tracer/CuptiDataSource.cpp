@@ -133,7 +133,6 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
     // Cupti passes invalid/corrupted string pointers for the first callbacks on new threads.
     // Keep a count of callbacks.  We will lose these kernel names.
     thread_local uint64_t cuptiCrashHack = 0;
-    ++cuptiCrashHack;
 
     if (domain == CUPTI_CB_DOMAIN_RUNTIME_API) {
         thread_local sqlite3_int64 timestamp;
@@ -181,6 +180,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
                     {
+                        ++cuptiCrashHack;
                         auto &params = *(cudaLaunchKernel_v7000_params_st *)(cbInfo->functionParams);
                         KernelApiTable::row krow;
                         krow.api_id = row.api_id;
@@ -204,6 +204,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
 #if CUDART_VERSION >= 11060
                 case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernelExC_v11060:
                     {
+                        ++cuptiCrashHack;
                         auto &params = *(cudaLaunchKernelExC_v11060_params_st *)(cbInfo->functionParams);
                         auto &config = *(cudaLaunchConfig_t *)(params.config);
                         KernelApiTable::row krow;
