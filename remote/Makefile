@@ -11,10 +11,9 @@ RPDREMOTE_OBJS = $(RPDREMOTE_SRCS:.cpp=.o)
 RPDREMOTE_MAIN = librpd_remote.so
 
 
-all: | $(RPDREMOTE_MAIN) 
+all: | $(RPDREMOTE_MAIN)
 
-.PHONY: all 
-
+.PHONY: all
 
 $(RPDREMOTE_MAIN): $(RPDREMOTE_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 -g
@@ -24,8 +23,7 @@ $(RPDREMOTE_MAIN): $(RPDREMOTE_OBJS)
 
 
 .PHONY: install
-#install: | $(PREFIX)/lib/lib$(RPDREMOTE_MAIN)
-install:
+install: all
 	cp rpdRemote.sh $(PREFIX)/bin/rpdRemote
 	cp $(RPDREMOTE_MAIN)  $(PREFIX)/lib/
 	ldconfig
@@ -36,4 +34,4 @@ uninstall:
 
 .PHONY: clean
 clean:
-	rm -f *.o *.so 
+	rm -f *.o *.so

@@ -1,31 +1,32 @@
 PYTHON ?= python3
 
 .PHONY:
-all: rpd rocpd
+all: rpd rocpd remote
 
 .PHONY: install
-install:
+install: all
 	$(MAKE) install -C rocpd_python
 	$(MAKE) install -C rpd_tracer
-	$(MAKE) install -C rpd_remote
+	$(MAKE) install -C remote
 
 .PHONY: uninstall
 uninstall:
 	$(MAKE) uninstall -C rocpd_python
 	$(MAKE) uninstall -C rpd_tracer
-	$(MAKE) uninstall -C rpd_remote
+	$(MAKE) uninstall -C remote
 
 .PHONY: clean
 clean:
 	$(MAKE) clean -C rocpd_python
 	$(MAKE) clean -C rpd_tracer
-	$(MAKE) clean -C rpd_remote
+	$(MAKE) clean -C remote
 
+.PHONY: rpd
 rpd:
 	$(MAKE) -C rpd_tracer
-
+.PHONY: rocpd
 rocpd:
-	$(MAKE) -c rocpd_python
-
+	$(MAKE) -C rocpd_python
+.PHONY: remote
 remote:
-	$(MAKE) -c rpd_remote
+	$(MAKE) -C remote 
