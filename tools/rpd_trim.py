@@ -89,6 +89,17 @@ except:
     pass
 
 connection.commit()
+
+#clear any unused strings
+stringCount = connection.execute("select count(*) from rocpd_string").fetchall()[0][0]
+from rocpd.importer import RocpdImportData
+from rocpd.strings import cleanStrings
+importData = RocpdImportData()
+importData.resumeExisting(connection) # load the current db state
+cleanStrings(importData, False)
+stringRemaingCount = connection.execute("select count(*) from rocpd_string").fetchall()[0][0]
+print(f"Removed {stringCount - stringRemaingCount} of {stringCount} strings.  {stringRemaingCount} remaining")
+
 connection.execute("vacuum")
 connection.commit()
 connection.close()
