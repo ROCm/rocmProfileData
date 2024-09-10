@@ -79,6 +79,7 @@ except:
 
 rangeStringApi = ""
 rangeStringOp = ""
+rangeStringMonitor = ""
 min_time = connection.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
 max_time = connection.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
 if (min_time == None):
@@ -99,6 +100,7 @@ if args.start:
         start_time = int(args.start)
     rangeStringApi = "where rocpd_api.start/1000 >= %s"%(start_time)
     rangeStringOp = "where rocpd_op.start/1000 >= %s"%(start_time)
+    rangeStringMonitor = "where start/1000 >= %s"%(start_time)
 if args.end:
     if "%" in args.end:
         end_time = ( (max_time - min_time) * ( int( args.end.replace("%","") )/100 ) + min_time )/1000
@@ -107,6 +109,7 @@ if args.end:
 
     rangeStringApi = rangeStringApi + " and rocpd_api.start/1000 <= %s"%(end_time) if args.start != None else "where rocpd_api.start/1000 <= %s"%(end_time)
     rangeStringOp = rangeStringOp + " and rocpd_op.start/1000 <= %s"%(end_time) if args.start != None else "where rocpd_op.start/1000 <= %s"%(end_time)
+    rangeStringMonitor = rangeStringMonitor + " and start/1000 <= %s"%(end_time) if args.start != None else "where start/1000 <= %s"%(end_time)
 
 print("\nFilter: %s"%(rangeStringApi))
 print(f"Output duration: {(end_time-start_time)/1000000} seconds")
@@ -131,7 +134,7 @@ for row in connection.execute("select A.string as optype, B.string as descriptio
 
 #Output Graph executions on GPU
 try:
-    for row in connection.execute('select graphExec, gpuId, queueId, min(start)/1000, (max(end)-min(start))/1000, count(*) from rocpd_graphLaunchapi A join rocpd_api_ops B on B.api_id = A.api_ptr_id join rocpd_op C on C.id = B.op_id group by api_ptr_id'):
+    for row in connection.execute('select graphExec, gpuId, queueId, min(start)/1000, (max(end)-min(start))/1000, count(*) from rocpd_graphLaunchapi A join rocpd_api_ops B on B.api_id = A.api_ptr_id join rocpd_op C on C.id = B.op_id %s group by api_ptr_id'%(rangeStringMonitor)):
         try:
             outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"kernels\":\"%s\"}}\n"%(row[1], row[2], f'Graph {row[0]}', row[3], row[4], row[5]))
         except ValueError:
@@ -181,6 +184,8 @@ except:
 T_end = 0
 for row in connection.execute("SELECT max(end)/1000 from (SELECT end from rocpd_api UNION ALL SELECT end from rocpd_op)"):
     T_end = int(row[0])
+if args.end:
+    T_end = end_time
 
 # Loop over GPU for per-gpu counters
 gpuIdsPresent = []
@@ -211,10 +216,10 @@ for gpuId in gpuIdsPresent:
 
 # Create SMI counters
 try:
-    for row in connection.execute("select deviceId, monitorType, start/1000, value from rocpd_monitor"):
+    for row in connection.execute("select deviceId, monitorType, start/1000, value from rocpd_monitor %s"%(rangeStringMonitor)):
         outfile.write(',{"pid":"%s","name":"%s","ph":"C","ts":%s,"args":{"%s":%s}}\n'%(row[0], row[1], row[2], row[1], row[3]))
     # Output the endpoints of the last range
-    for row in connection.execute("select distinct deviceId, monitorType, max(end)/1000, value from rocpd_monitor group by deviceId, monitorType"):
+    for row in connection.execute("select distinct deviceId, monitorType, max(end)/1000, value from rocpd_monitor %s group by deviceId, monitorType"%(rangeStringMonitor)):
         outfile.write(',{"pid":"%s","name":"%s","ph":"C","ts":%s,"args":{"%s":%s}}\n'%(row[0], row[1], row[2], row[1], row[3]))
 except:
     print("Did not find SMI data")
