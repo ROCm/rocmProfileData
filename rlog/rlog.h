@@ -21,38 +21,120 @@
 ********************************************************************************/
 
 #include <dlfcn.h>
+namespace rlog {
 
-// Static function pointer
-void (*log_mark_) (const char*, const char*, const char*) = NULL;
-void (*log_rangePush_) (const char*, const char*, const char*) = NULL;
-void (*log_rangePop_) () = NULL;
-void (*registerActiveCallback_) (void (*cb)()) = NULL;
+  // API functions -------------------------------------------------------------
+  void init();
+
+  void mark(const char *domain, const char *category, const char *apiname, const char *args);
+  void mark(const char *category, const char *apiname, const char *args);
+  void mark(const char *apiname, const char *args);
+
+  void rangePush(const char *domain, const char *category, const char *apiname, const char *args);
+  void rangePush(const char *category, const char *apiname, const char *args);
+  void rangePush(const char *apiname, const char *args);
+
+  void rangePop();
+
+  int registerActiveCallback(void (*cb)());
+
+  void setDefaultDomain(const char *);
+  void setDefaultCategory(const char *);
+  const char *getProperty(const char *domain, const char *property, const char *defaultValue);
+
+  // END API functions ---------------------------------------------------------
+
+namespace {
+    const char *domain = "";
+    const char *category = "";
+
+    // Static function pointers
+    void (*log_mark_) (const char*, const char*, const char*) = NULL;
+    void (*log_rangePush_) (const char*, const char*, const char*) = NULL;
+    void (*log_rangePop_) () = NULL;
+    void (*registerActiveCallback_) (void (*cb)()) = NULL;
+
+    // Static function pointers - ROCTX
+    void (*roctx_mark_) (const char* message) = NULL;
+    void (*roctx_rangePush_) (const char* message) = NULL;
+    void (*roctx_rangePop_) () = NULL;
+} // namespace
+
+
 
 // Load library and look up symbols
-void init_rlog() {
+void init() {
+#if 0
     void (*dl) = dlopen("librlog.so", RTLD_LAZY);
     if (dl) {
         log_mark_ = (void (*)(const char*, const char*, const char*)) dlsym(dl, "log_mark");
         log_rangePush_ = (void (*)(const char*, const char*, const char*)) dlsym(dl, "log_rangePush");
         log_rangePop_ = (void (*)()) dlsym(dl, "log_rangePop");
     }
+#endif
+#if 1
+    void (*dltx) = dlopen("libroctx64.so", RTLD_LAZY);
+    if (dltx) {
+        roctx_mark_ = (void (*)(const char*)) dlsym(dltx, "roctxMarkA");
+        roctx_rangePush_ = (void (*)(const char*)) dlsym(dltx, "roctxRangePushA");
+        roctx_rangePop_ = (void (*)()) dlsym(dltx, "roctxRangePop");
+    }
+#endif
 }
 
-// Application usable functions
-void log_mark(const char *domain, const char *apiname, const char *args) {
+void mark(const char *domain, const char *category, const char *apiname, const char *args)
+{
     if (log_mark_)
         log_mark_(domain, apiname, args);
-}
-void log_rangePush(const char *domain, const char *apiname, const char *args) {
-    if (log_rangePush_)
-        log_rangePush_(domain, apiname, args);
-}
-void log_rangePop() {
-    if (log_rangePop_)
-       log_rangePop_();
+    if (roctx_mark_) {
+        char buff[4096];
+        snprintf(buff, 4096, "%s : %s : api = %s | %s", domain, category, apiname, args);
+        roctx_mark_(buff); 
+    }
 }
 
-int registerActiveCallback(void (*cb)()) {
+void mark(const char *category, const char *apiname, const char *args)
+{
+    mark(domain, category, apiname, args);
+}
+
+void mark(const char *apiname, const char *args)
+{
+    mark(domain, category, apiname, args);
+}
+
+void rangePush(const char *domain, const char *category, const char *apiname, const char *args)
+{
+    if (log_rangePush_)
+       log_rangePush_(domain, apiname, args);
+    if (roctx_rangePush_) {
+        char buff[4096];
+        snprintf(buff, 4096, "%s : %s : api = %s | %s", domain, category, apiname, args);
+        roctx_rangePush_(buff);
+    }
+}
+
+void rangePush(const char *category, const char *apiname, const char *args)
+{
+    rangePush(domain, category, apiname, args);
+}
+
+void rangePush(const char *apiname, const char *args)
+{
+    rangePush(domain, category, apiname, args);
+}
+
+void rangePop()
+{
+    if (log_rangePop_)
+        log_rangePop_();
+    if (roctx_rangePop_)
+        roctx_rangePop_();
+}
+
+
+int registerActiveCallback(void (*cb)())
+{
     if (registerActiveCallback_) {
         registerActiveCallback_(cb);
         return 0;
@@ -61,4 +143,20 @@ int registerActiveCallback(void (*cb)()) {
         return -1;
 }
 
+void setDefaultDomain(const char* ddomain)
+{
+    domain = ddomain;
+}
 
+void setDefaultCategory(const char* dcat)
+{
+    category = dcat;
+}
+
+// FIXME: lifetime
+const char *getProperty(const char *domain, const char *property, const char *defaultValue)
+{
+    return defaultValue;
+}
+
+} // namespace rlog

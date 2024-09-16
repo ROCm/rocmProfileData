@@ -25,7 +25,7 @@ THE SOFTWARE.
 // hip header file
 #include "hip/hip_runtime.h"
 #include "../../rpd_tracer/Utility.h"
-#include "roctracer/roctx.h"
+//#include "roctracer/roctx.h"
 #include "/usr/local/include/rlog.h"
 
 
@@ -89,8 +89,10 @@ int main() {
 
 
     // Fire up logging
-    init_rlog();
-    log_mark("test", "nocall", "noargs");
+    rlog::init();
+    rlog::mark("test", "nocall", "noargs");
+    rlog::setDefaultDomain("MT");
+    rlog::setDefaultCategory("test");
 
     // Warmup
     for (int i = 0 ; i < 100; ++i) {
@@ -148,8 +150,10 @@ int main() {
     sprintf(buff, "this is a medium size roctx message, %d", count);
     t1 = clocktime_ns();
     for (int i = 0 ; i < count; ++i) {
-        roctxRangePushA(buff);
-        roctxRangePop();
+        //roctxRangePushA(buff);
+        //roctxRangePop();
+        rlog::rangePush("static", buff);
+        rlog::rangePop();
     }
     t2 = clocktime_ns();
     fprintf(stderr, "roxtx_static: %d in %f ms.  %f ns / call\n", count, (t2 - t1) / 1000000.0, 1.0*(t2-t1)/count);
@@ -163,8 +167,10 @@ int main() {
 
     t1 = clocktime_ns();
     for (int i = 0 ; i < count; ++i) {
-        roctxRangePushA(msg[i]);
-        roctxRangePop();
+        //roctxRangePushA(msg[i]);
+        //roctxRangePop();
+        rlog::rangePush("variable", msg[i]);
+        rlog::rangePop();
     }
     t2 = clocktime_ns();
     fprintf(stderr, "roctx_variable: %d in %f ms.  %f ns / call\n", count, (t2 - t1) / 1000000.0, 1.0*(t2-t1)/count);

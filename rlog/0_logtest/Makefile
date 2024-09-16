@@ -40,7 +40,7 @@ EXECUTABLE=./MatrixTranspose
 
 all: $(EXECUTABLE) test
 
-CXXFLAGS =-g
+CXXFLAGS =-g -w
 CXX=$(HIPCC)
 
 
