@@ -105,9 +105,13 @@ class rpdTracerControl:
        if os.environ.get("RPDT_LOADED") == None:
            cls.__active = False
 
-    def __init__(self):
+    def __init__(self,nvtx = False):
+        self.nvtx = None
         rpdTracerControl.initializeFile()
         rpdTracerControl.loadLibrary()
+        if nvtx:
+            import torch
+            self.nvtx = torch.autograd.profiler.emit_nvtx()
 
     def __del__(self):
         pass
@@ -126,9 +130,15 @@ class rpdTracerControl:
 
     def __enter__(self):
         self.start()
+        if self.nvtx:
+            self.nvtx.__enter__()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.nvtx:
+            self.nvtx.__exit__(exc_type, exc_val, exc_tb)
         self.stop()
+        self.flush()
 
     def rangePush(self, domain: str, apiName: str, args: str):
         if rpdTracerControl.__rpd:
@@ -138,6 +148,32 @@ class rpdTracerControl:
         if rpdTracerControl.__rpd:
             rpdTracerControl.__rpd.rpd_rangePop()
 
+    def top_totals():
+        try:
+            conn = sqlite3.connect(rpdTracerControl.__filename)
+            cursor = conn.cursor()
+            cursor.execute("SELECT Name, TotalCalls, TotalDuration, Ave, Percentage FROM top;")
+            rows = cursor.fetchall()
+
+            if rows:
+                from prettytable import PrettyTable
+                import textwrap
+                table = PrettyTable()
+                table.field_names = ["Name", "TotalCalls", "TotalDuration", "Ave", "Percentage"]
+                table.align = "l"
+
+                for row in rows:
+                    wrapped_name = '\n'.join(textwrap.wrap(row[0], 60))
+                    table.add_row([wrapped_name] + list(row[1:]))
+
+                print(table)
+            else:
+                print("No data found in 'top' table.")
+
+        except sqlite3.Error as e:
+            print(f"Error querying database: {e}")
+        finally:
+            conn.close()
 
     # python stack tracing
 
