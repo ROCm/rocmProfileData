@@ -29,7 +29,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Permanently remove events/data from an RPD file that falls outside a specified time range.  Range start and end values default to the files\' original start and end')
 parser.add_argument('input_rpd', type=str, help="input rpd db")
-parser.add_argument('--start', type=str, help="start time - default ns or percentage %%. Number only is interpreted as ns. Number with %% is interpreted as percentage")
+parser.add_argument('--start', type=str, help="start time - default ns or percentage %%. Number only is interpreted as ns. Number with %% is interpreted as percentage. Number with leading '+' is interpreted as delta from the start time.")
 parser.add_argument('--end', type=str, help="end time - default ns or percentage %%. See help for --start")
 parser.add_argument('--dryrun', action=argparse.BooleanOptionalAction, help="compute range but take no action")
 args = parser.parse_args()
@@ -41,15 +41,14 @@ max_time = connection.execute("select MAX(end) from rocpd_api;").fetchall()[0][0
 if (min_time == None):
     raise Exception("Trace file is empty.")
 
-print("Timestamps:")
-print(f"\t    first: \t{min_time} ns")
-print(f"\t     last: \t{max_time} ns")
 print(f"\t duration: \t{(max_time-min_time) / 1000000000} seconds")
 
 # Calculate trim start
 if args.start:
     if "%" in args.start:
-        start_time = ( (max_time - min_time) * ( int( args.start.replace("%","") )/100 ) + min_time )/1000
+        start_time = int( (max_time - min_time) * ( int( args.start.replace("%","") )/100 ) + min_time )
+    elif args.start.startswith('+'):
+        start_time = int(args.start[1:]) + min_time
     else:
         start_time = int(args.start)
 else:
@@ -58,11 +57,24 @@ else:
 # Calculate trim end
 if args.end:
     if "%" in args.end:
-        end_time = ( (max_time - min_time) * ( int( args.end.replace("%","") )/100 ) + min_time )/1000
+        end_time = int( (max_time - min_time) * ( int( args.end.replace("%","") )/100 ) + min_time )
+    elif args.end.startswith('+'):
+        end_time = int(args.end[1:]) + min_time
     else:
         end_time = int(args.end)
 else:
     end_time = max_time
+
+print("Timestamps:")
+print(f"\t    first: \t{min_time} ns")
+print(f"\t     last: \t{max_time} ns")
+print(f"\trng_start: \t{start_time} ns")
+print(f"\trng_end  : \t{end_time} ns")
+
+assert start_time >= min_time
+assert start_time <= max_time
+assert end_time >= min_time
+assert end_time <= max_time
 
 print()
 print(f"Trimmed range:    {start_time} --> {end_time}")
@@ -100,6 +112,7 @@ cleanStrings(importData, False)
 stringRemaingCount = connection.execute("select count(*) from rocpd_string").fetchall()[0][0]
 print(f"Removed {stringCount - stringRemaingCount} of {stringCount} strings.  {stringRemaingCount} remaining")
 
+connection.isolation_level = None
 connection.execute("vacuum")
 connection.commit()
 connection.close()
