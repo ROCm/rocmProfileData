@@ -11,7 +11,10 @@ class RaptorParser:
     """
     Tool for parsing and post-processing RPD files:
     - slice, dice, and eviscerate RPD files into focused regions-of-interest.
-    - generate summaries of top kernels and combine into categories (ie GEMMs, RCCL, etc).
+    - generate summaries of top kernels and combine into categories (ie GEMM, Comm, Attention, etc).
+    - compute “Gaps” where GPU is idle.
+    - compute kernel to kernel variability and percentage of execution time
+    - auto-roi feature to focus on hottest region
     - tables in the RaptorParser class are organized into Pandas dataframes for interactive analysis via ipython/jupyter/etc.
     - show a text trace of each command's execution - kernel name, duration, idle gaps, etc
     - RAPTOR possibly stands for ROCm Profile-Data Tool and Output Refinement.
@@ -292,7 +295,7 @@ class RaptorParser:
         else:
             f = open(outfile, "w")
 
-        print ("%10s %9s %13s %13s %6s %s" % ("Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Command"), file=f)
+        print ("%10s %9s %13s %13s %10s %s" % ("Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Command"), file=f)
         for idx,row in enumerate(op_trace_df.itertuples(),1):
             print ("%10d %9.1f %13s %13s %6.1f %30s" % (row.id,
                                      row.PreGap/1000,
