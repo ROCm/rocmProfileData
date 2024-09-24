@@ -51,6 +51,8 @@ class RaptorParser:
     strings_hash : dict[str] = None
     monitor_df : pd.DataFrame = None
 
+    prekernel_seq : int = None
+
     roi_start_ns : int = None
     roi_end_ns   : int = None
 
@@ -321,15 +323,26 @@ class RaptorParser:
 
         return gaps_labels
 
-    def get_top_df(self, force:bool = False, leading_kernels=None):
+    def get_top_df(self, force:bool = False, prekernel_seq:int=None):
 
-        if self.top_df is None or force:
+        if self.top_df is None or force or prekernel_seq != self.prekernel_seq:
             op_trace_df = self.get_op_trace_df()
-            if leading_kernels:
-                op_trace_df['PreCommand'] = op_trace_df['Command'].shift(1)
-                top_gb = op_trace_df.groupby(['Command','PreCommand'], sort=False)
+
+            if prekernel_seq == None:
+                prekernel_seq = self.prekernel_seq
+
+            if prekernel_seq:
+                orig_op_trace_cols = op_trace_df.columns
+                groupby_cols = ['Command']
+                for i in range(prekernel_seq):
+                    shift_col_name = "CommandShift%d" % (i+1)
+                    groupby_cols.append(shift_col_name)
+                    op_trace_df[shift_col_name] = op_trace_df['Command'].shift(i+1)
+                top_gb = op_trace_df.groupby(groupby_cols, sort=False)
+                self.op_trace_df = op_trace_df[orig_op_trace_cols]
             else:
-                top_gb = op_trace_df.groupby('Command', sort=False)
+                top_gb = op_trace_df.groupby(['Command'], sort=False)
+
             top_df = top_gb.agg({
                 'PreGap' : ['sum', 'min', 'mean', 'max'],
                 'Duration' : ['sum', 'min', 'mean', 'max'],
@@ -360,7 +373,12 @@ class RaptorParser:
                 [('Duration', col[1]) if col[0]=='PreGap' else col \
                  for col in gaps_df.columns]
 
+            gaps_df.index = ((idx,) for idx in gaps_df.index)
+
+            if not prekernel_seq:
+                top_df.index = ((idx,) for idx in top_df.index)
             top_df = pd.concat([top_df, gaps_df])
+            top_df.index.name = "Kernel Sequence"
 
             total_duration = top_df[('Duration','sum')].sum()
             top_df['PctTotal'] = top_df[('Duration','sum')] / total_duration * 100
@@ -376,7 +394,6 @@ class RaptorParser:
 
             top_df = top_df.sort_values([('Duration', 'sum')],
                                              ascending=False)
-            
             self.top_df = top_df
 
         return self.top_df
@@ -465,7 +482,6 @@ class RaptorParser:
         variability_method : None=don't show variability, comm=show $Variability_Comm, non_comm=show $Variability_NonComm
         """
 
-
         if top_df is None:
             top_df = self.get_top_df()
 
@@ -477,7 +493,7 @@ class RaptorParser:
         for category_name,pat_list in categories.items():
             mask = pd.Series(False, index=top_df.index)
             for pat in pat_list:
-                mask |= top_df.index.str.contains(pat=pat, regex=True)
+                mask |= top_df.index.str[0].str.contains(pat=pat, regex=True)
             top_df.loc[mask, 'Category'] = category_name
          
         other_name = "Other"

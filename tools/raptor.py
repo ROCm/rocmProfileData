@@ -28,7 +28,9 @@ summary_g.add_argument("--variability", "-v", action='store_true',
                     help="show variability")
 
 summary_g.add_argument("--top", "-t", action='store_true',
-                    help="Show top kernel, sorted by TotalDuration")
+                    help="Show top kernels, sorted by TotalDuration")
+summary_g.add_argument("--prekernel_seq", type=int, default=2,
+                    help="Number of preceding kernels to use in the sequence of kernels used for grouping into the top buckets.  This can be used to disambiguate cases where the same kernel name is called in different contents.  0 means to ignore the sequence and aggregate top kernels just based on the name")
 gaps_default = [10, 20, 50, 100, 1000, 10000, 100000]
 summary_g.add_argument("--gaps",
                 nargs='+', type=int, metavar="GAP",
@@ -75,6 +77,7 @@ if not args.op_trace and not args.top and not args.categorize:
 
 raptor = RaptorParser(args.rpd_file_name, gaps=args.gaps, 
                       category_json=args.category_json,
+                      prekernel_seq=args.prekernel_seq,
                       roi_start=args.roi_start, roi_end=args.roi_end)
 
 raptor.print_timestamps(indent="   ")
