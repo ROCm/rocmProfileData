@@ -61,6 +61,13 @@ class RaptorParser:
     roi_start_ns : int = None
     roi_end_ns   : int = None
 
+    # Special internal category names:
+    _other_cat = "_Other"
+    _gpu_idle_cat = "_GPU_Idle"
+    _comm_cat = "_COMM"
+    _var_cat = "_Variability"
+    
+
     def __post_init__(self):
         if self.gaps == None:
            self.set_gaps([10])
@@ -391,15 +398,13 @@ class RaptorParser:
 
             total_duration = top_df[('Duration','sum')].sum()
             top_df['PctTotal'] = top_df[('Duration','sum')] / total_duration * 100
-
-            # Add the Category column:
-            self.get_category_df(top_df=top_df)
+            self._assign_categories(top_df=top_df)
 
             top_df['VarSum'] = \
                 ((top_df[('Duration','mean')] - top_df[('Duration','min')]) * \
                   top_df['TotalCalls']).astype(int)
 
-            top_df.loc[top_df['Category'].isin(['GAP']),'VarSum'] = np.nan
+            top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum'] = np.nan
 
             top_df = top_df.sort_values([('Duration', 'sum')],
                                              ascending=False)
@@ -484,19 +489,19 @@ class RaptorParser:
 
         return cats
 
-    def get_category_df(self, top_df:pd.DataFrame=None, categories:Dict=None,
-                        variability_method=None, duration_units='ms'):
+    def _assign_categories(self, top_df:pd.DataFrame=None,
+                          categories:Dict=None):
         """
-        Summarize top kernels into higher-level, user-specified categories.
-
-        variability_method : None=don't show variability, comm=show $Variability_Comm, non_comm=show $Variability_NonComm
+        Create a "Category" column in top_df and assign category 
+        labels based on the regex in the categories dict
         """
-
         if top_df is None:
             top_df = self.get_top_df()
 
-        if categories is None:
-            categories = self.read_category_file(self.category_json)
+        read_cat = (categories == None)
+        categories = {self._gpu_idle_cat : ["^GAP "]}
+        if read_cat:
+            categories.update(self.read_category_file(self.category_json))
 
         # Set top_df.cat.  
         # For overlapping patterns, the LAST one wins
@@ -506,25 +511,78 @@ class RaptorParser:
                 mask |= top_df.index.str[0].str.contains(pat=pat, regex=True)
             top_df.loc[mask, 'Category'] = category_name
          
-        other_name = "Other"
-        top_df['Category'] = top_df['Category'].fillna(other_name)
+        top_df['Category'] = top_df['Category'].fillna(self._other_cat)
+
+    def get_category_df(self, top_df:pd.DataFrame=None, categories:Dict=None,
+                        variability_method=None, duration_units='ms'):
+        """
+        Summarize top kernels into higher-level, user-specified categories.
+
+        variability_method : 
+            None : don't add a row for variability.
+            comm : Aggregate _COMM category into the _Variability row.  
+            non_comm : Aggregate ~_COMM category into the _Variability row
+        """
+
+        if top_df is None:
+            top_df = self.get_top_df()
+
+        self._assign_categories(top_df, categories)
 
         # Create the category db 
         cat_gb = top_df.groupby('Category')
         category_df = pd.DataFrame(cat_gb.size(), columns=['UniqKernels'])
         df = cat_gb.agg({
                 ('TotalCalls','') : 'sum',
-                ('Duration','sum') : 'sum'
+                ('Duration','sum') : 'sum',
+                ('VarSum','') : 'sum'
             }) 
         category_df = pd.concat([category_df, df], axis='columns')
-        total_duration_col = 'TotalDur_' + duration_units
-        category_df.columns=['UniqKernels', 'TotalCalls', total_duration_col]
+
+        # rename columns and index:
+        total_dur_col = 'TotalDur_' + duration_units
+        varsum_col = "VarSum_" + duration_units
+        category_df.columns=['UniqKernels', 'TotalCalls',
+                              total_dur_col, varsum_col]
         category_df.index.name = None
-        category_df['AvgDur_us'] = category_df[total_duration_col] / category_df['TotalCalls'] / 1000
-        total_duration = category_df[total_duration_col].sum()
-        category_df['Pct'] = category_df[total_duration_col]/total_duration*100
-        category_df.sort_values(total_duration_col, ascending=False, inplace=True)
-        category_df[total_duration_col] /= self._time_units[duration_units]
+
+        total_duration_0 = category_df[total_dur_col].sum()
+
+        if variability_method:
+            if variability_method=='comm':
+                var_filter = category_df.index == self._comm_cat
+            elif variability_method=='non_comm':
+                var_filter = category_df.index != self._comm_cat
+            else:
+                raise RuntimeError("bad variability_method")
+
+            category_df.loc[~var_filter, varsum_col] = 0
+            category_df.loc[var_filter, total_dur_col] -= \
+                category_df.loc[var_filter, varsum_col] 
+
+            #category_df.loc[len(category_df.index)] = [0,0,var_sum,0,0]
+            var_df = pd.DataFrame({
+                      'UniqKernels': category_df.loc[var_filter,'UniqKernels'].sum(),
+                      'TotalCalls':category_df.loc[var_filter, 'TotalCalls'].sum(),
+                      total_dur_col : category_df.loc[var_filter, varsum_col].sum(),
+                      varsum_col : np.nan
+                      }, 
+                      index=[self._var_cat])
+            category_df = pd.concat([category_df,var_df], axis='rows')
+
+        # Compute Avg and Pct
+        category_df['AvgDur_us'] = category_df[total_dur_col] / \
+                                   category_df['TotalCalls'] / 1000
+        total_duration = category_df[total_dur_col].sum()
+
+        # check we properly acconted for variability only once
+        assert total_duration_0 == total_duration
+        category_df['Pct'] = category_df[total_dur_col]/total_duration*100
+
+        # finally, sort and convert to the desired units:
+        category_df.sort_values(total_dur_col, ascending=False, inplace=True)
+        category_df[total_dur_col] /= self._time_units[duration_units]
+        category_df[varsum_col] /= self._time_units[duration_units]
 
         self.category_df = category_df
         return category_df
@@ -532,7 +590,7 @@ class RaptorParser:
     def get_variability_df(self, top_df: pd.DataFrame=None, categories: Dict=None):
         top_df = self.get_top_df()
         total_ns = top_df[('Duration','sum')].sum()
-        comm_filter = top_df['Category'] == 'Comm'
+        comm_filter = top_df['Category'] == self._comm_cat
         comm_sum = top_df.loc[comm_filter,'VarSum'].sum()
         non_comm_sum = top_df.loc[~comm_filter,'VarSum'].sum()
 
