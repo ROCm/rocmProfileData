@@ -37,6 +37,7 @@ class RaptorParser:
     """
 
     rpd_file : str = None
+    tag : str = None
     category_json : str = None
     gaps : List[int] = None
 
@@ -51,7 +52,7 @@ class RaptorParser:
     strings_hash : dict[str] = None
     monitor_df : pd.DataFrame = None
 
-    prekernel_seq : int = None
+    prekernel_seq : int = 2
 
     roi_start_ns : int = None
     roi_end_ns   : int = None
@@ -68,6 +69,9 @@ class RaptorParser:
             self.con = sqlite3.connect(self.rpd_file)
         else:
             raise RuntimeError ("RPD file '" + self.rpd_file + "' does not exist.")
+
+        if self.tag == None:
+            self.tag = pathlib.Path(self.rpd_file).stem
 
         self.first_ns = \
             self.con.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
@@ -156,6 +160,7 @@ class RaptorParser:
         connection.commit()
         connection.close()
 
+    # translate text tag to number of ns
     _time_units = {
         "ns"  : 1,
         "us"  : 1000,
@@ -475,7 +480,8 @@ class RaptorParser:
 
         return cats
 
-    def get_category_df(self, top_df:pd.DataFrame=None, categories:Dict=None, variability_method=None):
+    def get_category_df(self, top_df:pd.DataFrame=None, categories:Dict=None,
+                        variability_method=None, duration_units='ms'):
         """
         Summarize top kernels into higher-level, user-specified categories.
 
@@ -507,12 +513,14 @@ class RaptorParser:
                 ('Duration','sum') : 'sum'
             }) 
         category_df = pd.concat([category_df, df], axis='columns')
-        category_df.columns=['UniqKernels', 'TotalCalls', 'TotalDuration']
+        total_duration_col = 'TotalDur_' + duration_units
+        category_df.columns=['UniqKernels', 'TotalCalls', total_duration_col]
         category_df.index.name = None
-        category_df['AvgDuration'] = category_df['TotalDuration'] / category_df['TotalCalls']
-        total_duration = category_df['TotalDuration'].sum()
-        category_df['Pct'] = category_df['TotalDuration']/total_duration*100
-        category_df.sort_values('TotalDuration', ascending=False, inplace=True)
+        category_df['AvgDur_us'] = category_df[total_duration_col] / category_df['TotalCalls'] / 1000
+        total_duration = category_df[total_duration_col].sum()
+        category_df['Pct'] = category_df[total_duration_col]/total_duration*100
+        category_df.sort_values(total_duration_col, ascending=False, inplace=True)
+        category_df[total_duration_col] /= self._time_units[duration_units]
 
         self.category_df = category_df
         return category_df
