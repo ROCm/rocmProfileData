@@ -9,8 +9,7 @@ from raptor_parser import RaptorParser
 
 parser = argparse.ArgumentParser(prog="raptor.py",
         description=
-            RaptorParser.__doc__ + \
-            \
+            RaptorParser.usage_doc + \
 """
 Example:  $ raptor.py --top --categorize trace.rpd
 """,

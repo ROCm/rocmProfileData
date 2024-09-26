@@ -8,6 +8,8 @@ import os
 
 @dataclass
 class RaptorParser:
+    # usage_doc is also shown in the raptor.py script usage:
+    usage_doc = __doc__ = \
     """
     Tool for parsing and post-processing RPD files:
     - slice, dice, and eviscerate RPD files into focused regions-of-interest.
@@ -20,9 +22,11 @@ class RaptorParser:
     - RAPTOR possibly stands for ROCm Profile-Data Tool and Output Refinement.
     """
 
+    # Adding additional info for the doc-string:
+    __doc__ += \
     """
     Pandas dataframes:
-    (if not specified in the column name, columns use "nano-seconds")
+    (if not specified in the column name, time-based columns use "nano-seconds")
 
     op_df       : Record for each GPU operation (ie kernel).  Includes pre-gap, duration,
                   call count, name, etc.
