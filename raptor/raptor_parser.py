@@ -473,6 +473,14 @@ class RaptorParser:
             self._string_to_id_hash = string_df['id'].T.to_dict()
         return self.strings_hash
 
+    def get_ops_from_top_row(self, top_row:pd.DataFrame):
+        op_df = self.get_op_df()
+        kernel_seq = top_row.name
+        assert len(self.kernel_cols) == len(kernel_seq)
+        filter = (op_df[self.kernel_cols] == \
+                        pd.Series(kernel_seq, index=self.kernel_cols)).all(axis=1)
+        return op_df[filter]
+
     def get_monitor_df(self):
         if self.monitor_df is None:
             self.monitor_df = pd.read_sql_query("select deviceId,start,end,value from rocpd_monitor where deviceType=='gpu' and monitorType=='sclk' %s order by start ASC" % self.sql_roi_str(add_where=False), self.con)
