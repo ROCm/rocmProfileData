@@ -195,7 +195,7 @@ class RaptorParser:
             top_df = self.get_top_df()
             match_df = top_df[top_df.index.str.contains(pat=roi_str, regex=True)]
             if len(match_df):
-                return match_df.iloc[0][('StartNs', 'min')]
+                return match_df.iloc[0][('Start_ns', 'min')]
             else:
                 raise RuntimeError("ROI string '%s' not found in top_df" % roi_str)
 
@@ -248,12 +248,15 @@ class RaptorParser:
             # normalize timestamps:
             op_df["start"] -= self.first_ns
             op_df["end"]   -= self.first_ns
-            op_df['Duration'] = op_df['end'] - op_df['start']
+            op_df['Duration'] = np.where(op_df['start'] <= op_df['end'], 
+                                         op_df['end'] - op_df['start'], 0)
+            op_df.rename(columns={'start' : 'Start_ns', 'end' : 'End_ns',
+                                  'description':'Kernel'}, inplace=True)
             
 
             # expanding.max computes a running max of end times - so commands that
             # finish out-of-order (with an earlier end) do not move end time.
-            op_df['PreGap'] = (op_df['start'] -  op_df['end'].expanding().max().shift(1)).clip(lower=0)
+            op_df['PreGap'] = (op_df['Start_ns'] -  op_df['End_ns'].expanding().max().shift(1)).clip(lower=0)
             self.op_df = op_df
 
         return self.op_df
@@ -264,7 +267,7 @@ class RaptorParser:
         """ 
         if self.op_trace_df is None or force:
             op_df = self.get_op_df()
-            op_df.sort_values(['gpuId', 'start'], ascending=True)
+            op_df.sort_values(['gpuId', 'Start_ns'], ascending=True)
 
             strings_hash = self.get_strings_hash()
 
@@ -274,12 +277,11 @@ class RaptorParser:
             op_trace_df['id'] = op_df['id']
             op_trace_df['GpuId'] = op_df['gpuId']
             op_trace_df['QueueId'] = op_df['queueId']
-            op_trace_df['StartNs'] = op_df['start']
-            op_trace_df['EndNs'] = op_df['end']
+            op_trace_df['Start_ns'] = op_df['Start_ns']
+            op_trace_df['End_ns'] = op_df['End_ns']
             op_trace_df['PreGap'] = np.where(op_df['PreGap'] >= 0,
                                                    op_df['PreGap'], np.nan)
-            op_trace_df['Duration'] = np.where(op_df['start'] <= op_df['end'], 
-                                                     op_df['end'] - op_df['start'], 0)
+            op_trace_df['Duration'] = op_df['Duration']
             if 'opType_id' in op_df.columns:
                 op_trace_df['OpType'] = op_df['opType_id'].map(strings_hash)
             elif 'opType' in op_df.columns:
@@ -288,22 +290,23 @@ class RaptorParser:
                 raise RuntimeError("Can't determine optype")
 
             if 'descripion_id' in op_df.columns:
-                op_trace_df['Command'] = np.where(op_trace_df['OpType'].isin(['KernelExecution', 'Task']), 
+                op_trace_df['Kernel'] = np.where(op_trace_df['OpType'].isin(['KernelExecution', 'Task']), 
                                                     op_df['description_id'].map(strings_hash),
                                                     op_trace_df['OpType'])
 
             elif 'description' in op_df.columns:
-                op_trace_df['Command'] = np.where(op_trace_df['OpType'].isin(['KernelExecution', 'Task']), 
+                op_trace_df['Kernel'] = np.where(op_trace_df['OpType'].isin(['KernelExecution', 'Task']), 
                                                     op_df['description'],
                                                     op_trace_df['OpType'])
             self.op_trace_df = op_trace_df
 
         if kernel_name is not None:
-            return self.op_trace_df[self.op_trace_df['Command'].str.contains(pat=kernel_name, regex=regex)]
+            return self.op_trace_df[self.op_trace_df['Kernel'].str.contains(pat=kernel_name, regex=regex)]
 
         return self.op_trace_df
 
-    def print_op_trace(self, outfile=None, op_trace_df:pd.DataFrame=None, max_ops:int=None, command_print_width=150):
+    def print_op_trace(self, outfile=None, op_trace_df:pd.DataFrame=None,
+                       max_ops:int=None, command_print_width=150):
         if op_trace_df is None:
             op_trace_df = self.get_op_trace_df()
 
@@ -319,10 +322,10 @@ class RaptorParser:
         for idx,row in enumerate(op_trace_df.itertuples(),1):
             print ("%10d %9.1f %13s %13s %6.1f %30s" % (row.id,
                                      row.PreGap/1000,
-                                     self.pretty_ts(row.StartNs),
-                                     self.pretty_ts(row.EndNs),
+                                     self.pretty_ts(row.Start_ns),
+                                     self.pretty_ts(row.End_ns),
                                      row.Duration/1000,
-                                     row.Command[:command_print_width]
+                                     row.Kernel[:command_print_width]
                                      ), file=f)
             if max_ops is not None and idx>=max_ops:
                 break
@@ -348,21 +351,26 @@ class RaptorParser:
 
             if prekernel_seq == None:
                 prekernel_seq = self.prekernel_seq
+            self.prekernel_seq = prekernel_seq
 
             if prekernel_seq:
-                groupby_cols = ['description']
+                self.kernel_cols = ['Kernel']
                 for i in range(prekernel_seq):
-                    shift_col_name = "cmd_shift%d" % (i+1)
-                    groupby_cols.append(shift_col_name)
-                    op_df[shift_col_name] = op_df['description'].shift(i+1)
-                top_gb = op_df.groupby(groupby_cols, sort=False)
+                    shift_col_name = "Kernel+%d" % (i+1)
+                    self.kernel_cols.append(shift_col_name)
+                    op_df[shift_col_name] = op_df['Kernel'].shift(i+1)
+                top_gb = op_df.groupby(self.kernel_cols, sort=False)
             else:
-                top_gb = op_df.groupby(['Command'], sort=False)
+                top_gb = op_df.groupby(['Kernel'], sort=False)
+
+            def mymin(col):
+                return np.min(col)
 
             top_df = top_gb.agg({
                 'PreGap' : ['sum', 'min', 'mean', 'max'],
-                'Duration' : ['sum', 'min', 'mean', 'max'],
-                'start' : ['min', 'max']
+                #'Duration' : ['sum', np.min, 'mean', 'max'],
+                'Duration' : ['sum', self.zscore_min, 'mean', 'max'],
+                'Start_ns' : ['min', 'max']
                  })
 
             top_df['TotalCalls'] = top_gb.size()
@@ -380,8 +388,8 @@ class RaptorParser:
                         ('PreGap', 'min'):  'min',
                         ('PreGap', 'mean'): 'mean',
                         ('PreGap', 'max'):  'max',
-                        ('start', 'min'):  'min',
-                        ('start', 'max'):  'max',
+                        ('Start_ns', 'min'):  'min',
+                        ('Start_ns', 'max'):  'max',
                         #'TotalCalls' : 'sum',
                         })
             gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
@@ -421,8 +429,8 @@ class RaptorParser:
 
         mapper = [
                   # Index : (Remapped-name, scale factor, display format)
-                  [('StartNs','min')   , "First_ms", 1e6, '{:+.3f}'],
-                  [('StartNs','max')   , "Last_ms", 1e6, '{:+.3f}'],
+                  [('Start_ns','min')   , "First_ms", 1e6, '{:+.3f}'],
+                  [('Start_ns','max')   , "Last_ms", 1e6, '{:+.3f}'],
                   [('PreGap','mean')   , "PreGap_mean_us", scale, '{:.1f}'],
                   [('Duration','min')  , "Dur_min_us", scale, '{:.1f}'],
                   [('Duration','mean') , "Dur_mean_us", scale, '{:.1f}'],
@@ -475,8 +483,8 @@ class RaptorParser:
         top_df = self.get_top_df()
         top_row = top_df[self.top_df['Category'] != 'GAP'].iloc[0]
 
-        self.set_roi_from_abs_ns(roi_start_ns=top_row[('StartNs','min')],
-                                 roi_end_ns=top_row[('StartNs','max')])
+        self.set_roi_from_abs_ns(roi_start_ns=top_row[('Start_ns','min')],
+                                 roi_end_ns=top_row[('Start_ns','max')])
 
     @staticmethod
     def read_category_file(category_file):
