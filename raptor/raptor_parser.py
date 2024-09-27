@@ -248,6 +248,8 @@ class RaptorParser:
             # normalize timestamps:
             op_df["start"] -= self.first_ns
             op_df["end"]   -= self.first_ns
+            op_df['Duration'] = op_df['end'] - op_df['start']
+            
 
             # expanding.max computes a running max of end times - so commands that
             # finish out-of-order (with an earlier end) do not move end time.
@@ -342,27 +344,25 @@ class RaptorParser:
     def get_top_df(self, force:bool = False, prekernel_seq:int=None):
 
         if self.top_df is None or force or prekernel_seq != self.prekernel_seq:
-            op_trace_df = self.get_op_trace_df()
+            op_df = self.get_op_df()
 
             if prekernel_seq == None:
                 prekernel_seq = self.prekernel_seq
 
             if prekernel_seq:
-                orig_op_trace_cols = op_trace_df.columns
-                groupby_cols = ['Command']
+                groupby_cols = ['description']
                 for i in range(prekernel_seq):
-                    shift_col_name = "CommandShift%d" % (i+1)
+                    shift_col_name = "cmd_shift%d" % (i+1)
                     groupby_cols.append(shift_col_name)
-                    op_trace_df[shift_col_name] = op_trace_df['Command'].shift(i+1)
-                top_gb = op_trace_df.groupby(groupby_cols, sort=False)
-                self.op_trace_df = op_trace_df[orig_op_trace_cols]
+                    op_df[shift_col_name] = op_df['description'].shift(i+1)
+                top_gb = op_df.groupby(groupby_cols, sort=False)
             else:
-                top_gb = op_trace_df.groupby(['Command'], sort=False)
+                top_gb = op_df.groupby(['Command'], sort=False)
 
             top_df = top_gb.agg({
                 'PreGap' : ['sum', 'min', 'mean', 'max'],
                 'Duration' : ['sum', 'min', 'mean', 'max'],
-                'StartNs' : ['min', 'max']
+                'start' : ['min', 'max']
                  })
 
             top_df['TotalCalls'] = top_gb.size()
@@ -380,8 +380,8 @@ class RaptorParser:
                         ('PreGap', 'min'):  'min',
                         ('PreGap', 'mean'): 'mean',
                         ('PreGap', 'max'):  'max',
-                        ('StartNs', 'min'):  'min',
-                        ('StartNs', 'max'):  'max',
+                        ('start', 'min'):  'min',
+                        ('start', 'max'):  'max',
                         #'TotalCalls' : 'sum',
                         })
             gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
