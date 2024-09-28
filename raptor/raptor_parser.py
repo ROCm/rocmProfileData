@@ -3,6 +3,7 @@ from typing import List,Dict
 from dataclasses import dataclass
 import pandas as pd
 import numpy as np
+import scipy.stats
 import sqlite3
 import os
 
@@ -252,7 +253,6 @@ class RaptorParser:
                                          op_df['end'] - op_df['start'], 0)
             op_df.rename(columns={'start' : 'Start_ns', 'end' : 'End_ns',
                                   'description':'Kernel'}, inplace=True)
-            
 
             # expanding.max computes a running max of end times - so commands that
             # finish out-of-order (with an earlier end) do not move end time.
@@ -279,9 +279,9 @@ class RaptorParser:
             op_trace_df['QueueId'] = op_df['queueId']
             op_trace_df['Start_ns'] = op_df['Start_ns']
             op_trace_df['End_ns'] = op_df['End_ns']
-            op_trace_df['PreGap'] = np.where(op_df['PreGap'] >= 0,
-                                                   op_df['PreGap'], np.nan)
+            op_trace_df['PreGap'] = op_df['PreGap']
             op_trace_df['Duration'] = op_df['Duration']
+
             if 'opType_id' in op_df.columns:
                 op_trace_df['OpType'] = op_df['opType_id'].map(strings_hash)
             elif 'opType' in op_df.columns:
@@ -344,9 +344,39 @@ class RaptorParser:
 
         return gaps_labels
 
-    def get_top_df(self, force:bool = False, prekernel_seq:int=None):
+    @staticmethod
+    def zscore_filter(series):
+        """
+        Return a series filter which is true for elements who's zscore is <=3,
+        ie the values within 3 standard deviations of the mean.
+        """
+        return abs(scipy.stats.zscore(series))<=3
 
-        if self.top_df is None or force or prekernel_seq != self.prekernel_seq:
+    @staticmethod
+    def zscore_count_outliers(series):
+        return (~RaptorParser.zscore_filter(series)).sum().astype(int)
+
+    @staticmethod
+    def zscore_min(series):
+        " Remove outliers based on zscore, and return the min of the surviving elements "
+        if len(series)==1:
+            return series.iloc[0]
+        else:
+            return np.min(series[abs(scipy.stats.zscore(series))<=3])
+
+    @staticmethod
+    def zscore_max(series):
+        " Remove outliers based on zscore, and return the max of the surviving elements "
+        if len(series)==1:
+            return series.iloc[0]
+        else:
+            return np.max(series[abs(scipy.stats.zscore(series))<=3])
+
+    def get_top_df(self, force: bool = False, prekernel_seq: int = None, zscore: bool = False):
+
+        if self.top_df is None or force or \
+                (prekernel_seq is not None and prekernel_seq != self.prekernel_seq):
+
             op_df = self.get_op_df()
 
             if prekernel_seq == None:
@@ -363,15 +393,26 @@ class RaptorParser:
             else:
                 top_gb = op_df.groupby(['Kernel'], sort=False)
 
+            self.top_gb = top_gb
+
             def mymin(col):
                 return np.min(col)
 
-            top_df = top_gb.agg({
-                'PreGap' : ['sum', 'min', 'mean', 'max'],
-                #'Duration' : ['sum', np.min, 'mean', 'max'],
-                'Duration' : ['sum', self.zscore_min, 'mean', 'max'],
-                'Start_ns' : ['min', 'max']
-                 })
+            agg_ops = {
+                'Start_ns' : ['min', 'max'],
+                'PreGap' : ['sum', 'min', 'mean', 'std', 'max'],
+            }
+            if zscore:
+                agg_ops['Duration'] = ['sum', 'min', 'mean', 'std', 'max']
+            else:
+                agg_ops['Duration'] = ['sum', 'min', 'mean', 'std', 'max']
+
+            top_df = top_gb.agg(agg_ops)
+
+            top_df['Outliers'] = top_gb.agg({'Duration' : self.zscore_count_outliers})
+            #top_df[('Duration','min')] = top_gb.agg({'Duration' : self.zscore_min})
+            top_df['zmin'] = top_gb.agg({'Duration' : self.zscore_min})
+            top_df['zmax'] = top_gb.agg({'Duration' : self.zscore_max})
 
             top_df['TotalCalls'] = top_gb.size()
 
@@ -408,9 +449,10 @@ class RaptorParser:
             top_df['PctTotal'] = top_df[('Duration','sum')] / total_duration * 100
             self._assign_categories(top_df=top_df)
 
-            top_df['VarSum'] = \
-                ((top_df[('Duration','mean')] - top_df[('Duration','min')]) * \
-                  top_df['TotalCalls']).astype(int)
+            if 1:
+                top_df['VarSum'] = \
+                    ((top_df[('Duration','mean')] - top_df[('Duration','min')]) * \
+                      top_df['TotalCalls']).astype(int)
 
             top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum'] = np.nan
 
