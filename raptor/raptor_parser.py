@@ -52,8 +52,6 @@ class RaptorParser:
     top_df : pd.DataFrame = None
     op_df : pd.DataFrame = None
 
-    op_trace_df : pd.DataFrame = None
-
     strings_hash : dict[str] = None
     monitor_df : pd.DataFrame = None
 
@@ -114,7 +112,7 @@ class RaptorParser:
         self.roi_end = None
 
         # force recomputation:
-        self.op_df = self.top_df = self.op_trace_df = self.category_df = None
+        self.op_df = self.top_df = self.category_df = None
 
     def set_roi_from_str(self, roi_start, roi_end=None):
         if roi_start == None:
@@ -233,7 +231,7 @@ class RaptorParser:
                                                self.roi_end_ns + self.first_ns)
         return rv
 
-    def get_op_df(self, force=False):
+    def get_op_df(self, force=False, kernel_name: str = None):
         """ 
         Read the op table from the sql input into op_df.
         Add a PreGap measurement between commands.
@@ -257,58 +255,18 @@ class RaptorParser:
             # expanding.max computes a running max of end times - so commands that
             # finish out-of-order (with an earlier end) do not move end time.
             op_df['PreGap'] = (op_df['Start_ns'] -  op_df['End_ns'].expanding().max().shift(1)).clip(lower=0)
+            op_df.sort_values(['gpuId', 'Start_ns'], ascending=True, inplace=True)
             self.op_df = op_df
+
+        if kernel_name is not None:
+            return self.op_df[self.op_df['Kernel'].str.contains(pat=kernel_name, regex=regex)]
 
         return self.op_df
 
-    def get_op_trace_df(self, force=False, kernel_name:str=None, regex=True):
-        """
-        Add extra fields to the op_df for pre-gap, frequency, etc
-        """ 
-        if self.op_trace_df is None or force:
-            op_df = self.get_op_df()
-            op_df.sort_values(['gpuId', 'Start_ns'], ascending=True)
-
-            strings_hash = self.get_strings_hash()
-
-            op_trace_df = pd.DataFrame(index=op_df.index)
-            scratch_df = pd.DataFrame(index=op_df.index)
-
-            op_trace_df['id'] = op_df['id']
-            op_trace_df['GpuId'] = op_df['gpuId']
-            op_trace_df['QueueId'] = op_df['queueId']
-            op_trace_df['Start_ns'] = op_df['Start_ns']
-            op_trace_df['End_ns'] = op_df['End_ns']
-            op_trace_df['PreGap'] = op_df['PreGap']
-            op_trace_df['Duration'] = op_df['Duration']
-
-            if 'opType_id' in op_df.columns:
-                op_trace_df['OpType'] = op_df['opType_id'].map(strings_hash)
-            elif 'opType' in op_df.columns:
-                op_trace_df['OpType'] = op_df['opType']
-            else:
-                raise RuntimeError("Can't determine optype")
-
-            if 'descripion_id' in op_df.columns:
-                op_trace_df['Kernel'] = np.where(op_trace_df['OpType'].isin(['KernelExecution', 'Task']), 
-                                                    op_df['description_id'].map(strings_hash),
-                                                    op_trace_df['OpType'])
-
-            elif 'description' in op_df.columns:
-                op_trace_df['Kernel'] = np.where(op_trace_df['OpType'].isin(['KernelExecution', 'Task']), 
-                                                    op_df['description'],
-                                                    op_trace_df['OpType'])
-            self.op_trace_df = op_trace_df
-
-        if kernel_name is not None:
-            return self.op_trace_df[self.op_trace_df['Kernel'].str.contains(pat=kernel_name, regex=regex)]
-
-        return self.op_trace_df
-
-    def print_op_trace(self, outfile=None, op_trace_df:pd.DataFrame=None,
+    def print_op_trace(self, outfile=None, op_df:pd.DataFrame=None,
                        max_ops:int=None, command_print_width=150):
-        if op_trace_df is None:
-            op_trace_df = self.get_op_trace_df()
+        if op_df is None:
+            op_df = self.get_op_df()
 
         if command_print_width == 0:
             command_print_width = None
@@ -319,7 +277,7 @@ class RaptorParser:
             f = open(outfile, "w")
 
         print ("%10s %9s %13s %13s %10s %s" % ("Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Command"), file=f)
-        for idx,row in enumerate(op_trace_df.itertuples(),1):
+        for idx,row in enumerate(op_df.itertuples(),1):
             print ("%10d %9.1f %13s %13s %6.1f %30s" % (row.id,
                                      row.PreGap/1000,
                                      self.pretty_ts(row.Start_ns),
@@ -410,6 +368,7 @@ class RaptorParser:
             top_df = top_gb.agg(agg_ops)
 
             top_df['Outliers'] = top_gb.agg({'Duration' : self.zscore_count_outliers})
+
             #top_df[('Duration','min')] = top_gb.agg({'Duration' : self.zscore_min})
             top_df['zmin'] = top_gb.agg({'Duration' : self.zscore_min})
             top_df['zmax'] = top_gb.agg({'Duration' : self.zscore_max})
