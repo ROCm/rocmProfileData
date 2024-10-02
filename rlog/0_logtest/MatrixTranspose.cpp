@@ -143,7 +143,7 @@ int main() {
 
     fprintf(stderr, "hipGetSetDevice: %d in %f ms.  %f ns / call\n", count * 10, (t2 - t1) / 1000000.0, 0.1*(t2-t1)/count);
 
-    count = 2000;
+    count = 2;
 
     // roctx static
     char buff[4096];

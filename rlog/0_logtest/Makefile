@@ -45,7 +45,7 @@ CXX=$(HIPCC)
 
 
 $(EXECUTABLE): $(OBJECTS)
-	$(HIPCC) $(OBJECTS) -lroctx64 -o $@
+	$(HIPCC) $(OBJECTS) -ldl -lroctx64 -o $@
 
 
 test: $(EXECUTABLE)

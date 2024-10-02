@@ -21,40 +21,14 @@
 ********************************************************************************/
 #pragma once
 
-#include "Logger.h"
-
 namespace rlog {
 
-class RLogger: public Logger
-{
+class Logger {
 public:
-    static RLogger& singleton();
-
-    // External marker api
-    virtual void mark(const char *domain, const char *category, const char *apiName, const char* args) override;
-    virtual void rangePush(const char *domain, const char *category, const char *apiName, const char* args) override;
-    virtual void rangePop() override;
-
-    // Add or remove a logger - ref counted per logger
-    void addLogger(const Logger &logger);
-    void removeLogger(const Logger &logger);
-
-    // Active is true when any logger in present
-    void registerActiveCallback(void (*cb)());
-    bool isActive();
-
-    // Properties
-    const char *getProperty(const char *domain, const char *property, const char *defaultValue);
-
-private:
-    RLogger();
-    virtual ~RLogger();
-
-    static void rlogInit() __attribute__((constructor));
-    static void rlogFinalize() __attribute__((destructor));
-
-    void init();
-    void finalize();
+    virtual void mark(const char *domain, const char *category, const char *apiname, const char *args) = 0;
+    virtual void rangePush(const char *domain, const char *category, const char *apiname, const char *args) = 0;
+    virtual void rangePop() = 0;
 };
+
 
 }  // namespace rlog

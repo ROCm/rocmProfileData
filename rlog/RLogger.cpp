@@ -24,21 +24,48 @@
 
 #include "RLogger.h"
 
+using namespace rlog;
+
 extern "C" {
-void log_mark(const char *domain, const char *apiName, const char* args)
+void rlog_mark(const char *domain, const char *category, const char *apiName, const char* args)
 {
-    fprintf(stderr, "MARK\n");
+    RLogger::singleton().mark(domain, category, apiName, args);
 }
-void log_rangePush(const char *domain, const char *apiName, const char* args)
+
+void rlog_rangePush(const char *domain, const char *category, const char *apiName, const char* args)
 {
-    fprintf(stderr, "PUSH\n");
+    RLogger::singleton().rangePush(domain, category, apiName, args);
 }
-void log_rangePop()
+
+void rlog_rangePop()
 {
-    fprintf(stderr, "POP\n");
+    RLogger::singleton().rangePop();
+}
+
+void rlog_getProperty(const char *domain, const char *property, const char *defaultValue)
+{
+    RLogger::singleton().getProperty(domain, property, defaultValue);
+}
+
+void rlog_registerActiveCallback(void (*cb)())
+{
+    RLogger::singleton().registerActiveCallback(cb);
+}
+
+bool rlog_isActive()
+{
+    return RLogger::singleton().isActive();
 }
 }
 
+
+RLogger::RLogger()
+{
+}
+
+RLogger::~RLogger()
+{
+}
 
 RLogger& RLogger::singleton()
 {
@@ -63,4 +90,47 @@ void RLogger::init()
 void RLogger::finalize()
 {
     fprintf(stderr, "RLogger::finalize\n");
+}
+
+void RLogger::mark(const char *domain, const char *category, const char *apiName, const char* args)
+{
+    fprintf(stderr, "MARK\n");
+}
+
+void RLogger::rangePush(const char *domain, const char *category, const char *apiName, const char* args)
+{
+    fprintf(stderr, "PUSH\n");
+}
+
+void RLogger::rangePop()
+{
+    fprintf(stderr, "POP\n");
+}
+
+void RLogger::addLogger(const Logger &logger)
+{
+    fprintf(stderr, "addLogger\n");
+}
+
+void RLogger::removeLogger(const Logger &logger)
+{
+    fprintf(stderr, "removeLogger\n");
+}
+
+const char *RLogger::getProperty(const char *domain, const char *property, const char *defaultValue)
+{
+    fprintf(stderr, "getProperty\n");
+    return defaultValue;
+}
+
+void RLogger::registerActiveCallback(void (*cb)())
+{
+
+    fprintf(stderr, "RegisterActiveCallback\n");
+}
+
+bool RLogger::isActive()
+{
+    fprintf(stderr, "isActive\n");
+    return false;
 }

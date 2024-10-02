@@ -19,42 +19,53 @@
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 * THE SOFTWARE.
 ********************************************************************************/
-#pragma once
+#include "RlogDataSource.h"
+#include "RLogger.h"
 
-#include "Logger.h"
+#include <cstdio>
 
-namespace rlog {
+// Create a factory for the Logger to locate and use
+extern "C" {
+    DataSource *RlogDataSourceFactory() { return new RlogDataSource(); }
+}  // extern "C"
 
-class RLogger: public Logger
+
+void RlogDataSource::init()
 {
-public:
-    static RLogger& singleton();
+}
 
-    // External marker api
-    virtual void mark(const char *domain, const char *category, const char *apiName, const char* args) override;
-    virtual void rangePush(const char *domain, const char *category, const char *apiName, const char* args) override;
-    virtual void rangePop() override;
+void RlogDataSource::end()
+{
+}
 
-    // Add or remove a logger - ref counted per logger
-    void addLogger(const Logger &logger);
-    void removeLogger(const Logger &logger);
+void RlogDataSource::startTracing()
+{
+    rlog::RLogger::singleton().addLogger(*this);
+}
 
-    // Active is true when any logger in present
-    void registerActiveCallback(void (*cb)());
-    bool isActive();
+void RlogDataSource::stopTracing()
+{
+    rlog::RLogger::singleton().removeLogger(*this);
+}
 
-    // Properties
-    const char *getProperty(const char *domain, const char *property, const char *defaultValue);
+void RlogDataSource::flush()
+{
+}
 
-private:
-    RLogger();
-    virtual ~RLogger();
 
-    static void rlogInit() __attribute__((constructor));
-    static void rlogFinalize() __attribute__((destructor));
+void RlogDataSource::mark(const char *domain, const char *category, const char *apiname, const char *args)
+{
+    fprintf(stderr, "RlogDataSource::mark\n");
+}
 
-    void init();
-    void finalize();
-};
+void RlogDataSource::rangePush(const char *domain, const char *category, const char *apiname, const char *args)
+{
+    fprintf(stderr, "RlogDataSource::rangePush\n");
+}
 
-}  // namespace rlog
+void RlogDataSource::rangePop()
+{
+    fprintf(stderr, "RlogDataSource::rangePop\n");
+}
+
+
