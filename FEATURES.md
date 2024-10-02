@@ -8,6 +8,7 @@ This is a changelog that describes new features as they are added.  Newest first
 Contents:
 <!-- toc -->
 
+- [Remote Start/stop](#remote-startstop)
 - [Graph Subclass](#graph-subclass)
 - [Pytorch Autograd Subclass](#pytorch-autograd-subclass)
 - [Call Stack Accounting](#call-stack-accounting)
@@ -18,6 +19,31 @@ Contents:
 
 
 --------------------------------------------------------------------------------
+## Remote Start/stop
+Recording can be started and stoped externally through a loader, librpd_remote.so
+
+The loader library is low overhead and can be linked against directly or used with LD_PRELOAD.
+```
+LD_PRELOAD=librpd_remote.so python3
+```
+To record, first create an empty rpd file in the processes' working directory.  The tracer will only append trace data to an existing file, it will not overwrite.
+```
+python rocpd.schema --create trace.rpd
+```
+If in doubt, you can discover this directory before hand by doing a dry run and looking for the zero-length trace file created.  That is the location for the initialized rpd file.
+
+Once the process is running you can use the rpdRemote command to start/stop recording.
+```
+rpdRemote start <pid>
+rpdRemote stop <pid>
+```
+Data is flushed each time the trace is stopped and can be inspected.
+
+Limitations:
+- Once the tracer is loaded, on the first 'start', it can not be unloaded.  There will be a slight increased in overhead.
+- Once loaded, the tracer will record into the same file for the duration.  You can not replace the file on the fly.
+
+
 ## Graph Subclass
 Additional graph analysis is available via a post-processing tool.  This uses graph api calls to identify graph captures, kernels, and subsequent launches.  
 

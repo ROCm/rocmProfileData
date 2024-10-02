@@ -136,6 +136,7 @@ void Logger::rpdflush()
     m_copyApiTable->flush();
     m_opTable->flush();
     m_apiTable->flush();
+    m_monitorTable->flush();
 
     const timestamp_t cb_end_time = clocktime_ns();
     createOverheadRecord(cb_begin_time, cb_end_time, "rpdflush", "");

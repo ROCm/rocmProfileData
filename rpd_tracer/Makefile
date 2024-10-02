@@ -60,7 +60,7 @@ $(RPD_MAIN): $(RPD_OBJS)
 
 .PHONY: install
 #install: | $(PREFIX)/lib/lib$(RPD_MAIN)
-install:
+install: all
 	cp $(RPD_MAIN)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
 	ldconfig
