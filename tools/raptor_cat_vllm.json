@@ -1,6 +1,6 @@
 {
     "GAP" : ["^GAP "],
-    "GEMM" : ["^Cijk_"],
+    "GEMM" : ["^.*Cijk_"],
     "CopyD2D" : ["CopyDeviceToDevice"],
     "aten" : ["^.* at::"],
     "Comm" : ["ncclDevKernel_Generic","void vllm::cross_device_reduce"],
