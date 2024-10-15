@@ -28,7 +28,7 @@ $(RLOG_MAIN): $(RLOG_OBJS)
 
 
 .PHONY: install
-install:
+install: all
 	cp $(RLOG_MAIN)  $(PREFIX)/lib/
 	cp $(RLOG_HEADER)  $(PREFIX)/include/
 	ldconfig
