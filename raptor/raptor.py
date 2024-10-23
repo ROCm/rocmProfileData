@@ -21,7 +21,7 @@ parser.add_argument("rpd_file_name")
 summary_g = parser.add_argument_group('View and summary features')
 summary_g.add_argument("--categorize", "-c", action='store_true',
                     help="Summarize RPD top kernels into categories (ie GEMM, AllReduce, EltWise, Idle)")
-summary_g.add_argument("--category_json", "-C", type=str,
+summary_g.add_argument("--category-json", "-C", type=str,
                     default=os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json"),
                     help="File containing category definitions, specified as a JSON-format dictionary.  See tools/raptor_cat_vllm.json for an example.  If a kernel name matches more than one pattern, the LAST match in the file determines the category.")
 summary_g.add_argument("--variability", "-v", action='store_true',
@@ -29,7 +29,7 @@ summary_g.add_argument("--variability", "-v", action='store_true',
 
 summary_g.add_argument("--top", "-t", action='store_true',
                     help="Show top kernels, sorted by TotalDuration")
-summary_g.add_argument("--prekernel_seq", type=int, default=2,
+summary_g.add_argument("--prekernel-seq", type=int, default=2,
                     help="Number of preceding kernels to use in the sequence of kernels used for grouping into the top buckets.  This can be used to disambiguate cases where the same kernel name is called in different contents.  0 means to ignore the sequence and aggregate top kernels just based on the name")
 gaps_default = [10, 20, 50, 100, 1000, 10000, 100000]
 summary_g.add_argument("--gaps",
@@ -38,27 +38,27 @@ summary_g.add_argument("--gaps",
                 help = "Size of histogram buckets used for gaps breakdown, specified as a list of micro-second times.  Default="+str(gaps_default));
 
 op_trace_g = parser.add_argument_group('Op-Trace args')
-op_trace_g.add_argument("--op_trace", "-o", action='store_true',
+op_trace_g.add_argument("--op-trace", "-o", action='store_true',
                     help="Generate a single-line trace for each op(kernel) showing pre-gap, start/end times, duration, name, etc.")
-op_trace_g.add_argument("--op_trace_file", type=str,
+op_trace_g.add_argument("--op-trace-file", type=str,
                     help="Write op-trace to a file.  If not specified, write to stdout.")
-op_trace_g.add_argument("--op_trace_cmd_width", type=int, default=None,
+op_trace_g.add_argument("--op-trace-cmd-width", type=int, default=None,
                     help="Width in characters to display the op (kernel) names in the op trace")
 
 roi_g = parser.add_argument_group('Region-of-Interest (ROI) args')
-roi_g.add_argument("--roi_start", "-s", type=str,
+roi_g.add_argument("--roi-start", "-s", type=str,
                     help="Set ROI start. 0 corresponds to the start of the RPD.  Default is ms, but can specify trailing time units.  If kernel name is specified, use the timestamp of the first instance for the specified kernel. Examples: 123.45, 123.45ms, 123450ns, .12345s, Cijk_")
-roi_g.add_argument("--roi_end", "-e", type=str,
+roi_g.add_argument("--roi-end", "-e", type=str,
                     help="Set Region-of-Interest end. See --start for format.")
-roi_g.add_argument("--auto_roi", action='store_true',
+roi_g.add_argument("--auto-roi", action='store_true',
                     help="Automatically pick the ROI to include first and last instance of the hottest duration kernel")
 
 display_g = parser.add_argument_group('Display arguments')
-display_g.add_argument("--display_cols", type=int, default=60,
+display_g.add_argument("--display-cols", type=int, default=60,
                     help="Set display column width")
-display_g.add_argument("--display_rows", type=int, default=500,
+display_g.add_argument("--display-rows", type=int, default=500,
                     help="Set number of rows")
-display_g.add_argument("--float_digits", type=int, default=1,
+display_g.add_argument("--float-digits", type=int, default=1,
                     help="Number of digits to print for float values in tables.")
 
 
