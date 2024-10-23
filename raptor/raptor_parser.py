@@ -1,4 +1,5 @@
 import sys
+import pathlib
 from typing import List,Dict
 from dataclasses import dataclass
 import pandas as pd
@@ -60,6 +61,8 @@ class RaptorParser:
     roi_start_ns : int = None
     roi_end_ns   : int = None
 
+    tmp_file : str = None
+
     # Special internal category names:
     _other_cat = "_Other"
     _gpu_idle_cat = "_GPU_Idle"
@@ -72,11 +75,21 @@ class RaptorParser:
            self.set_gaps([10])
 
         if self.category_json is None:
-            import pathlib
             self.category_json = os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json")
 
         if os.path.isfile(self.rpd_file):
-            self.con = sqlite3.connect(self.rpd_file)
+            import tempfile
+            _,extension = os.path.splitext(self.rpd_file)
+            if extension == '.gz':
+                import gzip
+                tmp_path = tempfile.NamedTemporaryFile(delete=True).name
+                self.tmp_file = tmp_path
+                with gzip.open(self.rpd_file, 'rb') as f_in:
+                    with open(tmp_path, "wb") as f_out:
+                        f_out.write(f_in.read())
+                self.con = sqlite3.connect(tmp_path)
+            else:
+                self.con = sqlite3.connect(self.rpd_file)
         else:
             raise RuntimeError ("RPD file '" + self.rpd_file + "' does not exist.")
 
@@ -91,6 +104,14 @@ class RaptorParser:
         assert self.last_ns >= self.first_ns
 
         self.set_roi_from_str(self.roi_start, self.roi_end)
+
+    def __del__(self):
+        if self.tmp_file:
+            try:
+                os.remove(self.tmp_file)
+            except FileNotFoundError:
+                pass
+        
 
     def set_gaps(self, gaps):
         self.gaps = gaps

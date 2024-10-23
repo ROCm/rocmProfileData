@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
-import pathlib,os
+import pathlib
+import os
 import pandas as pd
 import numpy as np
 
