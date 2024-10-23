@@ -123,9 +123,9 @@ class RaptorParser:
         self.roi_end_ns   = roi_end_ns
 
         assert self.roi_start_ns >= 0
-        assert self.roi_start_ns <= self.last_ns - self.first_ns
+        assert self.roi_start_ns <= self.last_ns
         assert self.roi_end_ns >= 0
-        assert self.roi_end_ns <= self.last_ns - self.first_ns
+        assert self.roi_end_ns <= self.last_ns
         assert self.roi_start_ns <= self.roi_end_ns
 
         # prevent mis-use:
