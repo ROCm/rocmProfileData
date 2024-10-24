@@ -134,6 +134,7 @@ class RaptorParser:
 
         # force recomputation:
         self.op_df = self.top_df = self.category_df = None
+        self.variability_df = None
 
     def set_roi_from_str(self, roi_start, roi_end=None):
         if roi_start == None:
@@ -200,7 +201,11 @@ class RaptorParser:
         "sec" : 1000*1000*1000,
     }
 
-    def parse_roi(self, roi_str, default_unit="ns"):
+    def parse_roi(self, roi_str, default_unit="ms"):
+        """ 
+        Parse timestamps with optional units (default is 'ms')
+        Return timestamp value in ns
+        """
         picked_unit = default_unit
         if roi_str[0].isdigit():
             for unit in self._time_units.keys():
@@ -220,14 +225,17 @@ class RaptorParser:
                 raise RuntimeError("ROI string '%s' not found in top_df" % roi_str)
 
     def make_roi(self, roi: str):
+        """ 
+        Support special leading characters for timestamp.
+        """
         if "%" in roi:
-            time_ns = int( (self.last_ns - self.first_ns) * ( int( roi.replace("%","") )/100 ) + self.first_ns )
+            time_ns = int( (self.last_ns - self.first_ns) * ( int( roi.replace("%","") )/100 ))
         elif roi.startswith("+"):
-            time_ns = int(self.parse_roi(roi[1:], default_unit="ms"))
+            time_ns = int(self.parse_roi(roi[1:]))
         elif roi.startswith("-"):
-            time_ns = int(self.last_ns - self.parse_roi(roi[1:], default_unit="ms"))
+            time_ns = int(self.last_ns - self.parse_roi(roi[1:])) - self.first_ns
         else:
-            time_ns = int(self.parse_roi(roi, default_unit="ms"))
+            time_ns = int(self.parse_roi(roi))
 
         return time_ns
 
@@ -239,12 +247,12 @@ class RaptorParser:
         return "%8d.%06d" % (timestamp_ms, timestamp_ns - timestamp_ms*1e6)
 
     def print_timestamps(self, indent=""):
-        print(indent, "first    :", self.first_ns)
-        print(indent, "last     :", self.last_ns)
-        print(indent, "Timestamps :  RelTime(ms)")
-        print(indent, "  roi_start:", self.pretty_ts(self.roi_start_ns))
-        print(indent, "  roi_end  :", self.pretty_ts(self.roi_end_ns))
-        print(indent, "  roi_dur  :", self.pretty_ts(self.roi_end_ns - self.roi_start_ns))
+        print(indent, "Timestamps :")
+        print(indent, "  first    :", self.pretty_ts(0), "ms")
+        print(indent, "  last     :", self.pretty_ts(self.last_ns - self.first_ns), "ms")
+        print(indent, "  roi_start:", self.pretty_ts(self.roi_start_ns), "ms")
+        print(indent, "  roi_end  :", self.pretty_ts(self.roi_end_ns), "ms")
+        print(indent, "  roi_dur  :", self.pretty_ts(self.roi_end_ns - self.roi_start_ns), "ms")
         
     def sql_roi_str(self, add_where=True):
         rv = "where " if add_where else ""
@@ -373,9 +381,6 @@ class RaptorParser:
                 top_gb = op_df.groupby(['Kernel'], sort=False)
 
             self.top_gb = top_gb
-
-            def mymin(col):
-                return np.min(col)
 
             agg_ops = {
                 'Start_ns' : ['min', 'max'],
@@ -543,13 +548,14 @@ class RaptorParser:
 
         # Set top_df.cat.  
         # For overlapping patterns, the LAST one wins
+        top_df['Category'] = self._other_cat
         for category_name,pat_list in categories.items():
             mask = pd.Series(False, index=top_df.index)
             for pat in pat_list:
                 mask |= top_df.index.str[0].str.contains(pat=pat, regex=True)
-            top_df.loc[mask, 'Category'] = category_name
-         
-        top_df['Category'] = top_df['Category'].fillna(self._other_cat)
+            if len(mask):
+                top_df.loc[mask, 'Category'] = category_name
+        
 
     def get_category_df(self, top_df:pd.DataFrame=None, categories:Dict=None,
                         variability_method=None, duration_units='ms'):
@@ -632,9 +638,10 @@ class RaptorParser:
         comm_sum = top_df.loc[comm_filter,'VarSum'].sum()
         non_comm_sum = top_df.loc[~comm_filter,'VarSum'].sum()
 
-        comm_dict = {'VarUs'    : [comm_sum/1000, non_comm_sum/1000],
-                     'VarPct'   : ["{0:.1%}".format(comm_sum/total_ns), "{0:.1%}".format(non_comm_sum/total_ns)]
-                    }
+        with np.errstate(divide='ignore', invalid='ignore'):
+            comm_dict = {'VarUs'    : [comm_sum/1000, non_comm_sum/1000],
+                         'VarPct'   : ["{0:.1%}".format(comm_sum/total_ns), "{0:.1%}".format(non_comm_sum/total_ns)]
+                        }
         var_df = pd.DataFrame(comm_dict, index=['by_comm', 'by_non_comm'])
         self.variability_df = var_df
         return var_df
