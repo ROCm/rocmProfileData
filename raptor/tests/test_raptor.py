@@ -1,6 +1,8 @@
-import sys, os
+import sys
+import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../")
 
+import pytest
 from raptor_parser import RaptorParser
 import pandas as pd
 import numpy as np
@@ -27,6 +29,20 @@ def test_make_roi_pct():
     raptor.print_timestamps()
     assert raptor.roi_start_ns == 249297225
     assert raptor.roi_end_ns ==   349016115 
+
+def test_make_roi_from_kernel():
+    raptor = RaptorParser(rpd_file)
+    raptor.print_timestamps()
+    assert raptor.roi_start_ns == 0
+    raptor.set_roi_from_str(roi_start="Cijk_")
+    print("\nAfter setting ROI to kernel name:")
+    raptor.print_timestamps()
+    assert raptor.roi_start_ns == 10496683
+
+def test_make_roi_from_bad_kernel():
+    raptor = RaptorParser(rpd_file)
+    with pytest.raises(RuntimeError):
+        raptor.set_roi_from_str(roi_start="ZZZ_")
 
 def test_empty_roi():
     """ Ensure code can handle ranges with no ops """

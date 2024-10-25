@@ -118,7 +118,7 @@ class RaptorParser:
         self.gaps.sort()
         self.gaps = [0] + self.gaps + [np.inf]
 
-    def set_roi_from_abs_ns(self, roi_start_ns, roi_end_ns):
+    def set_roi_from_rel_ns(self, roi_start_ns, roi_end_ns):
         self.roi_start_ns = roi_start_ns
         self.roi_end_ns   = roi_end_ns
 
@@ -136,18 +136,22 @@ class RaptorParser:
         self.op_df = self.top_df = self.category_df = None
         self.variability_df = None
 
+    def set_full_roi(self):
+        """ Set the ROI to the full range, from first to last ns """
+        self.set_roi_from_rel_ns(0, self.last_ns - self.first_ns)
+
     def set_roi_from_str(self, roi_start, roi_end=None):
         if roi_start == None:
             roi_start_ns = 0
         else:
-            roi_start_ns = self.make_roi(roi_start)
+            roi_start_ns = self._make_roi(roi_start)
 
         if roi_end == None:
             roi_end_ns = self.last_ns - self.first_ns
         else:
-            roi_end_ns = self.make_roi(roi_end)
+            roi_end_ns = self._make_roi(roi_end)
 
-        self.set_roi_from_abs_ns(roi_start_ns, roi_end_ns)
+        self.set_roi_from_rel_ns(roi_start_ns, roi_end_ns)
 
 
     def trim_to_roi(self, new_file_name:str = None, inplace:bool=False):
@@ -201,22 +205,22 @@ class RaptorParser:
         "sec" : 1000*1000*1000,
     }
 
-    def parse_roi(self, roi_str, default_unit="ms"):
+    def _parse_roi_with_unit(self, roi_str, default_unit="ms"):
         """ 
         Parse timestamps with optional units (default is 'ms')
         Return timestamp value in ns
         """
         picked_unit = default_unit
-        if roi_str[0].isdigit():
-            for unit in self._time_units.keys():
-                if roi_str.endswith(unit):
-                    roi_str = roi_str[:-len(picked_unit)]
-                    picked_unit = unit
-                    break
+        for unit in self._time_units.keys():
+            if roi_str.endswith(unit):
+                roi_str = roi_str[:-len(picked_unit)]
+                picked_unit = unit
+                break
 
-            scale = self._time_units[picked_unit]
-            return int(float(roi_str) * scale)
-        else:
+        scale = self._time_units[picked_unit]
+        return int(float(roi_str) * scale)
+
+        if 0:
             top_df = self.get_top_df()
             match_df = top_df[top_df.index.str.contains(pat=roi_str, regex=True)]
             if len(match_df):
@@ -224,18 +228,27 @@ class RaptorParser:
             else:
                 raise RuntimeError("ROI string '%s' not found in top_df" % roi_str)
 
-    def make_roi(self, roi: str):
+    def _make_roi(self, roi: str):
         """ 
-        Support special leading characters for timestamp.
+        Support special leading characters (%,+,-) for timestamp.
         """
         if "%" in roi:
             time_ns = int( (self.last_ns - self.first_ns) * ( int( roi.replace("%","") )/100 ))
         elif roi.startswith("+"):
-            time_ns = int(self.parse_roi(roi[1:]))
+            time_ns = int(self._parse_roi_with_unit(roi[1:]))
         elif roi.startswith("-"):
-            time_ns = int(self.last_ns - self.parse_roi(roi[1:])) - self.first_ns
+            time_ns = int(self.last_ns - self._parse_roi_with_unit(roi[1:])) - self.first_ns
+        elif roi[0].isdigit():
+            time_ns = int(self._parse_roi_with_unit(roi))
         else:
-            time_ns = int(self.parse_roi(roi))
+            # A text string - assume is a kernel name:
+            self.set_full_roi() # avoid circular dependency
+            top_df = self.get_top_df()
+            match_df = top_df[top_df.index.str[0].str.contains(pat=roi, regex=True)]
+            if len(match_df):
+                time_ns = match_df.iloc[0][('Start_ns', 'min')]
+            else:
+                raise RuntimeError("ROI string '" + str(roi) + "' not a valid kernel name.")
 
         return time_ns
 
@@ -518,7 +531,7 @@ class RaptorParser:
         top_df = self.get_top_df()
         top_row = top_df[self.top_df['Category'] != 'GAP'].iloc[0]
 
-        self.set_roi_from_abs_ns(roi_start_ns=top_row[('Start_ns','min')],
+        self.set_roi_from_rel_ns(roi_start_ns=top_row[('Start_ns','min')],
                                  roi_end_ns=top_row[('Start_ns','max')])
 
     @staticmethod
