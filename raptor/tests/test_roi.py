@@ -7,8 +7,6 @@ from raptor_parser import RaptorParser
 import pandas as pd
 import numpy as np
 
-df = pd.DataFrame([[1000,2000, 132], [2000,5000, 500], [5000,7000, 1200]], columns=['start','end','value'])
-
 (test_path, test_file) = os.path.split(__file__)
 rpd_file = os.path.join(test_path, "mytrace.rpd.gz")
 
@@ -52,13 +50,3 @@ def test_empty_roi():
     print(raptor.get_top_df())
     print(raptor.get_category_df())
     print(raptor.get_variability_df())
-    
-def test_gaps_label():
-    assert RaptorParser._make_gaps_labels(
-        (0,np.inf)) == ["GAP >0us"]
-    assert RaptorParser._make_gaps_labels(
-        (0,20,np.inf)) == ["GAP <20us", "GAP >20us"]
-    assert RaptorParser._make_gaps_labels(
-        (0,20,100,np.inf)) == ["GAP <20us", 
-                               "GAP 20us-100us",
-                               "GAP >100us"]

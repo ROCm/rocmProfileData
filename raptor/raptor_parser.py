@@ -68,7 +68,6 @@ class RaptorParser:
     _gpu_idle_cat = "_GPU_Idle"
     _comm_cat = "_COMM"
     _var_cat = "_Variability"
-    
 
     def __post_init__(self):
         if self.gaps == None:
@@ -77,33 +76,34 @@ class RaptorParser:
         if self.category_json is None:
             self.category_json = os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json")
 
-        if os.path.isfile(self.rpd_file):
-            import tempfile
-            _,extension = os.path.splitext(self.rpd_file)
-            if extension == '.gz':
-                import gzip
-                tmp_path = tempfile.NamedTemporaryFile(delete=True).name
-                self.tmp_file = tmp_path
-                with gzip.open(self.rpd_file, 'rb') as f_in:
-                    with open(tmp_path, "wb") as f_out:
-                        f_out.write(f_in.read())
-                self.con = sqlite3.connect(tmp_path)
+        if self.rpd_file is not None:
+            if os.path.isfile(self.rpd_file):
+                import tempfile
+                _,extension = os.path.splitext(self.rpd_file)
+                if extension == '.gz':
+                    import gzip
+                    tmp_path = tempfile.NamedTemporaryFile(delete=True).name
+                    self.tmp_file = tmp_path
+                    with gzip.open(self.rpd_file, 'rb') as f_in:
+                        with open(tmp_path, "wb") as f_out:
+                            f_out.write(f_in.read())
+                    self.con = sqlite3.connect(tmp_path)
+                else:
+                    self.con = sqlite3.connect(self.rpd_file)
             else:
-                self.con = sqlite3.connect(self.rpd_file)
-        else:
-            raise RuntimeError ("RPD file '" + self.rpd_file + "' does not exist.")
+                raise RuntimeError ("RPD file '" + self.rpd_file + "' does not exist.")
 
-        if self.tag == None:
-            self.tag = pathlib.Path(self.rpd_file).stem
+            if self.tag == None:
+                self.tag = pathlib.Path(self.rpd_file).stem
 
-        self.first_ns = \
-            self.con.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
-        self.last_ns = \
-            self.con.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
+            self.first_ns = \
+                self.con.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
+            self.last_ns = \
+                self.con.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
 
-        assert self.last_ns >= self.first_ns
+            assert self.last_ns >= self.first_ns
 
-        self.set_roi_from_str(self.roi_start, self.roi_end)
+            self.set_roi_from_str(self.roi_start, self.roi_end)
 
     def __del__(self):
         if self.tmp_file:
@@ -273,6 +273,31 @@ class RaptorParser:
                                                self.roi_end_ns + self.first_ns)
         return rv
 
+    def set_op_df(self, op_df : pd.DataFrame):
+        """
+        Helper function for tests - check mandatory fields, create computed fields.
+        """
+        assert 'start' in op_df.columns
+        assert 'end' in op_df.columns
+        assert 'gpuId' in op_df.columns
+
+        op_df['Duration'] = np.where(op_df['start'] <= op_df['end'], 
+                                     op_df['end'] - op_df['start'], 0)
+        op_df.rename(columns={'start' : 'Start_ns', 'end' : 'End_ns',
+                              'description':'Kernel'}, inplace=True)
+
+        op_df.sort_values(['gpuId', 'Start_ns'], ascending=True, inplace=True)
+
+        gpu_group = op_df.groupby('gpuId')
+
+        # expanding.max computes a running max of end times - so commands that
+        # finish out-of-order (with an earlier end) do not move end time.
+        op_df['PreGap'] = (op_df['Start_ns'] -  gpu_group['End_ns'].transform(lambda x : x.shift(1).expanding().max())).clip(lower=0)
+        op_df['sequenceId'] = gpu_group.cumcount() + 1
+        self.op_df = op_df
+
+        return self.op_df
+
     def get_op_df(self, force=False, kernel_name: str = None):
         """ 
         Read the op table from the sql input into op_df.
@@ -289,16 +314,8 @@ class RaptorParser:
             # normalize timestamps:
             op_df["start"] -= self.first_ns
             op_df["end"]   -= self.first_ns
-            op_df['Duration'] = np.where(op_df['start'] <= op_df['end'], 
-                                         op_df['end'] - op_df['start'], 0)
-            op_df.rename(columns={'start' : 'Start_ns', 'end' : 'End_ns',
-                                  'description':'Kernel'}, inplace=True)
 
-            # expanding.max computes a running max of end times - so commands that
-            # finish out-of-order (with an earlier end) do not move end time.
-            op_df['PreGap'] = (op_df['Start_ns'] -  op_df['End_ns'].expanding().max().shift(1)).clip(lower=0)
-            op_df.sort_values(['gpuId', 'Start_ns'], ascending=True, inplace=True)
-            self.op_df = op_df
+            self.set_op_df(op_df)
 
         if kernel_name is not None:
             return self.op_df[self.op_df['Kernel'].str.contains(pat=kernel_name, regex=regex)]
@@ -318,9 +335,11 @@ class RaptorParser:
         else:
             f = open(outfile, "w")
 
-        print ("%10s %9s %13s %13s %10s %s" % ("Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Command"), file=f)
+        print ("%10s %9s %13s %13s %10s %s" % ("GPU.Seq_Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Kernel"), file=f)
         for idx,row in enumerate(op_df.itertuples(),1):
-            print ("%10d %9.1f %13s %13s %6.1f %30s" % (row.id,
+            print ("%d.%08d %9.1f %13s %13s %6.1f %30s" % (
+                                     row.gpuId,
+                                     row.sequenceId,
                                      row.PreGap/1000,
                                      self.pretty_ts(row.Start_ns),
                                      self.pretty_ts(row.End_ns),
@@ -338,7 +357,7 @@ class RaptorParser:
         assert len(gaps) >= 2
         gaps_labels = []
         if len(gaps)>2:
-            gaps_labels += ["GAP <%dus" % gaps[1]]
+            gaps_labels += ["GAP <=%dus" % gaps[1]]
         gaps_labels += ["GAP %dus-%dus" % (gaps[i], gaps[i+1]) for i in range(1, len(gaps)-2)]
         gaps_labels += ["GAP >%dus" % gaps[-2]]
 
