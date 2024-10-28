@@ -1,0 +1,33 @@
+""" 
+Script for loading an RPD for interactive usage
+
+Usage:
+$ ipython cookbook/quicklook.ipy -i
+""" 
+
+%load_ext autoreload
+%autoreload 2
+
+rpd_file = "tests/mytrace.rpd.gz"
+
+from importlib import reload
+import pandas as pd
+import numpy as np
+from raptor_parser import RaptorParser
+
+pd.set_option('display.max_rows', 100)
+pd.options.display.max_colwidth = 40 
+pd.set_option('display.float_format', '{:.1f}'.format)
+
+print ("info: reading RPD=", rpd_file)
+
+raptor = RaptorParser(rpd_file)
+
+raptor.get_category_df()
+top_df = raptor.get_top_df()
+
+pretty_top_df = raptor.get_pretty_top_df(top_df)
+
+display(pretty_top_df)
+print()
+display(raptor.category_df)
