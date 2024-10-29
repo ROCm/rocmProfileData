@@ -281,7 +281,7 @@ class RaptorParser:
         assert 'end' in op_df.columns
         assert 'gpuId' in op_df.columns
 
-        op_df['Duration'] = np.where(op_df['start'] <= op_df['end'], 
+        op_df['Duration_ns'] = np.where(op_df['start'] <= op_df['end'], 
                                      op_df['end'] - op_df['start'], 0)
         op_df.rename(columns={'start' : 'Start_ns', 'end' : 'End_ns',
                               'description':'Kernel'}, inplace=True)
@@ -343,7 +343,7 @@ class RaptorParser:
                                      row.PreGap/1000,
                                      self.pretty_ts(row.Start_ns),
                                      self.pretty_ts(row.End_ns),
-                                     row.Duration/1000,
+                                     row.Duration_ns/1000,
                                      row.Kernel[:command_print_width]
                                      ), file=f)
             if max_ops is not None and idx>=max_ops:
@@ -419,17 +419,17 @@ class RaptorParser:
                 'PreGap' : ['sum', 'min', 'mean', 'std', 'max'],
             }
             if zscore:
-                agg_ops['Duration'] = ['sum', 'min', 'mean', 'std', 'max']
+                agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
             else:
-                agg_ops['Duration'] = ['sum', 'min', 'mean', 'std', 'max']
+                agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
 
             top_df = top_gb.agg(agg_ops)
 
-            top_df['Outliers'] = top_gb.agg({'Duration' : self.zscore_count_outliers})
+            top_df['Outliers'] = top_gb.agg({'Duration_ns' : self.zscore_count_outliers})
 
-            #top_df[('Duration','min')] = top_gb.agg({'Duration' : self.zscore_min})
-            top_df['zmin'] = top_gb.agg({'Duration' : self.zscore_min})
-            top_df['zmax'] = top_gb.agg({'Duration' : self.zscore_max})
+            #top_df[('Duration_ns','min')] = top_gb.agg({'Duration_ns' : self.zscore_min})
+            top_df['zmin'] = top_gb.agg({'Duration_ns' : self.zscore_min})
+            top_df['zmax'] = top_gb.agg({'Duration_ns' : self.zscore_max})
 
             top_df['TotalCalls'] = top_gb.size()
 
@@ -452,7 +452,7 @@ class RaptorParser:
                         })
             gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
             gaps_df.columns = \
-                [('Duration', col[1]) if col[0]=='PreGap' else col \
+                [('Duration_ns', col[1]) if col[0]=='PreGap' else col \
                  for col in gaps_df.columns]
 
             gaps_df.index = ((idx,) for idx in gaps_df.index)
@@ -462,18 +462,18 @@ class RaptorParser:
             top_df = pd.concat([top_df, gaps_df])
             top_df.index.name = "Kernel Sequence"
 
-            total_duration = top_df[('Duration','sum')].sum()
-            top_df['PctTotal'] = top_df[('Duration','sum')] / total_duration * 100
+            total_duration = top_df[('Duration_ns','sum')].sum()
+            top_df['PctTotal'] = top_df[('Duration_ns','sum')] / total_duration * 100
             self._assign_categories(top_df=top_df)
 
             if 1:
                 top_df['VarSum'] = \
-                    ((top_df[('Duration','mean')] - top_df[('Duration','min')]) * \
+                    ((top_df[('Duration_ns','mean')] - top_df[('Duration_ns','min')]) * \
                       top_df['TotalCalls']).astype(int)
 
             top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum'] = np.nan
 
-            top_df = top_df.sort_values([('Duration', 'sum')],
+            top_df = top_df.sort_values([('Duration_ns', 'sum')],
                                              ascending=False)
             self.top_df = top_df
 
@@ -491,13 +491,13 @@ class RaptorParser:
                   [('Start_ns','min')   , "First_ms", 1e6, '{:+.3f}'],
                   [('Start_ns','max')   , "Last_ms", 1e6, '{:+.3f}'],
                   [('PreGap','mean')   , "PreGap_mean_us", scale, '{:.1f}'],
-                  [('Duration','min')  , "Dur_min_us", scale, '{:.1f}'],
-                  [('Duration','mean') , "Dur_mean_us", scale, '{:.1f}'],
-                  [('Duration','max')  , "Dur_max_us", scale, '{:.1f}'],
+                  [('Duration_ns','min')  , "Dur_min_us", scale, '{:.1f}'],
+                  [('Duration_ns','mean') , "Dur_mean_us", scale, '{:.1f}'],
+                  [('Duration_ns','max')  , "Dur_max_us", scale, '{:.1f}'],
                   [('VarSum','')  ,      "VarUs", None, None],
                   [('VarSum','')  ,      "VarPct", None, None],
                   [('PctTotal', ''),     "PctTotal", None, '{0:.1f}%'],
-                  #[('Duration','sum')  ,("DurSum_us", scale, '{:.0f}')],
+                  #[('Duration_ns','sum')  ,("DurSum_us", scale, '{:.0f}')],
                   [('TotalCalls', ''),   "TotalCalls", None, '{0:.0f}'],
                   [('PctTotal', ''),     "PctTotal", None, '{0:.1f}%'],
                   [('Category', ''),     "Category", None, '{0:s}'],
@@ -515,7 +515,7 @@ class RaptorParser:
                 pretty_top_df[pretty_col] = top_df[top_df_col]
 
         pretty_top_df['VarUs']  = top_df['VarSum'] / 10000 / top_df['TotalCalls']
-        pretty_top_df['VarPct'] = (top_df['VarSum'] / top_df[('Duration','sum')]).apply("{0:.1%}".format)
+        pretty_top_df['VarPct'] = (top_df['VarSum'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
 
         self.pretty_top_df = pretty_top_df
 
@@ -610,7 +610,7 @@ class RaptorParser:
         category_df = pd.DataFrame(cat_gb.size(), columns=['UniqKernels'])
         df = cat_gb.agg({
                 ('TotalCalls','') : 'sum',
-                ('Duration','sum') : 'sum',
+                ('Duration_ns','sum') : 'sum',
                 ('VarSum','') : 'sum'
             }) 
         category_df = pd.concat([category_df, df], axis='columns')
@@ -665,7 +665,7 @@ class RaptorParser:
 
     def get_variability_df(self, top_df: pd.DataFrame=None, categories: Dict=None):
         top_df = self.get_top_df()
-        total_ns = top_df[('Duration','sum')].sum()
+        total_ns = top_df[('Duration_ns','sum')].sum()
         comm_filter = top_df['Category'] == self._comm_cat
         comm_sum = top_df.loc[comm_filter,'VarSum'].sum()
         non_comm_sum = top_df.loc[~comm_filter,'VarSum'].sum()

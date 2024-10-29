@@ -28,7 +28,7 @@ def test_multi_gpu():
     assert op_df.iloc[4].PreGap == 1.0
     assert op_df.iloc[5].PreGap == 0.0
 
-    assert list(op_df['Duration'].T)    == [9,6,5, 3,14,1]
+    assert list(op_df['Duration_ns'].T) == [9,6,5, 3,14,1]
     assert list(op_df['sequenceId'].T)  == [1,2,3, 1,2,3]
 
     # make sure we can print it,
