@@ -52,6 +52,8 @@ roi_g.add_argument("--roi-end", "-e", type=str,
                     help="Set Region-of-Interest end. See --start for format.")
 roi_g.add_argument("--auto-roi", action='store_true',
                     help="Automatically pick the ROI to include first and last instance of the hottest duration kernel")
+roi_g.add_argument("--gpu-id", type=int, default=None,
+                    help="Only show records from the specified GPU ID.  (Default or -1: combine ops from all GPUs)")
 
 display_g = parser.add_argument_group('Display arguments')
 display_g.add_argument("--display-cols", type=int, default=60,

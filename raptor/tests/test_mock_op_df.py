@@ -5,6 +5,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../")
 
 from raptor_parser import RaptorParser
+import copy
 import pandas as pd
 import numpy as np
 custom_ops_df = pd.DataFrame({
@@ -15,9 +16,10 @@ custom_ops_df = pd.DataFrame({
     })
 
 raptor=RaptorParser()
-raptor.set_op_df(custom_ops_df)
+raptor.set_op_df(custom_ops_df, set_roi=True)
 
 def test_multi_gpu():
+
     op_df = raptor.get_op_df()
     print(op_df)
     assert np.isnan(op_df.iloc[0].PreGap)
@@ -33,3 +35,10 @@ def test_multi_gpu():
 
     # make sure we can print it,
     raptor.print_op_trace()
+
+def test_gpu_filter():
+    r = copy.deepcopy(raptor)
+    
+    assert r.sql_filter_str() == "where start>=0 and start<=25"
+    r.set_gpu_id(1)
+    assert r.sql_filter_str() == "where start>=0 and start<=25 and gpuId==1"

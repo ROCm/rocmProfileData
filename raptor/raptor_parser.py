@@ -31,7 +31,7 @@ class RaptorParser:
     (if not specified in the column name, time-based columns use "nano-seconds")
 
     op_df       : Record for each GPU operation (ie kernel).  Includes pre-gap, duration,
-                  call count, name, etc.
+                  call count, name, etc.  op_df is the foundational dataframe required to compute all the other dataframes.
     top_df      : Group ops with same name into a summary.  Add time for Gaps.
     category_df : Combine rows from top_df into user-specified categories.  
                   Add "Other" category for kernels not matching any of the patterns.
@@ -47,11 +47,13 @@ class RaptorParser:
     category_json : str = None
     gaps : List[int] = None
 
+    gpu_id : int = -1
+
     roi_start : str = None # string-format fed to make_roi
     roi_end : str = None # string-format fed to make_roi
 
-    top_df : pd.DataFrame = None
     op_df : pd.DataFrame = None
+    top_df : pd.DataFrame = None
 
     strings_hash : dict[str] = None
     monitor_df : pd.DataFrame = None
@@ -111,8 +113,19 @@ class RaptorParser:
                 os.remove(self.tmp_file)
             except FileNotFoundError:
                 pass
-        
 
+    def reset(self):
+        # force recomputation:
+        self.op_df = None
+        self.top_df = None
+        self.category_df = None
+        self.variability_df = None
+
+    def set_gpu_id(self, gpu_id:int):
+        """ Set the GPU id.  None means to use all GPUs """
+        self.gpu_id = gpu_id
+        self.reset()
+        
     def set_gaps(self, gaps):
         self.gaps = gaps
         self.gaps.sort()
@@ -132,9 +145,8 @@ class RaptorParser:
         self.roi_start = None
         self.roi_end = None
 
-        # force recomputation:
-        self.op_df = self.top_df = self.category_df = None
-        self.variability_df = None
+        self.reset()
+
 
     def set_full_roi(self):
         """ Set the ROI to the full range, from first to last ns """
@@ -267,13 +279,17 @@ class RaptorParser:
         print(indent, "  roi_end  :", self.pretty_ts(self.roi_end_ns), "ms")
         print(indent, "  roi_dur  :", self.pretty_ts(self.roi_end_ns - self.roi_start_ns), "ms")
         
-    def sql_roi_str(self, add_where=True):
+    def sql_filter_str(self, add_where=True):
         rv = "where " if add_where else ""
-        rv += "start >= %d and start <= %d" % (self.roi_start_ns + self.first_ns, 
+        rv += "start>=%d and start<=%d" % (self.roi_start_ns + self.first_ns, 
                                                self.roi_end_ns + self.first_ns)
+
+        if self.gpu_id != -1:
+            rv += " and gpuId==%d" % (self.gpu_id)
+
         return rv
 
-    def set_op_df(self, op_df : pd.DataFrame):
+    def set_op_df(self, op_df : pd.DataFrame, set_roi:bool=False):
         """
         Helper function for tests - check mandatory fields, create computed fields.
         """
@@ -294,6 +310,13 @@ class RaptorParser:
         # finish out-of-order (with an earlier end) do not move end time.
         op_df['PreGap'] = (op_df['Start_ns'] -  gpu_group['End_ns'].transform(lambda x : x.shift(1).expanding().max())).clip(lower=0)
         op_df['sequenceId'] = gpu_group.cumcount() + 1
+
+        if set_roi:
+            self.first_ns = op_df.iloc[0]['Start_ns']
+            self.last_ns = op_df['End_ns'].max()
+            self.roi_start_ns = 0
+            self.roi_end_ns  = self.last_ns - self.first_ns
+
         self.op_df = op_df
 
         return self.op_df
@@ -305,8 +328,7 @@ class RaptorParser:
         """
 
         if self.op_df is None or force:
-            ops_query = "select * from op %s order by start ASC " % self.sql_roi_str()
-            #self.raw_ops_df = pd.read_sql_query(ops_query, self.con) 
+            ops_query = "select * from op %s order by start ASC " % self.sql_filter_str()
             op_df = pd.read_sql_query(ops_query, self.con) 
 
             op_df = op_df[op_df['opType'].isin(['KernelExecution', 'CopyDeviceToDevice', 'Task'])]
@@ -467,11 +489,11 @@ class RaptorParser:
             self._assign_categories(top_df=top_df)
 
             if 1:
-                top_df['VarSum'] = \
+                top_df['VarSum_ns'] = \
                     ((top_df[('Duration_ns','mean')] - top_df[('Duration_ns','min')]) * \
                       top_df['TotalCalls']).astype(int)
 
-            top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum'] = np.nan
+            top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum_ns'] = np.nan
 
             top_df = top_df.sort_values([('Duration_ns', 'sum')],
                                              ascending=False)
@@ -494,8 +516,8 @@ class RaptorParser:
                   [('Duration_ns','min')  , "Dur_min_us", scale, '{:.1f}'],
                   [('Duration_ns','mean') , "Dur_mean_us", scale, '{:.1f}'],
                   [('Duration_ns','max')  , "Dur_max_us", scale, '{:.1f}'],
-                  [('VarSum','')  ,      "VarUs", None, None],
-                  [('VarSum','')  ,      "VarPct", None, None],
+                  [('VarSum_ns','')  ,      "VarUs", None, None],
+                  [('VarSum_ns','')  ,      "VarPct", None, None],
                   [('PctTotal', ''),     "PctTotal", None, '{0:.1f}%'],
                   #[('Duration_ns','sum')  ,("DurSum_us", scale, '{:.0f}')],
                   [('TotalCalls', ''),   "TotalCalls", None, '{0:.0f}'],
@@ -514,8 +536,8 @@ class RaptorParser:
             else:
                 pretty_top_df[pretty_col] = top_df[top_df_col]
 
-        pretty_top_df['VarUs']  = top_df['VarSum'] / 10000 / top_df['TotalCalls']
-        pretty_top_df['VarPct'] = (top_df['VarSum'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
+        pretty_top_df['VarUs']  = top_df['VarSum_ns'] / 10000 / top_df['TotalCalls']
+        pretty_top_df['VarPct'] = (top_df['VarSum_ns'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
 
         self.pretty_top_df = pretty_top_df
 
@@ -542,7 +564,7 @@ class RaptorParser:
 
     def get_monitor_df(self):
         if self.monitor_df is None:
-            self.monitor_df = pd.read_sql_query("select deviceId,start,end,value from rocpd_monitor where deviceType=='gpu' and monitorType=='sclk' %s order by start ASC" % self.sql_roi_str(add_where=False), self.con)
+            self.monitor_df = pd.read_sql_query("select deviceId,start,end,value from rocpd_monitor where deviceType=='gpu' and monitorType=='sclk' %s order by start ASC" % self.sql_filter_str(add_where=False), self.con)
         return self.monitor_df
 
     def set_auto_roi(self):
@@ -611,7 +633,7 @@ class RaptorParser:
         df = cat_gb.agg({
                 ('TotalCalls','') : 'sum',
                 ('Duration_ns','sum') : 'sum',
-                ('VarSum','') : 'sum'
+                ('VarSum_ns','') : 'sum'
             }) 
         category_df = pd.concat([category_df, df], axis='columns')
 
@@ -667,8 +689,8 @@ class RaptorParser:
         top_df = self.get_top_df()
         total_ns = top_df[('Duration_ns','sum')].sum()
         comm_filter = top_df['Category'] == self._comm_cat
-        comm_sum = top_df.loc[comm_filter,'VarSum'].sum()
-        non_comm_sum = top_df.loc[~comm_filter,'VarSum'].sum()
+        comm_sum = top_df.loc[comm_filter,'VarSum_ns'].sum()
+        non_comm_sum = top_df.loc[~comm_filter,'VarSum_ns'].sum()
 
         with np.errstate(divide='ignore', invalid='ignore'):
             comm_dict = {'VarUs'    : [comm_sum/1000, non_comm_sum/1000],
