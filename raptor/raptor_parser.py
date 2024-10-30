@@ -28,7 +28,6 @@ class RaptorParser:
     __doc__ += \
     """
     Pandas dataframes:
-    (if not specified in the column name, time-based columns use "nano-seconds")
 
     op_df       : Record for each GPU operation (ie kernel).  Includes pre-gap, duration,
                   call count, name, etc.  op_df is the foundational dataframe required to compute all the other dataframes.
@@ -52,6 +51,7 @@ class RaptorParser:
     roi_start : str = None # string-format fed to make_roi
     roi_end : str = None # string-format fed to make_roi
 
+
     op_df : pd.DataFrame = None
     top_df : pd.DataFrame = None
 
@@ -59,6 +59,7 @@ class RaptorParser:
     monitor_df : pd.DataFrame = None
 
     prekernel_seq : int = 2
+    zscore_threshold : int = -1 # -1 disables, but 3.0 is good value to capture 99.7% of a normal distribution 
 
     roi_start_ns : int = None
     roi_end_ns   : int = None
@@ -115,21 +116,31 @@ class RaptorParser:
                 pass
 
     def reset(self):
-        # force recomputation:
+        """ Reset all cached data-frames to force re-computation. """
         self.op_df = None
         self.top_df = None
         self.category_df = None
         self.variability_df = None
 
     def set_gpu_id(self, gpu_id:int):
-        """ Set the GPU id.  None means to use all GPUs """
+        """ Set the GPU id.  -1 means to use all GPUs """
         self.gpu_id = gpu_id
+        self.reset()
+
+    def set_prekernel_seq(self, prekernel_seq:int):
+        """ Set the prekernel_seq len used for top_df aggregation """
+        self.prekernel_seq = prekernel_seq
+        self.reset()
+
+    def set_zscore_threshold(self, zscore_threshold):
+        self.zscore_threshold = zscore_threshold
         self.reset()
         
     def set_gaps(self, gaps):
         self.gaps = gaps
         self.gaps.sort()
         self.gaps = [0] + self.gaps + [np.inf]
+        self.reset()
 
     def set_roi_from_rel_ns(self, roi_start_ns, roi_end_ns):
         self.roi_start_ns = roi_start_ns
@@ -147,7 +158,6 @@ class RaptorParser:
 
         self.reset()
 
-
     def set_full_roi(self):
         """ Set the ROI to the full range, from first to last ns """
         self.set_roi_from_rel_ns(0, self.last_ns - self.first_ns)
@@ -164,7 +174,6 @@ class RaptorParser:
             roi_end_ns = self._make_roi(roi_end)
 
         self.set_roi_from_rel_ns(roi_start_ns, roi_end_ns)
-
 
     def trim_to_roi(self, new_file_name:str = None, inplace:bool=False):
         if not inplace:
@@ -289,7 +298,7 @@ class RaptorParser:
 
         return rv
 
-    def set_op_df(self, op_df : pd.DataFrame, set_roi:bool=False):
+    def set_op_df(self, op_df : pd.DataFrame, set_roi:bool=True):
         """
         Helper function for tests - check mandatory fields, create computed fields.
         """
@@ -337,7 +346,7 @@ class RaptorParser:
             op_df["start"] -= self.first_ns
             op_df["end"]   -= self.first_ns
 
-            self.set_op_df(op_df)
+            self.set_op_df(op_df, set_roi=False)
 
         if kernel_name is not None:
             return self.op_df[self.op_df['Kernel'].str.contains(pat=kernel_name, regex=regex)]
@@ -348,6 +357,7 @@ class RaptorParser:
                        max_ops:int=None, command_print_width=150):
         if op_df is None:
             op_df = self.get_op_df()
+        self.get_top_df() # populate Outlier 
 
         if command_print_width == 0:
             command_print_width = None
@@ -357,15 +367,16 @@ class RaptorParser:
         else:
             f = open(outfile, "w")
 
-        print ("%10s %9s %13s %13s %10s %s" % ("GPU.Seq_Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Kernel"), file=f)
+        print ("%10s %9s %13s %13s %10s %5s %s" % ("GPU.Seq_Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Outlr?", "Kernel"), file=f)
         for idx,row in enumerate(op_df.itertuples(),1):
-            print ("%d.%08d %9.1f %13s %13s %6.1f %30s" % (
+            print ("%d.%08d %9.1f %13s %13s %6.1f %5s %30s" % (
                                      row.gpuId,
                                      row.sequenceId,
                                      row.PreGap/1000,
                                      self.pretty_ts(row.Start_ns),
                                      self.pretty_ts(row.End_ns),
                                      row.Duration_ns/1000,
+                                     "OUTLR " if row.Outlier else "      ",
                                      row.Kernel[:command_print_width]
                                      ), file=f)
             if max_ops is not None and idx>=max_ops:
@@ -385,75 +396,39 @@ class RaptorParser:
 
         return gaps_labels
 
-    @staticmethod
-    def zscore_filter(series):
-        """
-        Return a series filter which is true for elements who's zscore is <=3,
-        ie the values within 3 standard deviations of the mean.
-        """
-        return abs(scipy.stats.zscore(series))<=3
+    def get_top_df(self, force: bool = False, zscore: bool = False):
 
-    @staticmethod
-    def zscore_count_outliers(series):
-        return (~RaptorParser.zscore_filter(series)).sum().astype(int)
-
-    @staticmethod
-    def zscore_min(series):
-        " Remove outliers based on zscore, and return the min of the surviving elements "
-        if len(series)==1:
-            return series.iloc[0]
-        else:
-            return np.min(series[abs(scipy.stats.zscore(series))<=3])
-
-    @staticmethod
-    def zscore_max(series):
-        " Remove outliers based on zscore, and return the max of the surviving elements "
-        if len(series)==1:
-            return series.iloc[0]
-        else:
-            return np.max(series[abs(scipy.stats.zscore(series))<=3])
-
-    def get_top_df(self, force: bool = False, prekernel_seq: int = None, zscore: bool = False):
-
-        if self.top_df is None or force or \
-                (prekernel_seq is not None and prekernel_seq != self.prekernel_seq):
+        if self.top_df is None or force:
 
             op_df = self.get_op_df()
 
-            if prekernel_seq == None:
-                prekernel_seq = self.prekernel_seq
-            self.prekernel_seq = prekernel_seq
-
-            if prekernel_seq:
+            if self.prekernel_seq:
                 self.kernel_cols = ['Kernel']
-                for i in range(prekernel_seq):
+                for i in range(self.prekernel_seq):
                     shift_col_name = "Kernel+%d" % (i+1)
                     self.kernel_cols.append(shift_col_name)
                     op_df[shift_col_name] = op_df['Kernel'].shift(i+1)
-                top_gb = op_df.groupby(self.kernel_cols, sort=False)
             else:
-                top_gb = op_df.groupby(['Kernel'], sort=False)
+                self.kernel_cols = ['Kernel']
 
-            self.top_gb = top_gb
+            top_gb_all = op_df.groupby(self.kernel_cols, sort=False)
+            self.top_gb_all = top_gb_all
+
+            op_df['Duration_zscore'] = top_gb_all['Duration_ns'].transform(lambda x : x.iloc[0] if len(x)==1 else scipy.stats.zscore(x))
+            op_df['Outlier'] = False if self.zscore_threshold == -1 else (abs(op_df['Duration_zscore']) >= self.zscore_threshold)
+
+            top_gb_filter = op_df[~op_df['Outlier']].groupby(self.kernel_cols, sort=False)
 
             agg_ops = {
                 'Start_ns' : ['min', 'max'],
                 'PreGap' : ['sum', 'min', 'mean', 'std', 'max'],
             }
-            if zscore:
-                agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
-            else:
-                agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
+            agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
 
-            top_df = top_gb.agg(agg_ops)
+            top_df = top_gb_filter.agg(agg_ops)
 
-            top_df['Outliers'] = top_gb.agg({'Duration_ns' : self.zscore_count_outliers})
-
-            #top_df[('Duration_ns','min')] = top_gb.agg({'Duration_ns' : self.zscore_min})
-            top_df['zmin'] = top_gb.agg({'Duration_ns' : self.zscore_min})
-            top_df['zmax'] = top_gb.agg({'Duration_ns' : self.zscore_max})
-
-            top_df['TotalCalls'] = top_gb.size()
+            top_df['TotalCalls'] = top_gb_filter.size()
+            top_df['Outliers'] = top_gb_all.size() - top_gb_filter.size()
 
             # Gaps:
             # Extract pre-gap info from each command and create separate rows 
@@ -470,7 +445,6 @@ class RaptorParser:
                         ('PreGap', 'max'):  'max',
                         ('Start_ns', 'min'):  'min',
                         ('Start_ns', 'max'):  'max',
-                        #'TotalCalls' : 'sum',
                         })
             gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
             gaps_df.columns = \
@@ -479,7 +453,7 @@ class RaptorParser:
 
             gaps_df.index = ((idx,) for idx in gaps_df.index)
 
-            if not prekernel_seq:
+            if not self.prekernel_seq:
                 top_df.index = ((idx,) for idx in top_df.index)
             top_df = pd.concat([top_df, gaps_df])
             top_df.index.name = "Kernel Sequence"
@@ -488,10 +462,9 @@ class RaptorParser:
             top_df['PctTotal'] = top_df[('Duration_ns','sum')] / total_duration * 100
             self._assign_categories(top_df=top_df)
 
-            if 1:
-                top_df['VarSum_ns'] = \
-                    ((top_df[('Duration_ns','mean')] - top_df[('Duration_ns','min')]) * \
-                      top_df['TotalCalls']).astype(int)
+            top_df['VarSum_ns'] = \
+                ((top_df[('Duration_ns','mean')] - top_df[('Duration_ns','min')]) * \
+                  top_df['TotalCalls']).astype(int)
 
             top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum_ns'] = np.nan
 
@@ -516,7 +489,7 @@ class RaptorParser:
                   [('Duration_ns','min')  , "Dur_min_us", scale, '{:.1f}'],
                   [('Duration_ns','mean') , "Dur_mean_us", scale, '{:.1f}'],
                   [('Duration_ns','max')  , "Dur_max_us", scale, '{:.1f}'],
-                  [('VarSum_ns','')  ,      "VarUs", None, None],
+                  [('VarSum_ns','')  ,      "Var_us", None, None],
                   [('VarSum_ns','')  ,      "VarPct", None, None],
                   [('PctTotal', ''),     "PctTotal", None, '{0:.1f}%'],
                   #[('Duration_ns','sum')  ,("DurSum_us", scale, '{:.0f}')],
@@ -536,7 +509,7 @@ class RaptorParser:
             else:
                 pretty_top_df[pretty_col] = top_df[top_df_col]
 
-        pretty_top_df['VarUs']  = top_df['VarSum_ns'] / 10000 / top_df['TotalCalls']
+        pretty_top_df['Var_us']  = top_df['VarSum_ns'] / 10000 / top_df['TotalCalls']
         pretty_top_df['VarPct'] = (top_df['VarSum_ns'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
 
         self.pretty_top_df = pretty_top_df
@@ -617,7 +590,7 @@ class RaptorParser:
         Summarize top kernels into higher-level, user-specified categories.
 
         variability_method : 
-            None : don't add a row for variability.
+            None : Don't add a row for variability.
             comm : Aggregate _COMM category into the _Variability row.  
             non_comm : Aggregate ~_COMM category into the _Variability row
         """
@@ -693,7 +666,7 @@ class RaptorParser:
         non_comm_sum = top_df.loc[~comm_filter,'VarSum_ns'].sum()
 
         with np.errstate(divide='ignore', invalid='ignore'):
-            comm_dict = {'VarUs'    : [comm_sum/1000, non_comm_sum/1000],
+            comm_dict = {'Var_us'    : [comm_sum/1000, non_comm_sum/1000],
                          'VarPct'   : ["{0:.1%}".format(comm_sum/total_ns), "{0:.1%}".format(non_comm_sum/total_ns)]
                         }
         var_df = pd.DataFrame(comm_dict, index=['by_comm', 'by_non_comm'])

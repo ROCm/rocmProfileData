@@ -26,7 +26,6 @@ summary_g.add_argument("--category-json", "-C", type=str,
                     help="File containing category definitions, specified as a JSON-format dictionary.  See tools/raptor_cat_vllm.json for an example.  If a kernel name matches more than one pattern, the LAST match in the file determines the category.")
 summary_g.add_argument("--variability", "-v", action='store_true',
                     help="show variability")
-
 summary_g.add_argument("--top", "-t", action='store_true',
                     help="Show top kernels, sorted by TotalDuration")
 summary_g.add_argument("--prekernel-seq", type=int, default=2,
@@ -36,6 +35,10 @@ summary_g.add_argument("--gaps",
                 nargs='+', type=int, metavar="GAP",
                 default=gaps_default,
                 help = "Size of histogram buckets used for gaps breakdown, specified as a list of micro-second times.  Default="+str(gaps_default));
+
+summary_g.add_argument("--zscore_threshold", "-z", type=int,
+                        default=-1,
+                        help="Zscore threshold to use to identify outliers for each kernel in the top_df.  Raptor computes the zscore=(val - Mean)/StdDev for the Duration of each instance of each kernel.  if abs(zscore)>zscore_threshold, the instance is treated as an outlier and excluded from the top_df stats.  For a normal distribution, zscore_threshold==3 captures 99.7%% of the values and can be a good starting value. Default zscore is -1 (outlier detection is disabled)")
 
 op_trace_g = parser.add_argument_group('Op-Trace args')
 op_trace_g.add_argument("--op-trace", "-o", action='store_true',
@@ -53,7 +56,7 @@ roi_g.add_argument("--roi-end", "-e", type=str,
 roi_g.add_argument("--auto-roi", action='store_true',
                     help="Automatically pick the ROI to include first and last instance of the hottest duration kernel")
 roi_g.add_argument("--gpu-id", type=int, default=None,
-                    help="Only show records from the specified GPU ID.  (Default or -1: combine ops from all GPUs)")
+                    help="Only show records from the specified gpuId.  (Default or -1: combine ops from all GPUs)")
 
 display_g = parser.add_argument_group('Display arguments')
 display_g.add_argument("--display-cols", type=int, default=60,
@@ -80,6 +83,7 @@ if not args.op_trace and not args.top and not args.categorize:
 raptor = RaptorParser(args.rpd_file_name, gaps=args.gaps, 
                       category_json=args.category_json,
                       prekernel_seq=args.prekernel_seq,
+                      zscore_threshold=args.zscore_threshold,
                       roi_start=args.roi_start, roi_end=args.roi_end)
 
 raptor.print_timestamps(indent="   ")
