@@ -13,3 +13,6 @@ def test_trace():
 
 def test_zscore():
     assert not os.system(raptor + rpd_file + " -ct -z 3")
+
+def test_instance():
+    assert not os.system(raptor + rpd_file + " -i 0 -z 3 --op-trace-cmd-width=60")
