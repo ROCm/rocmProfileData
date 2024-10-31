@@ -38,7 +38,8 @@ class RaptorParser:
     pretty_top_df : Convert a subset of the top_df patterns into formatted columns - 
                     for example converting timestamps from raw ns to a ms value 
                     that is relative to the start of the trace.  Designed to be easily viewed
-                    on the screen to spot trends.
+                    on the screen to spot trends. Each field is technically a string format - 
+                    use the top_df for interactive computations.
     """
 
     rpd_file : str = None
@@ -427,8 +428,8 @@ class RaptorParser:
 
             top_df = top_gb_filter.agg(agg_ops)
 
+            top_df['Outliers'] = (top_gb_all.size() - top_gb_filter.size()).astype("Int64")
             top_df['TotalCalls'] = top_gb_filter.size()
-            top_df['Outliers'] = top_gb_all.size() - top_gb_filter.size()
 
             # Gaps:
             # Extract pre-gap info from each command and create separate rows 
@@ -490,9 +491,8 @@ class RaptorParser:
                   [('Duration_ns','mean') , "Dur_mean_us", scale, '{:.1f}'],
                   [('Duration_ns','max')  , "Dur_max_us", scale, '{:.1f}'],
                   [('VarSum_ns','')  ,      "Var_us", None, None],
-                  [('VarSum_ns','')  ,      "VarPct", None, None],
-                  [('PctTotal', ''),     "PctTotal", None, '{0:.1f}%'],
-                  #[('Duration_ns','sum')  ,("DurSum_us", scale, '{:.0f}')],
+                  [('VarSum_ns','')  ,      "VarTotal_pct", None, None], # dummy placeholder, see below for formula
+                  [('Outliers', ''),      "Outliers", None, '{0:.0f}'],
                   [('TotalCalls', ''),   "TotalCalls", None, '{0:.0f}'],
                   [('PctTotal', ''),     "PctTotal", None, '{0:.1f}%'],
                   [('Category', ''),     "Category", None, '{0:s}'],
@@ -510,7 +510,9 @@ class RaptorParser:
                 pretty_top_df[pretty_col] = top_df[top_df_col]
 
         pretty_top_df['Var_us']  = top_df['VarSum_ns'] / 10000 / top_df['TotalCalls']
-        pretty_top_df['VarPct'] = (top_df['VarSum_ns'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
+        total_var_ns = top_df['VarSum_ns'].sum()
+        #pretty_top_df['VarLocal_pct'] = (top_df['VarSum_ns'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
+        pretty_top_df['VarTotal_pct'] = (top_df['VarSum_ns'] / total_var_ns).apply("{0:.1%}".format)
 
         self.pretty_top_df = pretty_top_df
 
@@ -527,13 +529,20 @@ class RaptorParser:
             self._string_to_id_hash = string_df['id'].T.to_dict()
         return self.strings_hash
 
-    def get_ops_from_top_row(self, top_row:pd.DataFrame):
+    def get_instance_df_from_kernel_df(self, kernel_df:pd.DataFrame, sortby='Duration_ns'):
+        """
+        Trace all instances of the specified kernel.  
+        kernel_df is a row from the top_df that specifies the desired kernel to trace
+        """
         op_df = self.get_op_df()
-        kernel_seq = top_row.name
-        assert len(self.kernel_cols) == len(kernel_seq)
+        kernel_name = kernel_df.name
+        assert len(self.kernel_cols) == len(kernel_name)
         filter = (op_df[self.kernel_cols] == \
-                        pd.Series(kernel_seq, index=self.kernel_cols)).all(axis=1)
-        return op_df[filter]
+                        pd.Series(kernel_name, index=self.kernel_cols)).all(axis=1)
+        instance_df = op_df[filter]
+        if sortby:
+            instance_df = instance_df.sort_values(by=sortby)
+        return instance_df
 
     def get_monitor_df(self):
         if self.monitor_df is None:
@@ -672,3 +681,15 @@ class RaptorParser:
         var_df = pd.DataFrame(comm_dict, index=['by_comm', 'by_non_comm'])
         self.variability_df = var_df
         return var_df
+
+    def to_xls(self, xls_file_name:str=None, add_op_df:bool=False):
+        if xls_file_name == None:
+            xls_file_name = pathlib.PurePath(self.rpd_file).with_suffix(".xlsx")
+        with pd.ExcelWriter(xls_file_name) as writer:
+            print ("info: writing xls file", xls_file_name)
+            self.get_top_df().to_excel(writer, sheet_name="top_df")
+            self.get_pretty_top_df().to_excel(writer, sheet_name="pretty_top_df")
+            self.get_category_df().to_excel(writer, sheet_name="category_df")
+            self.get_variability_df().to_excel(writer, sheet_name="variability_df")
+            if add_op_df:
+                self.get_op_df().to_excel(writer, sheet_name="op_df")

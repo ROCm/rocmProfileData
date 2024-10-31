@@ -14,18 +14,18 @@ parser = argparse.ArgumentParser(prog="raptor.py",
 """
 Example:  $ raptor.py --top --categorize trace.rpd
 """,
-            formatter_class=argparse.RawTextHelpFormatter)
+            formatter_class=argparse.RawDescriptionHelpFormatter)
 
 parser.add_argument("rpd_file_name")
 
-summary_g = parser.add_argument_group('View and summary features')
+summary_g = parser.add_argument_group('Categorize and Top Kernel Summaries')
 summary_g.add_argument("--categorize", "-c", action='store_true',
                     help="Summarize RPD top kernels into categories (ie GEMM, AllReduce, EltWise, Idle)")
 summary_g.add_argument("--category-json", "-C", type=str,
                     default=os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json"),
                     help="File containing category definitions, specified as a JSON-format dictionary.  See tools/raptor_cat_vllm.json for an example.  If a kernel name matches more than one pattern, the LAST match in the file determines the category.")
 summary_g.add_argument("--variability", "-v", action='store_true',
-                    help="show variability")
+                    help="Show variability df")
 summary_g.add_argument("--top", "-t", action='store_true',
                     help="Show top kernels, sorted by TotalDuration")
 summary_g.add_argument("--prekernel-seq", type=int, default=2,
@@ -40,15 +40,18 @@ summary_g.add_argument("--zscore_threshold", "-z", type=int,
                         default=-1,
                         help="Zscore threshold to use to identify outliers for each kernel in the top_df.  Raptor computes the zscore=(val - Mean)/StdDev for the Duration of each instance of each kernel.  if abs(zscore)>zscore_threshold, the instance is treated as an outlier and excluded from the top_df stats.  For a normal distribution, zscore_threshold==3 captures 99.7%% of the values and can be a good starting value. Default zscore is -1 (outlier detection is disabled)")
 
-op_trace_g = parser.add_argument_group('Op-Trace args')
+op_trace_g = parser.add_argument_group('Op-Trace')
 op_trace_g.add_argument("--op-trace", "-o", action='store_true',
                     help="Generate a single-line trace for each op(kernel) showing pre-gap, start/end times, duration, name, etc.")
 op_trace_g.add_argument("--op-trace-file", type=str,
                     help="Write op-trace to a file.  If not specified, write to stdout.")
-op_trace_g.add_argument("--op-trace-cmd-width", type=int, default=None,
+op_trace_g.add_argument("--op-trace-cmd-width", '-W', 
+                    type=int, default=None,
                     help="Width in characters to display the op (kernel) names in the op trace")
+op_trace_g.add_argument("--instance-trace", "-i", type=int, default=None,
+                    help="Show each execution of the specified kernel.  The parm is an integer index into the 'top_df' table - ie 0 is the first row, 1 is the second, and so on.  Negative indices start from the bottom of the top_df table.  Instances are sorted by Duration_ns")
 
-roi_g = parser.add_argument_group('Region-of-Interest (ROI) args')
+roi_g = parser.add_argument_group('Region-of-Interest (ROI)')
 roi_g.add_argument("--roi-start", "-s", type=str,
                     help="Set ROI start. 0 corresponds to the start of the RPD.  Default is ms, but can specify trailing time units.  If kernel name is specified, use the timestamp of the first instance for the specified kernel. Examples: 123.45, 123.45ms, 123450ns, .12345s, Cijk_")
 roi_g.add_argument("--roi-end", "-e", type=str,
@@ -66,15 +69,24 @@ display_g.add_argument("--display-rows", type=int, default=500,
 display_g.add_argument("--float-digits", type=int, default=1,
                     help="Number of digits to print for float values in tables.")
 
+group = parser.add_argument_group('Output controls')
+group.add_argument("--write-xls", '-x', action='store_true',
+                    help="Write XLS file with key tables")
+group.add_argument("--write-xls-op-trace", action='store_true',
+                    help="Write the full op trace to the XLS")
 
 args=parser.parse_args()
+
+if args.write_xls_op_trace:
+    args.write_xls = True
 
 # Set display options:
 pd.set_option('display.max_rows', args.display_rows)
 pd.options.display.max_colwidth = args.display_cols
 pd.set_option('display.float_format', ('{:.%df}'%args.float_digits).format)
 
-if not args.op_trace and not args.top and not args.categorize:
+if not args.op_trace and not args.top and not args.categorize \
+   and args.instance_trace is None and not args.write_xls:
     print ("info: setting --top --categorize --variability")
     args.top = True
     args.categorize = True
@@ -106,3 +118,11 @@ if args.top:
 
 if args.op_trace:
     raptor.print_op_trace(outfile=args.op_trace_file, command_print_width=args.op_trace_cmd_width)
+
+if args.instance_trace is not None:
+    kernel_df = raptor.get_top_df().iloc[args.instance_trace]
+    instance_df = raptor.get_instance_df_from_kernel_df(kernel_df)
+    raptor.print_op_trace(op_df=instance_df, outfile=args.op_trace_file, command_print_width=args.op_trace_cmd_width)
+
+if args.write_xls:
+    raptor.to_xls(add_op_df=args.write_xls_op_trace)
