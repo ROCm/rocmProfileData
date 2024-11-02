@@ -30,14 +30,13 @@ summary_g.add_argument("--top", "-t", action='store_true',
                     help="Show top kernels, sorted by TotalDuration")
 summary_g.add_argument("--prekernel-seq", type=int, default=2,
                     help="Number of preceding kernels to use in the sequence of kernels used for grouping into the top buckets.  This can be used to disambiguate cases where the same kernel name is called in different contents.  0 means to ignore the sequence and aggregate top kernels just based on the name")
-gaps_default = [10, 20, 50, 100, 1000, 10000, 100000]
 summary_g.add_argument("--gaps",
                 nargs='+', type=int, metavar="GAP",
-                default=gaps_default,
-                help = "Size of histogram buckets used for gaps breakdown, specified as a list of micro-second times.  Default="+str(gaps_default));
+                default=RaptorParser.default_gaps,
+                help = "Size of histogram buckets used for gaps breakdown, specified as a list of micro-second times.  Default="+str(RaptorParser.default_gaps));
 
 summary_g.add_argument("--zscore_threshold", "-z", type=int,
-                        default=-1,
+                        default=RaptorParser.default_zscore,
                         help="Zscore threshold to use to identify outliers for each kernel in the top_df.  Raptor computes the zscore=(val - Mean)/StdDev for the Duration of each instance of each kernel.  if abs(zscore)>zscore_threshold, the instance is treated as an outlier and excluded from the top_df stats.  For a normal distribution, zscore_threshold==3 captures 99.7%% of the values and can be a good starting value. Default zscore is -1 (outlier detection is disabled)")
 
 op_trace_g = parser.add_argument_group('Op-Trace')
@@ -58,7 +57,7 @@ roi_g.add_argument("--roi-end", "-e", type=str,
                     help="Set Region-of-Interest end. See --start for format.")
 roi_g.add_argument("--auto-roi", action='store_true',
                     help="Automatically pick the ROI to include first and last instance of the hottest duration kernel")
-roi_g.add_argument("--gpu-id", type=int, default=None,
+roi_g.add_argument("--gpu-id", type=int, default=RaptorParser.default_gpu_id,
                     help="Only show records from the specified gpuId.  (Default or -1: combine ops from all GPUs)")
 
 display_g = parser.add_argument_group('Display arguments')
@@ -95,6 +94,7 @@ if not args.op_trace and not args.top and not args.categorize \
 raptor = RaptorParser(args.rpd_file_name, gaps=args.gaps, 
                       category_json=args.category_json,
                       prekernel_seq=args.prekernel_seq,
+                      gpu_id=args.gpu_id,
                       zscore_threshold=args.zscore_threshold,
                       roi_start=args.roi_start, roi_end=args.roi_end)
 

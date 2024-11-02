@@ -41,6 +41,10 @@ class RaptorParser:
                     on the screen to spot trends. Each field is technically a string format - 
                     use the top_df for interactive computations.
     """
+    # Class variables:
+    default_gaps = [10, 20, 50, 100, 1000, 10000, 100000]
+    default_gpu_id = -1
+    default_zscore = -1
 
     rpd_file : str = None
     tag : str = None
@@ -75,7 +79,9 @@ class RaptorParser:
 
     def __post_init__(self):
         if self.gaps == None:
-           self.set_gaps([10])
+            self.set_gaps(self.default_gaps)
+        else:
+            self.set_gaps(self.gaps)
 
         if self.category_json is None:
             self.category_json = os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json")
@@ -313,6 +319,8 @@ class RaptorParser:
                               'description':'Kernel'}, inplace=True)
 
         op_df.sort_values(['gpuId', 'Start_ns'], ascending=True, inplace=True)
+        op_df = op_df.reset_index()
+        op_df.index += 1
 
         gpu_group = op_df.groupby('gpuId')
 
@@ -397,7 +405,7 @@ class RaptorParser:
 
         return gaps_labels
 
-    def get_top_df(self, force: bool = False, zscore: bool = False):
+    def get_top_df(self, force: bool = False):
 
         if self.top_df is None or force:
 
@@ -415,7 +423,7 @@ class RaptorParser:
             top_gb_all = op_df.groupby(self.kernel_cols, sort=False)
             self.top_gb_all = top_gb_all
 
-            op_df['Duration_zscore'] = top_gb_all['Duration_ns'].transform(lambda x : x.iloc[0] if len(x)==1 else scipy.stats.zscore(x))
+            op_df['Duration_zscore'] = top_gb_all['Duration_ns'].transform(lambda x : 0 if len(x)==1 else scipy.stats.zscore(x))
             op_df['Outlier'] = False if self.zscore_threshold == -1 else (abs(op_df['Duration_zscore']) >= self.zscore_threshold)
 
             top_gb_filter = op_df[~op_df['Outlier']].groupby(self.kernel_cols, sort=False)
@@ -529,7 +537,7 @@ class RaptorParser:
             self._string_to_id_hash = string_df['id'].T.to_dict()
         return self.strings_hash
 
-    def get_instance_df_from_kernel_df(self, kernel_df:pd.DataFrame, sortby='Duration_ns'):
+    def get_instance_df_from_kernel_df(self, kernel_df:pd.DataFrame, sort_by='Duration_ns'):
         """
         Trace all instances of the specified kernel.  
         kernel_df is a row from the top_df that specifies the desired kernel to trace
@@ -540,8 +548,8 @@ class RaptorParser:
         filter = (op_df[self.kernel_cols] == \
                         pd.Series(kernel_name, index=self.kernel_cols)).all(axis=1)
         instance_df = op_df[filter]
-        if sortby:
-            instance_df = instance_df.sort_values(by=sortby)
+        if sort_by:
+            instance_df = instance_df.sort_values(by=sort_by)
         return instance_df
 
     def get_monitor_df(self):
