@@ -12,8 +12,6 @@
 #include <condition_variable>
 
 
-
-
 class RocmSmiDataSource : public DataSource
 {
 public:

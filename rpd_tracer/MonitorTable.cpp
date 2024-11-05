@@ -23,6 +23,8 @@
 
 #include <thread>
 #include <map>
+#include <array>
+#include <mutex>
 
 #include "rpd_tracer.h"
 #include "Utility.h"

@@ -31,9 +31,6 @@ public:
     sqlite3 *connection;
     std::string resourceName;
 
-    //std::mutex m_mutex;
-    //std::condition_variable m_wait;
-
     bool locked {false};
 
     DbResource *p;

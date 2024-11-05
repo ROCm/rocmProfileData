@@ -23,6 +23,8 @@
 
 #include <roctracer.h>
 
+#include <string>
+
 #include "DataSource.h"
 #include "ApiIdList.h"
 

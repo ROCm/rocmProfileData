@@ -21,6 +21,8 @@
 ********************************************************************************/
 #pragma once
 
+#include <string>
+#include <mutex>
 #include <deque>
 #include <thread>
 

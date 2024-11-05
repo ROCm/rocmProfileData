@@ -4,8 +4,7 @@
 #pragma once
 
 #include <sqlite3.h>
-#include <mutex>
-#include <condition_variable>
+#include <string>
 
 class DbResourcePrivate;
 class DbResource
