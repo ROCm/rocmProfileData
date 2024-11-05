@@ -24,6 +24,8 @@
 #include <thread>
 #include <deque>
 #include <map>
+#include <array>
+#include <mutex>
 
 #include "Utility.h"
 

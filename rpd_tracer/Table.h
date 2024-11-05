@@ -4,6 +4,7 @@
 #pragma once
 
 #include <sqlite3.h>
+#include <string>
 #include <mutex>
 #include <condition_variable>
 

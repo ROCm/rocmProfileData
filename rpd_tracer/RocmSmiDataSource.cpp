@@ -11,6 +11,8 @@
 
 #include <fmt/format.h>
 
+#include <string>
+
 #include "Logger.h"
 #include "Utility.h"
 
