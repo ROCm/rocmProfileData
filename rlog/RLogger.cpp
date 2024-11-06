@@ -22,6 +22,11 @@
 
 #include <cstdio>
 
+#include <atomic>
+#include <map>
+#include <mutex>
+#include <cassert>
+
 #include "RLogger.h"
 
 using namespace rlog;
@@ -58,13 +63,31 @@ bool rlog_isActive()
 }
 }
 
+namespace rlog {
+
+class RLoggerPrivate
+{
+public:
+    //RLoggerPrivate();
+
+    std::map<Logger*, int> loggers;
+    std::map<void(*)(), int> callbacks;
+
+    std::atomic<bool> active{false};
+
+    std::mutex mutex;
+
+    void notifyListeners();
+};
 
 RLogger::RLogger()
+: d(new RLoggerPrivate())
 {
 }
 
 RLogger::~RLogger()
 {
+    delete d;
 }
 
 RLogger& RLogger::singleton()
@@ -94,26 +117,65 @@ void RLogger::finalize()
 
 void RLogger::mark(const char *domain, const char *category, const char *apiName, const char* args)
 {
+    std::unique_lock<std::mutex> lock(d->mutex);
+    for (const auto &it: d->loggers) {
+       (it.first)->mark(domain, category, apiName, args);
+    }
     fprintf(stderr, "MARK\n");
 }
 
 void RLogger::rangePush(const char *domain, const char *category, const char *apiName, const char* args)
 {
+    std::unique_lock<std::mutex> lock(d->mutex);
+    for (const auto &it: d->loggers) {
+       (it.first)->rangePush(domain, category, apiName, args);
+    }
     fprintf(stderr, "PUSH\n");
 }
 
 void RLogger::rangePop()
 {
+    std::unique_lock<std::mutex> lock(d->mutex);
+    for (const auto &it: d->loggers) {
+       (it.first)->rangePop();
+    }
     fprintf(stderr, "POP\n");
 }
 
-void RLogger::addLogger(const Logger &logger)
+void RLogger::addLogger(Logger &logger)
 {
+    std::unique_lock<std::mutex> lock(d->mutex);
+    int presize = d->loggers.size();
+    auto it = d->loggers.find(&logger);
+    if (it == d->loggers.end()) {
+        d->loggers.insert({&logger, 1});
+    }
+    else {
+        ++(it->second);
+    }
+    int postsize = d->loggers.size();
+    if (postsize > 0 and presize < 1) {
+        d->active = true;
+        d->notifyListeners();
+    }
     fprintf(stderr, "addLogger\n");
 }
 
-void RLogger::removeLogger(const Logger &logger)
+void RLogger::removeLogger(Logger &logger)
 {
+    std::unique_lock<std::mutex> lock(d->mutex);
+    int presize = d->loggers.size();
+    auto it = d->loggers.find(&logger);
+    if (it != d->loggers.end()) {
+        --(it->second);
+        if (it->second <= 0)
+            it = d->loggers.erase(it);
+    }
+    int postsize = d->loggers.size();
+    if (postsize <=0 and presize >= 1) {
+        d->active = false;
+        d->notifyListeners();
+    }
     fprintf(stderr, "removeLogger\n");
 }
 
@@ -125,12 +187,30 @@ const char *RLogger::getProperty(const char *domain, const char *property, const
 
 void RLogger::registerActiveCallback(void (*cb)())
 {
-
     fprintf(stderr, "RegisterActiveCallback\n");
+
+    std::unique_lock<std::mutex> lock(d->mutex);
+    auto it = d->callbacks.find(cb);
+    if (it == d->callbacks.end()) {
+        d->callbacks.insert({cb, 1});
+    }
+    else {
+        ++(it->second);
+    }
+    cb();
 }
 
 bool RLogger::isActive()
 {
-    fprintf(stderr, "isActive\n");
-    return false;
+    return d->active;
 }
+
+void RLoggerPrivate::notifyListeners()
+{
+    assert(this->mutex.try_lock() == false && "Should be holding lock");
+    for (const auto &it: this->callbacks) {
+       it.first();
+    }
+}
+
+} // namespace rlog

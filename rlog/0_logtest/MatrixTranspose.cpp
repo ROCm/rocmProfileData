@@ -46,6 +46,12 @@ __global__ void matrixTranspose(float* out, float* in, const int width) {
     out[y * width + x] = in[x * width + y];
 }
 
+bool isLogging = false;
+void rlog_callback() {
+    isLogging = rlog::isActive();
+    fprintf(stderr, "rlog_callback()  %s\n", isLogging ? "True" : "False");
+}
+
 // CPU implementation of matrix transpose
 void matrixTransposeCPUReference(float* output, float* input, const unsigned int width) {
     for (unsigned int j = 0; j < width; j++) {
@@ -90,9 +96,11 @@ int main() {
 
     // Fire up logging
     rlog::init();
-    rlog::mark("test", "nocall", "noargs");
+    rlog::registerActiveCallback(&rlog_callback);
     rlog::setDefaultDomain("MT");
     rlog::setDefaultCategory("test");
+    if (isLogging)
+        rlog::mark("test", "nocall", "noargs");
 
     // Warmup
     for (int i = 0 ; i < 100; ++i) {
@@ -144,6 +152,7 @@ int main() {
     fprintf(stderr, "hipGetSetDevice: %d in %f ms.  %f ns / call\n", count * 10, (t2 - t1) / 1000000.0, 0.1*(t2-t1)/count);
 
     count = 2;
+    count = atoi(rlog::getProperty("MT", "rangeCount", "10")); 
 
     // roctx static
     char buff[4096];
@@ -152,8 +161,10 @@ int main() {
     for (int i = 0 ; i < count; ++i) {
         //roctxRangePushA(buff);
         //roctxRangePop();
-        rlog::rangePush("static", buff);
-        rlog::rangePop();
+        if (isLogging) {
+            rlog::rangePush("static", buff);
+            rlog::rangePop();
+        }
     }
     t2 = clocktime_ns();
     fprintf(stderr, "roxtx_static: %d in %f ms.  %f ns / call\n", count, (t2 - t1) / 1000000.0, 1.0*(t2-t1)/count);
@@ -169,8 +180,10 @@ int main() {
     for (int i = 0 ; i < count; ++i) {
         //roctxRangePushA(msg[i]);
         //roctxRangePop();
-        rlog::rangePush("variable", msg[i]);
-        rlog::rangePop();
+        if (isLogging) {
+            rlog::rangePush("variable", msg[i]);
+            rlog::rangePop();
+        }
     }
     t2 = clocktime_ns();
     fprintf(stderr, "roctx_variable: %d in %f ms.  %f ns / call\n", count, (t2 - t1) / 1000000.0, 1.0*(t2-t1)/count);

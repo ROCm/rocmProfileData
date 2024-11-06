@@ -25,6 +25,7 @@
 
 namespace rlog {
 
+class RLoggerPrivate;
 class RLogger: public Logger
 {
 public:
@@ -36,8 +37,8 @@ public:
     virtual void rangePop() override;
 
     // Add or remove a logger - ref counted per logger
-    void addLogger(const Logger &logger);
-    void removeLogger(const Logger &logger);
+    void addLogger(Logger &logger);
+    void removeLogger(Logger &logger);
 
     // Active is true when any logger in present
     void registerActiveCallback(void (*cb)());
@@ -49,6 +50,9 @@ public:
 private:
     RLogger();
     virtual ~RLogger();
+
+    RLoggerPrivate *d;
+    friend class RLoggerPrivate;
 
     static void rlogInit() __attribute__((constructor));
     static void rlogFinalize() __attribute__((destructor));

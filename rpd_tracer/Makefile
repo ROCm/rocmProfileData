@@ -30,7 +30,7 @@ endif
 
 ifneq (,$(RLOG_PATH))
         RPD_LIBS += -L/usr/local/include -lrlog
-        RPD_INCLUDES += -I$(RLOG_PATH)
+        #RPD_INCLUDES += -I$(RLOG_PATH)
         RPD_SRCS += RlogDataSource.cpp
 endif
 
