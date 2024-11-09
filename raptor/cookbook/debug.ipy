@@ -1,10 +1,9 @@
 """ 
-Script for loading an RPD for interactive usage
+Script for loading an RPD for interactive usage, useful for debugging script dev
 
 Usage:
-$ ipython cookbook/quicklook.ipy -i
+$ ipython cookbook/debug.ipy -i
 """ 
-
 %load_ext autoreload
 %autoreload 2
 
