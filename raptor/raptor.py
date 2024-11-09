@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(prog="raptor.py",
         description=
             RaptorParser.usage_doc + \
 """
-Example:  $ raptor.py --top --categorize trace.rpd
+Example:  $ raptor.py --kernelseq --categorize trace.rpd
 """,
             formatter_class=argparse.RawDescriptionHelpFormatter)
 
@@ -20,16 +20,16 @@ parser.add_argument("rpd_file_name")
 
 summary_g = parser.add_argument_group('Categorize and Top Kernel Summaries')
 summary_g.add_argument("--categorize", "-c", action='store_true',
-                    help="Summarize RPD top kernels into categories (ie GEMM, AllReduce, EltWise, Idle)")
+                    help="Summarize RPD kernels into categories (ie GEMM, AllReduce, EltWise, Idle)")
 summary_g.add_argument("--category-json", "-C", type=str,
                     default=os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json"),
                     help="File containing category definitions, specified as a JSON-format dictionary.  See tools/raptor_cat_vllm.json for an example.  If a kernel name matches more than one pattern, the LAST match in the file determines the category.")
 summary_g.add_argument("--variability", "-v", action='store_true',
                     help="Show variability df")
-summary_g.add_argument("--top", "-t", action='store_true',
-                    help="Show top kernels, sorted by TotalDuration")
-summary_g.add_argument("--prekernel-seq", type=int, default=2,
-                    help="Number of preceding kernels to use in the sequence of kernels used for grouping into the top buckets.  This can be used to disambiguate cases where the same kernel name is called in different contents.  0 means to ignore the sequence and aggregate top kernels just based on the name")
+summary_g.add_argument("--kernelseq", "-k", action='store_true',
+                    help="Groups ops into kernel-sequences, sorted by TotalDuration")
+summary_g.add_argument("--kernelseq-len", type=int, default=2,
+                    help="Number of preceding kernels to use in the sequence of kernels used for grouping into the kernel buckets.  This can be used to disambiguate cases where the same kernel name is called in different contents.  0 means to ignore the sequence and aggregate kernels just based on the name")
 summary_g.add_argument("--gaps",
                 nargs='+', type=int, metavar="GAP",
                 default=RaptorParser.default_gaps,
@@ -37,7 +37,7 @@ summary_g.add_argument("--gaps",
 
 summary_g.add_argument("--zscore_threshold", "-z", type=int,
                         default=RaptorParser.default_zscore,
-                        help="Zscore threshold to use to identify outliers for each kernel in the top_df.  Raptor computes the zscore=(val - Mean)/StdDev for the Duration of each instance of each kernel.  if abs(zscore)>zscore_threshold, the instance is treated as an outlier and excluded from the top_df stats.  For a normal distribution, zscore_threshold==3 captures 99.7%% of the values and can be a good starting value. Default zscore is -1 (outlier detection is disabled)")
+                        help="Zscore threshold to use to identify outliers for each kernel in the kernelseqdf.  Raptor computes the zscore=(val - Mean)/StdDev for the Duration of each instance of each kernel.  if abs(zscore)>zscore_threshold, the instance is treated as an outlier and excluded from the kernelseq_df stats.  For a normal distribution, zscore_threshold==3 captures 99.7%% of the values and can be a good starting value. Default zscore is -1 (outlier detection is disabled)")
 
 op_trace_g = parser.add_argument_group('Op-Trace')
 op_trace_g.add_argument("--op-trace", "-o", action='store_true',
@@ -48,7 +48,7 @@ op_trace_g.add_argument("--op-trace-cmd-width", '-W',
                     type=int, default=None,
                     help="Width in characters to display the op (kernel) names in the op trace")
 op_trace_g.add_argument("--instance-trace", "-i", type=int, default=None,
-                    help="Show each execution of the specified kernel.  The parm is an integer index into the 'top_df' table - ie 0 is the first row, 1 is the second, and so on.  Negative indices start from the bottom of the top_df table.  Instances are sorted by Duration_ns")
+                    help="Show each execution of the specified kernel.  The parm is an integer index into the 'kernelseq_df' table - ie 0 is the first row, 1 is the second, and so on.  Negative indices start from the bottom of the kernelseq table.  Instances are sorted by Duration_ns")
 
 roi_g = parser.add_argument_group('Region-of-Interest (ROI)')
 roi_g.add_argument("--roi-start", "-s", type=str,
@@ -57,6 +57,8 @@ roi_g.add_argument("--roi-end", "-e", type=str,
                     help="Set Region-of-Interest end. See --start for format.")
 roi_g.add_argument("--auto-roi-top", action='store_true',
                     help="Automatically pick the ROI to include first and last instance of the hottest duration kernel")
+roi_g.add_argument("--roi-trim", action='store_true',
+                    help="Trim leading and trailing idle time from the ROI.  If RPD contains multiple GPUs, greedily make the ROI as small as possible to minimize idle time")
 roi_g.add_argument("--gpu-id", type=int, default=RaptorParser.default_gpu_id,
                     help="Only show records from the specified gpuId.  (Default or -1: combine ops from all GPUs)")
 
@@ -84,16 +86,16 @@ pd.set_option('display.max_rows', args.display_rows)
 pd.options.display.max_colwidth = args.display_cols
 pd.set_option('display.float_format', ('{:.%df}'%args.float_digits).format)
 
-if not args.op_trace and not args.top and not args.categorize \
+if not args.op_trace and not args.kernelseq and not args.categorize \
    and args.instance_trace is None and not args.write_xls:
-    print ("info: setting --top --categorize --variability")
-    args.top = True
+    print ("info: setting --kernelseq --categorize --variability")
+    args.kernelseq = True
     args.categorize = True
     args.variability = True
 
 raptor = RaptorParser(args.rpd_file_name, gaps=args.gaps, 
                       category_json=args.category_json,
-                      prekernel_seq=args.prekernel_seq,
+                      prekernel_seq=args.kernelseq_len,
                       gpu_id=args.gpu_id,
                       zscore_threshold=args.zscore_threshold,
                       roi_start=args.roi_start, roi_end=args.roi_end)
@@ -104,7 +106,7 @@ if args.auto_roi_top:
     raptor.set_roi_from_kernel()
 
 if args.categorize: 
-    category_df = raptor.get_category_df(raptor.get_top_df())
+    category_df = raptor.get_category_df(raptor.get_kernelseq_df())
     print ("\nCategories:")
     print(category_df)
 
@@ -112,15 +114,15 @@ if args.variability:
     print ("\nVariability:")
     print(raptor.get_variability_df())
 
-if args.top:
+if args.kernelseq:
     print ("\nTop Kernels:")
-    print (raptor.get_pretty_top_df())
+    print (raptor.get_pretty_kernelseq_df())
 
 if args.op_trace:
     raptor.print_op_trace(outfile=args.op_trace_file, command_print_width=args.op_trace_cmd_width)
 
 if args.instance_trace is not None:
-    kernel_df = raptor.get_top_df().iloc[args.instance_trace]
+    kernel_df = raptor.get_kernelseq_df().iloc[args.instance_trace]
     instance_df = raptor.get_instance_df_from_kernel_df(kernel_df)
     raptor.print_op_trace(op_df=instance_df, outfile=args.op_trace_file, command_print_width=args.op_trace_cmd_width)
 

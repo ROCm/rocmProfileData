@@ -20,7 +20,7 @@ def test_calc_zscore():
     var_raptor.set_op_df(copy.deepcopy(mock_var_df), set_roi=True)
 
     import math
-    print(var_raptor.get_top_df())
+    print(var_raptor.get_kernelseq_df())
     print ("op_df with Duration_zscore")
     op_df = var_raptor.get_op_df()
     print (op_df)
@@ -50,7 +50,7 @@ def test_find_outliers():
         })
     var_raptor=RaptorParser(prekernel_seq=0, zscore_threshold=3)
     var_raptor.set_op_df(copy.deepcopy(mock_var_df), set_roi=True)
-    print(var_raptor.get_top_df())
+    print(var_raptor.get_kernelseq_df())
     print ("op_df with Duration_zscore")
     op_df = var_raptor.get_op_df()
     print (op_df)

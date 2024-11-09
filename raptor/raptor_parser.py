@@ -18,6 +18,7 @@ class RaptorParser:
     - generate summaries of top kernels and combine into categories (ie GEMM, Comm, Attention, etc).
     - compute “Gaps” where GPU is idle.
     - compute kernel to kernel variability and percentage of execution time
+    - outlier detection and removal based on zscore calcuation
     - auto-roi feature to focus on hottest region
     - tables in the RaptorParser class are organized into Pandas dataframes for interactive analysis via ipython/jupyter/etc.
     - show a text trace of each command's execution - kernel name, duration, idle gaps, etc
@@ -31,15 +32,15 @@ class RaptorParser:
 
     op_df       : Record for each GPU operation (ie kernel).  Includes pre-gap, duration,
                   call count, name, etc.  op_df is the foundational dataframe required to compute all the other dataframes.
-    top_df      : Group ops with same name into a summary.  Add time for Gaps.
-    category_df : Combine rows from top_df into user-specified categories.  
+    kernelseq_df: Group ops witn same kernel sequence into a summary.  
+    category_df : Group kernels with the same name based on user-specified categories.  
                   Add "Other" category for kernels not matching any of the patterns.
     
-    pretty_top_df : Convert a subset of the top_df patterns into formatted columns - 
+    pretty_kernelseq_df : Convert a subset of the kernelseq_df patterns into formatted columns - 
                     for example converting timestamps from raw ns to a ms value 
                     that is relative to the start of the trace.  Designed to be easily viewed
                     on the screen to spot trends. Each field is technically a string format - 
-                    use the top_df for interactive computations.
+                    use the kernelseq_df for interactive computations.
     """
     # Class variables:
     default_gaps = [10, 20, 50, 100, 1000, 10000, 100000]
@@ -58,7 +59,7 @@ class RaptorParser:
 
 
     op_df : pd.DataFrame = None
-    top_df : pd.DataFrame = None
+    kernelseq_df : pd.DataFrame = None
 
     strings_hash : dict[str] = None
     monitor_df : pd.DataFrame = None
@@ -125,7 +126,7 @@ class RaptorParser:
     def reset(self):
         """ Reset all cached data-frames to force re-computation. """
         self.op_df = None
-        self.top_df = None
+        self.kernelseq_df = None
         self.category_df = None
         self.variability_df = None
         self.gpu_df = None
@@ -136,7 +137,7 @@ class RaptorParser:
         self.reset()
 
     def set_prekernel_seq(self, prekernel_seq:int):
-        """ Set the prekernel_seq len used for top_df aggregation """
+        """ Set the prekernel_seq len used for kernelseq_df aggregation """
         self.prekernel_seq = prekernel_seq
         self.reset()
 
@@ -265,12 +266,12 @@ class RaptorParser:
         return int(float(roi_str) * scale)
 
         if 0:
-            top_df = self.get_top_df()
-            match_df = top_df[top_df.index.str.contains(pat=roi_str, regex=True)]
+            kernelseq_df = self.get_kernelseq_df()
+            match_df = kernelseq_df[kernelseq_df.index.str.contains(pat=roi_str, regex=True)]
             if len(match_df):
                 return match_df.iloc[0][('Start_ns', 'min')]
             else:
-                raise RuntimeError("ROI string '%s' not found in top_df" % roi_str)
+                raise RuntimeError("ROI string '%s' not found in kernelseq_df" % roi_str)
 
     def _make_roi(self, roi: str):
         """ 
@@ -287,8 +288,8 @@ class RaptorParser:
         else:
             # A text string - assume is a kernel name:
             self.set_full_roi() # avoid circular dependency
-            top_df = self.get_top_df()
-            match_df = top_df[top_df.index.str[0].str.contains(pat=roi, regex=True)]
+            kernelseq_df = self.get_kernelseq_df()
+            match_df = kernelseq_df[kernelseq_df.index.str[0].str.contains(pat=roi, regex=True)]
             if len(match_df):
                 time_ns = match_df.iloc[0][('Start_ns', 'min')]
             else:
@@ -387,7 +388,7 @@ class RaptorParser:
                        ):
         if op_df is None:
             op_df = self.get_op_df()
-        self.get_top_df() # populate Outliers
+        self.get_kernelseq_df() # populate Outliers
 
         if start_ns is not None:
             op_df = op_df[op_df['Start_ns'] >= start_ns]
@@ -451,9 +452,9 @@ class RaptorParser:
         self.gpu_df = gpu_df
         return self.gpu_df
 
-    def get_top_df(self, force: bool = False):
+    def get_kernelseq_df(self, force: bool = False):
 
-        if self.top_df is None or force:
+        if self.kernelseq_df is None or force:
 
             op_df = self.get_op_df()
 
@@ -480,16 +481,16 @@ class RaptorParser:
             }
             agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
 
-            top_df = top_gb_filter.agg(agg_ops)
+            kernelseq_df = top_gb_filter.agg(agg_ops)
 
-            top_df['Outliers'] = (top_gb_all.size() - top_gb_filter.size()).astype("Int64")
-            top_df['TotalCalls'] = top_gb_filter.size()
+            kernelseq_df['Outliers'] = (top_gb_all.size() - top_gb_filter.size()).astype("Int64")
+            kernelseq_df['TotalCalls'] = top_gb_filter.size()
 
             # Gaps:
             # Extract pre-gap info from each command and create separate rows 
-            # in the top_df summary.
+            # in the kernelseq_df summary.
             # Multiple gap buckets are supported.
-            gaps_gb = top_df.groupby(pd.cut(top_df[('PreGap_ns', 'sum')],
+            gaps_gb = kernelseq_df.groupby(pd.cut(kernelseq_df[('PreGap_ns', 'sum')],
                                     pd.Series(self.gaps)*1000,
                                     labels=self._make_gaps_labels(self.gaps)),
                                     observed=True)
@@ -509,32 +510,32 @@ class RaptorParser:
             gaps_df.index = ((idx,) for idx in gaps_df.index)
 
             if not self.prekernel_seq:
-                top_df.index = ((idx,) for idx in top_df.index)
-            top_df = pd.concat([top_df, gaps_df])
-            top_df.index.name = "Kernel Sequence"
+                kernelseq_df.index = ((idx,) for idx in kernelseq_df.index)
+            kernelseq_df = pd.concat([kernelseq_df, gaps_df])
+            kernelseq_df.index.name = "Kernel Sequence"
 
-            total_duration = top_df[('Duration_ns','sum')].sum()
-            top_df['PctTotal'] = top_df[('Duration_ns','sum')] / total_duration * 100
-            self._assign_categories(top_df=top_df)
+            total_duration = kernelseq_df[('Duration_ns','sum')].sum()
+            kernelseq_df['PctTotal'] = kernelseq_df[('Duration_ns','sum')] / total_duration * 100
+            self._assign_categories(kernelseq_df=kernelseq_df)
 
-            top_df['VarSum_ns'] = \
-                ((top_df[('Duration_ns','mean')] - top_df[('Duration_ns','min')]) * \
-                  top_df['TotalCalls']).astype(int)
+            kernelseq_df['VarSum_ns'] = \
+                ((kernelseq_df[('Duration_ns','mean')] - kernelseq_df[('Duration_ns','min')]) * \
+                  kernelseq_df['TotalCalls']).astype(int)
 
-            top_df.loc[top_df['Category'].isin([self._gpu_idle_cat]),'VarSum_ns'] = np.nan
+            kernelseq_df.loc[kernelseq_df['Category'].isin([self._gpu_idle_cat]),'VarSum_ns'] = np.nan
 
-            top_df = top_df.sort_values([('Duration_ns', 'sum')],
+            kernelseq_df = kernelseq_df.sort_values([('Duration_ns', 'sum')],
                                              ascending=False)
-            self.top_df = top_df
+            self.kernelseq_df = kernelseq_df
 
-        return self.top_df
+        return self.kernelseq_df
 
-    def get_pretty_top_df(self, top_df=None):
+    def get_pretty_kernelseq_df(self, kernelseq_df=None):
         scale = 1000
 
-        if top_df is None:
-            top_df = self.get_top_df()
-        self.get_category_df(top_df)
+        if kernelseq_df is None:
+            kernelseq_df = self.get_kernelseq_df()
+        self.get_category_df(kernelseq_df)
 
         mapper = [
                   # Index : (Remapped-name, scale factor, display format)
@@ -552,25 +553,25 @@ class RaptorParser:
                   [('Category', ''),     "Category", None, '{0:s}'],
                  ]
 
-        pretty_top_df = pd.DataFrame(index=top_df.index)
-        for (top_df_col,pretty_col,scale,fmt_str) in mapper:
+        pretty_kernelseq_df = pd.DataFrame(index=kernelseq_df.index)
+        for (kernelseq_df_col,pretty_col,scale,fmt_str) in mapper:
             if fmt_str:
                 if scale is not None:
-                    pretty_top_df[pretty_col] = \
-                        (top_df[top_df_col] / scale).apply(fmt_str.format)
+                    pretty_kernelseq_df[pretty_col] = \
+                        (kernelseq_df[kernelseq_df_col] / scale).apply(fmt_str.format)
                 else:
-                    pretty_top_df[pretty_col] = top_df[top_df_col].apply(fmt_str.format)
+                    pretty_kernelseq_df[pretty_col] = kernelseq_df[kernelseq_df_col].apply(fmt_str.format)
             else:
-                pretty_top_df[pretty_col] = top_df[top_df_col]
+                pretty_kernelseq_df[pretty_col] = kernelseq_df[kernelseq_df_col]
 
-        pretty_top_df['Var_us']  = top_df['VarSum_ns'] / 10000 / top_df['TotalCalls']
-        total_var_ns = top_df['VarSum_ns'].sum()
-        #pretty_top_df['VarLocal_pct'] = (top_df['VarSum_ns'] / top_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
-        pretty_top_df['VarTotal_pct'] = (top_df['VarSum_ns'] / total_var_ns).apply("{0:.1%}".format)
+        pretty_kernelseq_df['Var_us']  = kernelseq_df['VarSum_ns'] / 10000 / kernelseq_df['TotalCalls']
+        total_var_ns = kernelseq_df['VarSum_ns'].sum()
+        #pretty_kernelseq_df['VarLocal_pct'] = (kernelseq_df['VarSum_ns'] / kernelseq_df[('Duration_ns','sum')]).apply("{0:.1%}".format)
+        pretty_kernelseq_df['VarTotal_pct'] = (kernelseq_df['VarSum_ns'] / total_var_ns).apply("{0:.1%}".format)
 
-        self.pretty_top_df = pretty_top_df
+        self.pretty_kernelseq_df = pretty_kernelseq_df
 
-        return pretty_top_df
+        return pretty_kernelseq_df
 
     def get_strings_hash(self, force=False):
         if self.strings_hash is None or force:
@@ -586,7 +587,7 @@ class RaptorParser:
     def get_instance_df_from_kernel_df(self, kernel_df:pd.DataFrame, sort_by='Duration_ns'):
         """
         Trace all instances of the specified kernel.  
-        kernel_df is a row from the top_df that specifies the desired kernel to trace
+        kernel_df is a row from the kernelseq_df that specifies the desired kernel to trace
         """
         op_df = self.get_op_df()
         kernel_name = kernel_df.name
@@ -604,8 +605,8 @@ class RaptorParser:
         return self.monitor_df
 
     def set_roi_from_kernel(self):
-        top_df = self.get_top_df()
-        top_row = top_df[self.top_df['Category'] != 'GAP'].iloc[0]
+        kernelseq_df = self.get_kernelseq_df()
+        top_row = kernelseq_df[self.kernelseq_df['Category'] != 'GAP'].iloc[0]
 
         self.set_roi_from_rel_ns(roi_start_ns=top_row[('Start_ns','min')],
                                  roi_end_ns=top_row[('Start_ns','max')])
@@ -633,32 +634,32 @@ class RaptorParser:
 
         return cats
 
-    def _assign_categories(self, top_df:pd.DataFrame=None,
+    def _assign_categories(self, kernelseq_df:pd.DataFrame=None,
                           categories:Dict=None):
         """
-        Create a "Category" column in top_df and assign category 
+        Create a "Category" column in kernelseq_df and assign category 
         labels based on the regex in the categories dict
         """
-        if top_df is None:
-            top_df = self.get_top_df()
+        if kernelseq_df is None:
+            kernelseq_df = self.get_kernelseq_df()
 
         read_cat = (categories == None)
         categories = {self._gpu_idle_cat : ["^GAP "]}
         if read_cat:
             categories.update(self.read_category_file(self.category_json))
 
-        # Set top_df.cat.  
+        # Set kernelseq_df.cat.  
         # For overlapping patterns, the LAST one wins
-        top_df['Category'] = self._other_cat
+        kernelseq_df['Category'] = self._other_cat
         for category_name,pat_list in categories.items():
-            mask = pd.Series(False, index=top_df.index)
+            mask = pd.Series(False, index=kernelseq_df.index)
             for pat in pat_list:
-                mask |= top_df.index.str[0].str.contains(pat=pat, regex=True)
+                mask |= kernelseq_df.index.str[0].str.contains(pat=pat, regex=True)
             if len(mask):
-                top_df.loc[mask, 'Category'] = category_name
+                kernelseq_df.loc[mask, 'Category'] = category_name
         
 
-    def get_category_df(self, top_df:pd.DataFrame=None, categories:Dict=None,
+    def get_category_df(self, kernelseq_df:pd.DataFrame=None, categories:Dict=None,
                         variability_method=None, duration_units='ms'):
         """
         Summarize top kernels into higher-level, user-specified categories.
@@ -669,13 +670,13 @@ class RaptorParser:
             non_comm : Aggregate ~_COMM category into the _Variability row
         """
 
-        if top_df is None:
-            top_df = self.get_top_df()
+        if kernelseq_df is None:
+            kernelseq_df = self.get_kernelseq_df()
 
-        self._assign_categories(top_df, categories)
+        self._assign_categories(kernelseq_df, categories)
 
         # Create the category db 
-        cat_gb = top_df.groupby('Category')
+        cat_gb = kernelseq_df.groupby('Category')
         category_df = pd.DataFrame(cat_gb.size(), columns=['UniqKernels'])
         df = cat_gb.agg({
                 ('TotalCalls','') : 'sum',
@@ -732,12 +733,12 @@ class RaptorParser:
         self.category_df = category_df
         return category_df
 
-    def get_variability_df(self, top_df: pd.DataFrame=None, categories: Dict=None):
-        top_df = self.get_top_df()
-        total_ns = top_df[('Duration_ns','sum')].sum()
-        comm_filter = top_df['Category'] == self._comm_cat
-        comm_sum = top_df.loc[comm_filter,'VarSum_ns'].sum()
-        non_comm_sum = top_df.loc[~comm_filter,'VarSum_ns'].sum()
+    def get_variability_df(self, kernelseq_df: pd.DataFrame=None, categories: Dict=None):
+        kernelseq_df = self.get_kernelseq_df()
+        total_ns = kernelseq_df[('Duration_ns','sum')].sum()
+        comm_filter = kernelseq_df['Category'] == self._comm_cat
+        comm_sum = kernelseq_df.loc[comm_filter,'VarSum_ns'].sum()
+        non_comm_sum = kernelseq_df.loc[~comm_filter,'VarSum_ns'].sum()
 
         with np.errstate(divide='ignore', invalid='ignore'):
             comm_dict = {'Var_us'    : [comm_sum/1000, non_comm_sum/1000],
@@ -752,8 +753,8 @@ class RaptorParser:
             xls_file_name = pathlib.PurePath(self.rpd_file).with_suffix(".xlsx")
         with pd.ExcelWriter(xls_file_name) as writer:
             print ("info: writing xls file", xls_file_name)
-            self.get_top_df().to_excel(writer, sheet_name="top_df")
-            self.get_pretty_top_df().to_excel(writer, sheet_name="pretty_top_df")
+            self.get_kernelseq_df().to_excel(writer, sheet_name="kernelseq_df")
+            self.get_pretty_kernelseq_df().to_excel(writer, sheet_name="pretty_kernelseq_df")
             self.get_category_df().to_excel(writer, sheet_name="category_df")
             self.get_variability_df().to_excel(writer, sheet_name="variability_df")
             if add_op_df:

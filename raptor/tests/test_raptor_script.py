@@ -9,10 +9,10 @@ def test_help():
     assert not os.system(raptor + " --help")
 
 def test_trace():
-    assert not os.system(raptor + rpd_file + " -c -t")
+    assert not os.system(raptor + rpd_file + " -c -k")
 
 def test_zscore():
-    assert not os.system(raptor + rpd_file + " -ct -z 3")
+    assert not os.system(raptor + rpd_file + " -ck -z 3")
 
 def test_instance():
     assert not os.system(raptor + rpd_file + " -i 0 -z 3 --op-trace-cmd-width=60")

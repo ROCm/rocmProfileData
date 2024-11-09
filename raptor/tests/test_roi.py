@@ -47,6 +47,6 @@ def test_empty_roi():
     raptor = RaptorParser(rpd_file, roi_start="97%", roi_end="98%")
     raptor.print_timestamps()
     print(raptor.get_op_df())
-    print(raptor.get_top_df())
+    print(raptor.get_kernelseq_df())
     print(raptor.get_category_df())
     print(raptor.get_variability_df())

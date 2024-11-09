@@ -16,11 +16,11 @@ def test_print_op_trace():
     print(raptor.get_op_df())
     raptor.print_op_trace(max_ops=50)
 
-def test_top_df():
-    print(raptor.get_top_df())
+def test_kernelseq_df():
+    print(raptor.get_kernelseq_df())
 
-def test_pretty_top_df():
-    print(raptor.get_pretty_top_df())
+def test_pretty_kernelseq_df():
+    print(raptor.get_pretty_kernelseq_df())
 
 def test_cat_df():
     print(raptor.get_category_df())
