@@ -75,7 +75,7 @@ class RaptorParser:
     # Special internal category names:
     _other_cat = "_Other"
     _gpu_idle_cat = "_GPU_Idle"
-    _comm_cat = "_COMM"
+    _collective_cat = "_Collective"
     _var_cat = "_Variability"
 
     def __post_init__(self):
@@ -657,7 +657,6 @@ class RaptorParser:
                 mask |= kernelseq_df.index.str[0].str.contains(pat=pat, regex=True)
             if len(mask):
                 kernelseq_df.loc[mask, 'Category'] = category_name
-        
 
     def get_category_df(self, kernelseq_df:pd.DataFrame=None, categories:Dict=None,
                         variability_method=None, duration_units='ms'):
@@ -666,8 +665,8 @@ class RaptorParser:
 
         variability_method : 
             None : Don't add a row for variability.
-            comm : Aggregate _COMM category into the _Variability row.  
-            non_comm : Aggregate ~_COMM category into the _Variability row
+            collective : Aggregate _Collective category into the _Variability row.  
+            non_collective : Aggregate ~_Collective category into the _Variability row
         """
 
         if kernelseq_df is None:
@@ -695,10 +694,10 @@ class RaptorParser:
         total_duration_0 = category_df[total_dur_col].sum()
 
         if variability_method:
-            if variability_method=='comm':
-                var_filter = category_df.index == self._comm_cat
-            elif variability_method=='non_comm':
-                var_filter = category_df.index != self._comm_cat
+            if variability_method=='collective':
+                var_filter = category_df.index == self._collective_cat
+            elif variability_method=='non_collective':
+                var_filter = category_df.index != self._collective_cat
             else:
                 raise RuntimeError("bad variability_method")
 
@@ -736,7 +735,7 @@ class RaptorParser:
     def get_variability_df(self, kernelseq_df: pd.DataFrame=None, categories: Dict=None):
         kernelseq_df = self.get_kernelseq_df()
         total_ns = kernelseq_df[('Duration_ns','sum')].sum()
-        comm_filter = kernelseq_df['Category'] == self._comm_cat
+        comm_filter = kernelseq_df['Category'] == self._collective_cat
         comm_sum = kernelseq_df.loc[comm_filter,'VarSum_ns'].sum()
         non_comm_sum = kernelseq_df.loc[~comm_filter,'VarSum_ns'].sum()
 

@@ -2,7 +2,7 @@
     "GEMM" : ["^Cijk_"],
     "CopyD2D" : ["CopyDeviceToDevice"],
     "aten" : ["^.* at::"],
-    "_COMM" : ["ncclDevKernel_Generic","void vllm::cross_device_reduce"],
+    "_Collective" : ["ncclDevKernel_Generic","void vllm::cross_device_reduce"],
     "topk" : ["^.*topk"],
     "Attention" : ["paged_attention*", "attn_fwd"]
 }

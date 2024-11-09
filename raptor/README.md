@@ -109,7 +109,7 @@ Raptor combines kernels into higher-level categories for a better view of the "f
 Categories:
            UniqKernels  TotalCalls  TotalDur_ms  VarSum_ms  AvgDur_us  Pct
 GEMM                11      164673       3574.0      210.8       21.7 42.0
-_COMM               10       87722       2028.6      255.3       23.1 23.8
+_Collective         10       87722       2028.6      255.3       23.1 23.8
 _Other              28      292485       1745.2      443.2        6.0 20.5
 Attention            2       81920        706.6       69.3        8.6  8.3
 _GPU_Idle            6      136769        317.4        0.0        2.3  3.7
@@ -118,7 +118,7 @@ aten                25        9903        142.2       10.2       14.4  1.7
 
 #### Builtin Categories
 Raptor has several builtin category definitions which start with a leading underscore:
-- _COMM : Communication kernels such as AllReduce or AllGather.  These include a barrier synchronization.
+- _Collective : Collective communication kernels such as AllReduce or AllGather.  These include a barrier synchronization.
 Raptor treats COMM kernels special for variability calculations.
 - _GPU_Idle : GPU is idle
 - _Variability : Attempt to categorize the gap between the fastest instance of a specific kernel vs the actual implementation.
@@ -131,14 +131,14 @@ The kernelseq view includes a "Category" column.  Kernels which don't match any 
 The default file is show as an example below.  Users can add new categories (or expand the regex for existing ones) to get more clarity on "_Other" kernels.
 This can be useful if the kernelseq list shows a large percentage of kernels in the "_Other" category.
 If a kernel matches multiple categories, the LAST category in the file wins - so add more specific categories at the END of the file.
-If using the variability metrics, ensure that the special "_COMM" category maps to all kernels used for barrier communication between GPUs.
+If using the variability metrics, ensure that the special "_Collective" category maps to all kernels used for barrier communication between GPUs.
 ```
 $ cat raptor_cat_vllm.json
 {
     "GEMM" : ["^Cijk_"],
     "CopyD2D" : ["CopyDeviceToDevice"],
     "aten" : ["^.* at::"],
-    "_COMM" : ["ncclDevKernel_Generic","void vllm::cross_device_reduce"],
+    "_Collective" : ["ncclDevKernel_Generic","void vllm::cross_device_reduce"],
     "topk" : ["^.*topk"],
     "Attention" : ["paged_attention*", "attn_fwd"]
 }
@@ -155,18 +155,28 @@ User can specify the "bins" for the gaps - this can be useful to more precisely 
 
 
 ### Variability
-Execution time for the same kernel can vary due to fluctations in clock frequency, dynamimic power management effects, micro-architecture differences, caches and TLB hit rates, or other factors.  Raptor provides two methods to track variability:
-
-#### Computing Per-Kernel-Seq Variability from `kernelseq_df`
-Variability uses the "kernelseq_df" to group instances of the same kernel.
+Execution time for the same kernel can vary due to fluctations in clock frequency, dynamic power management effects, micro-architecture differences, caches and TLB hit rates, or other factors.
+Variability is computed for each kernelseq and displayed in the kernelseq_df.
 Kernel sequences can be used to disambiguate kernels which have the same name - this is critical for the variability analysis to work correctly.
-The fastest running instance is used as the "golden" target performance.
-The "VarSum" column in the kernelseq_df contains the sum of the deltas from the "golden" target for all kernel instances.
+The fastest running instance not marked as an outlier is used as the "golden" target performance.
+The "VarSum_ns" column in the kernelseq_df contains the sum of the deltas from the "golden" target for all kernel instances.
 
 #### Aggregation with `category_df`
-- by_comm : Measure variability between kernels in the special "_COMM" category - these should be communication collectives that include barrier synchronization.
-This metric assumes that each GPU is assigned an equal amount of work and thus should take the same amount of time.
-TODO - multiple GPUs?
+Aggregation with category_df in Raptor is designed to avoid double-counting when calculating variability. There are two approaches for this:
+
+- Collective Approach: Variability is calculated using only the kernels in the "_Collective" category, which represents operations that are grouped to avoid redundancy.
+
+- Non-Collective Approach: Variability is calculated using all kernels except those in the "_Collective" category, providing an aggregate of non-collective operations.
+
+The variability_method parameter to get_category_df() allows users to specify which approach to use:
+
+- None: No row is added to represent variability.  Variability time is shown as a column in the Category report.
+- collective: Only the "_Collective" category is aggregated into the _Variability row.
+- non_collective: All categories except "_Collective" are aggregated into the _Variability row.
+
+Both methods assume that each GPU receives an equal workload, meaning they are expected to complete in the same amount of time.
+
+
 
 #### Outlier detection
 Raptor has a built-in mechanism to detect and remove outlier kernel instances using a z-score-based approach. The z-score, calculated as `(value - Mean) / StandardDeviation`, measures how far a data point deviates from the mean in terms of standard deviations. In a normal distribution, 99.7% of the values have an absolute z-score ≤ 3.
@@ -174,7 +184,7 @@ Raptor has a built-in mechanism to detect and remove outlier kernel instances us
 If an instance’s absolute z-score exceeds a user-defined threshold, Raptor removes that instance from the associated KernelSeq before calculating the KernelSeq's derived statistics (including minimum, maximum, mean, and variability metrics).
 
 - **Op-Trace Display:** Although outlier instances are removed from KernelSeq calculations, the op-trace display retains all records and marks outliers with the `OUTLR` tag.
-- **Default Inclusion:** By default, all records are included (where `zscore == -1`), meaning no outliers are removed unless specified by the user.
+- **Default Inclusion:** By default, all instances are included (where `zscore == -1`), meaning no outliers are removed unless specified by the user.
 
 This approach allows Raptor to provide cleaner, more reliable statistical insights for KernelSeqs by reducing the influence of extreme values.
 
