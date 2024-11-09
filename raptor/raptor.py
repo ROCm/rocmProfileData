@@ -55,7 +55,7 @@ roi_g.add_argument("--roi-start", "-s", type=str,
                     help="Set ROI start. 0 corresponds to the start of the RPD.  Default is ms, but can specify trailing time units.  If kernel name is specified, use the timestamp of the first instance for the specified kernel. Examples: 123.45, 123.45ms, 123450ns, .12345s, Cijk_")
 roi_g.add_argument("--roi-end", "-e", type=str,
                     help="Set Region-of-Interest end. See --start for format.")
-roi_g.add_argument("--auto-roi", action='store_true',
+roi_g.add_argument("--auto-roi-top", action='store_true',
                     help="Automatically pick the ROI to include first and last instance of the hottest duration kernel")
 roi_g.add_argument("--gpu-id", type=int, default=RaptorParser.default_gpu_id,
                     help="Only show records from the specified gpuId.  (Default or -1: combine ops from all GPUs)")
@@ -100,8 +100,8 @@ raptor = RaptorParser(args.rpd_file_name, gaps=args.gaps,
 
 raptor.print_timestamps(indent="   ")
 
-if args.auto_roi:
-    raptor.set_auto_roi()
+if args.auto_roi_top:
+    raptor.set_roi_from_kernel()
 
 if args.categorize: 
     category_df = raptor.get_category_df(raptor.get_top_df())

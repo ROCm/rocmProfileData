@@ -22,13 +22,13 @@ def test_multi_gpu():
 
     op_df = raptor.get_op_df()
     print(op_df)
-    assert np.isnan(op_df.iloc[0].PreGap)
-    assert op_df.iloc[1].PreGap == 1.0
-    assert op_df.iloc[2].PreGap == 4.0
+    assert np.isnan(op_df.iloc[0].PreGap_ns)
+    assert op_df.iloc[1].PreGap_ns == 1.0
+    assert op_df.iloc[2].PreGap_ns == 4.0
 
-    assert np.isnan(op_df.iloc[3].PreGap) # should reset to NAN for first record in new GPU
-    assert op_df.iloc[4].PreGap == 1.0
-    assert op_df.iloc[5].PreGap == 0.0
+    assert np.isnan(op_df.iloc[3].PreGap_ns) # should reset to NAN for first record in new GPU
+    assert op_df.iloc[4].PreGap_ns == 1.0
+    assert op_df.iloc[5].PreGap_ns == 0.0
 
     assert list(op_df['Duration_ns'].T) == [9,6,5, 3,14,1]
     assert list(op_df['sequenceId'].T)  == [1,2,3, 1,2,3]
@@ -42,3 +42,9 @@ def test_gpu_filter():
     assert r.sql_filter_str() == "where start>=0 and start<=25"
     r.set_gpu_id(1)
     assert r.sql_filter_str() == "where start>=0 and start<=25 and gpuId==1"
+
+def test_gpu_df():
+    gpu_df = raptor.get_gpu_df()
+    gpu_df = raptor.get_gpu_df(duration_unit='ns')
+    print(gpu_df)
+    assert gpu_df['Idle_pct'].iloc[0] == 20

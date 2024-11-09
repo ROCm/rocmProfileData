@@ -106,12 +106,12 @@ class RaptorParser:
             if self.tag == None:
                 self.tag = pathlib.Path(self.rpd_file).stem
 
-            self.first_ns = \
+            self.first_abs_ns = \
                 self.con.execute("select MIN(start) from rocpd_api;").fetchall()[0][0]
-            self.last_ns = \
+            self.last_abs_ns = \
                 self.con.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
 
-            assert self.last_ns >= self.first_ns
+            assert self.last_abs_ns >= self.first_abs_ns
 
             self.set_roi_from_str(self.roi_start, self.roi_end)
 
@@ -128,6 +128,7 @@ class RaptorParser:
         self.top_df = None
         self.category_df = None
         self.variability_df = None
+        self.gpu_df = None
 
     def set_gpu_id(self, gpu_id:int):
         """ Set the GPU id.  -1 means to use all GPUs """
@@ -149,14 +150,25 @@ class RaptorParser:
         self.gaps = [0] + self.gaps + [np.inf]
         self.reset()
 
+    def shrink_roi_from_rel_ns(self, roi_start_ns, roi_end_ns):
+        """ Shrink (or do not change) the ROI """
+        new_roi_start_ns = max(self.roi_start_ns, roi_start_ns)
+        new_roi_end_ns   = min(self.roi_end_ns, roi_end_ns)
+
+        if new_roi_start_ns != self.roi_start_ns or \
+           new_roi_end_ns != self.roi_end_ns: 
+           self.set_roi_from_rel_ns(new_roi_start_ns, new_roi_end_ns)
+
     def set_roi_from_rel_ns(self, roi_start_ns, roi_end_ns):
+        """ Set the ROI.  Rel means the timestamps a relative to first_ts==0 """
+
         self.roi_start_ns = roi_start_ns
         self.roi_end_ns   = roi_end_ns
 
         assert self.roi_start_ns >= 0
-        assert self.roi_start_ns <= self.last_ns
+        assert self.roi_start_ns <= self.last_abs_ns
         assert self.roi_end_ns >= 0
-        assert self.roi_end_ns <= self.last_ns
+        assert self.roi_end_ns <= self.last_abs_ns
         assert self.roi_start_ns <= self.roi_end_ns
 
         # prevent mis-use:
@@ -167,7 +179,7 @@ class RaptorParser:
 
     def set_full_roi(self):
         """ Set the ROI to the full range, from first to last ns """
-        self.set_roi_from_rel_ns(0, self.last_ns - self.first_ns)
+        self.set_roi_from_rel_ns(0, self.last_abs_ns - self.first_abs_ns)
 
     def set_roi_from_str(self, roi_start, roi_end=None):
         if roi_start == None:
@@ -176,13 +188,17 @@ class RaptorParser:
             roi_start_ns = self._make_roi(roi_start)
 
         if roi_end == None:
-            roi_end_ns = self.last_ns - self.first_ns
+            roi_end_ns = self.last_abs_ns - self.first_abs_ns
         else:
             roi_end_ns = self._make_roi(roi_end)
 
         self.set_roi_from_rel_ns(roi_start_ns, roi_end_ns)
 
     def trim_to_roi(self, new_file_name:str = None, inplace:bool=False):
+        """
+        Trim the source RPD to the current ROI. 
+        If inplace is specified, the on-disk file is modified.
+        """
         if not inplace:
             import pathlib,shutil
             if new_file_name is None:
@@ -261,11 +277,11 @@ class RaptorParser:
         Support special leading characters (%,+,-) for timestamp.
         """
         if "%" in roi:
-            time_ns = int( (self.last_ns - self.first_ns) * ( int( roi.replace("%","") )/100 ))
+            time_ns = int( (self.last_abs_ns - self.first_abs_ns) * ( int( roi.replace("%","") )/100 ))
         elif roi.startswith("+"):
             time_ns = int(self._parse_roi_with_unit(roi[1:]))
         elif roi.startswith("-"):
-            time_ns = int(self.last_ns - self._parse_roi_with_unit(roi[1:])) - self.first_ns
+            time_ns = int(self.last_abs_ns - self._parse_roi_with_unit(roi[1:])) - self.first_abs_ns
         elif roi[0].isdigit():
             time_ns = int(self._parse_roi_with_unit(roi))
         else:
@@ -290,15 +306,15 @@ class RaptorParser:
     def print_timestamps(self, indent=""):
         print(indent, "Timestamps :")
         print(indent, "  first    :", self.pretty_ts(0), "ms")
-        print(indent, "  last     :", self.pretty_ts(self.last_ns - self.first_ns), "ms")
+        print(indent, "  last     :", self.pretty_ts(self.last_abs_ns - self.first_abs_ns), "ms")
         print(indent, "  roi_start:", self.pretty_ts(self.roi_start_ns), "ms")
         print(indent, "  roi_end  :", self.pretty_ts(self.roi_end_ns), "ms")
         print(indent, "  roi_dur  :", self.pretty_ts(self.roi_end_ns - self.roi_start_ns), "ms")
         
     def sql_filter_str(self, add_where=True):
         rv = "where " if add_where else ""
-        rv += "start>=%d and start<=%d" % (self.roi_start_ns + self.first_ns, 
-                                               self.roi_end_ns + self.first_ns)
+        rv += "start>=%d and start<=%d" % (self.roi_start_ns + self.first_abs_ns, 
+                                               self.roi_end_ns + self.first_abs_ns)
 
         if self.gpu_id != -1:
             rv += " and gpuId==%d" % (self.gpu_id)
@@ -326,14 +342,14 @@ class RaptorParser:
 
         # expanding.max computes a running max of end times - so commands that
         # finish out-of-order (with an earlier end) do not move end time.
-        op_df['PreGap'] = (op_df['Start_ns'] -  gpu_group['End_ns'].transform(lambda x : x.shift(1).expanding().max())).clip(lower=0)
+        op_df['PreGap_ns'] = (op_df['Start_ns'] -  gpu_group['End_ns'].transform(lambda x : x.shift(1).expanding().max())).clip(lower=0)
         op_df['sequenceId'] = gpu_group.cumcount() + 1
 
         if set_roi:
-            self.first_ns = op_df.iloc[0]['Start_ns']
-            self.last_ns = op_df['End_ns'].max()
+            self.first_abs_ns = op_df.iloc[0]['Start_ns']
+            self.last_abs_ns = op_df['End_ns'].max()
             self.roi_start_ns = 0
-            self.roi_end_ns  = self.last_ns - self.first_ns
+            self.roi_end_ns  = self.last_abs_ns - self.first_abs_ns
 
         self.op_df = op_df
 
@@ -342,7 +358,7 @@ class RaptorParser:
     def get_op_df(self, force=False, kernel_name: str = None):
         """ 
         Read the op table from the sql input into op_df.
-        Add a PreGap measurement between commands.
+        Add a PreGap_ns measurement between commands.
         """
 
         if self.op_df is None or force:
@@ -352,8 +368,8 @@ class RaptorParser:
             op_df = op_df[op_df['opType'].isin(['KernelExecution', 'CopyDeviceToDevice', 'Task'])]
 
             # normalize timestamps:
-            op_df["start"] -= self.first_ns
-            op_df["end"]   -= self.first_ns
+            op_df["start"] -= self.first_abs_ns
+            op_df["end"]   -= self.first_abs_ns
 
             self.set_op_df(op_df, set_roi=False)
 
@@ -363,10 +379,22 @@ class RaptorParser:
         return self.op_df
 
     def print_op_trace(self, outfile=None, op_df:pd.DataFrame=None,
-                       max_ops:int=None, command_print_width=150):
+                       max_ops:int=None,
+                       command_print_width=150,
+                       start_ns:int=None,
+                       end_ns:int=None,
+                       gpu_id:int=None,
+                       ):
         if op_df is None:
             op_df = self.get_op_df()
-        self.get_top_df() # populate Outlier 
+        self.get_top_df() # populate Outliers
+
+        if start_ns is not None:
+            op_df = op_df[op_df['Start_ns'] >= start_ns]
+        if end_ns is not None:
+            op_df = op_df[op_df['End_ns'] <= end_ns]
+        if gpu_id is not None:
+            op_df = op_df[op_df['gpuId'] == gpu_id]
 
         if command_print_width == 0:
             command_print_width = None
@@ -381,7 +409,7 @@ class RaptorParser:
             print ("%d.%08d %9.1f %13s %13s %6.1f %5s %30s" % (
                                      row.gpuId,
                                      row.sequenceId,
-                                     row.PreGap/1000,
+                                     row.PreGap_ns/1000,
                                      self.pretty_ts(row.Start_ns),
                                      self.pretty_ts(row.End_ns),
                                      row.Duration_ns/1000,
@@ -404,6 +432,24 @@ class RaptorParser:
         gaps_labels += ["GAP >%dus" % gaps[-2]]
 
         return gaps_labels
+
+    def get_gpu_df(self, duration_unit='ms'):
+        op_df = self.get_op_df()
+        gb = op_df.groupby('gpuId')
+
+        duration_divisor = self._time_units[duration_unit]
+
+        gpu_df = pd.DataFrame()
+        gpu_df['PreGap_'+duration_unit]   = gb['PreGap_ns'].sum()/duration_divisor
+        gpu_df['Duration_'+duration_unit] = gb['Duration_ns'].sum()/duration_divisor
+
+        gpu_df['Idle_pct'] = gpu_df['PreGap_'+duration_unit]/(gpu_df['PreGap_'+duration_unit]+gpu_df['Duration_'+duration_unit])*100.0
+        gpu_df['LeadingIdle_'+duration_unit] = (gb['Start_ns'].min() - self.roi_start_ns)/duration_divisor
+        gpu_df['TrailingIdle_'+duration_unit] = (self.roi_end_ns - gb['End_ns'].max())/duration_divisor
+
+
+        self.gpu_df = gpu_df
+        return self.gpu_df
 
     def get_top_df(self, force: bool = False):
 
@@ -430,7 +476,7 @@ class RaptorParser:
 
             agg_ops = {
                 'Start_ns' : ['min', 'max'],
-                'PreGap' : ['sum', 'min', 'mean', 'std', 'max'],
+                'PreGap_ns' : ['sum', 'min', 'mean', 'std', 'max'],
             }
             agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
 
@@ -443,21 +489,21 @@ class RaptorParser:
             # Extract pre-gap info from each command and create separate rows 
             # in the top_df summary.
             # Multiple gap buckets are supported.
-            gaps_gb = top_df.groupby(pd.cut(top_df[('PreGap', 'sum')],
+            gaps_gb = top_df.groupby(pd.cut(top_df[('PreGap_ns', 'sum')],
                                     pd.Series(self.gaps)*1000,
                                     labels=self._make_gaps_labels(self.gaps)),
                                     observed=True)
             gaps_df = gaps_gb.agg({
-                        ('PreGap', 'sum'):  'sum',
-                        ('PreGap', 'min'):  'min',
-                        ('PreGap', 'mean'): 'mean',
-                        ('PreGap', 'max'):  'max',
+                        ('PreGap_ns', 'sum'):  'sum',
+                        ('PreGap_ns', 'min'):  'min',
+                        ('PreGap_ns', 'mean'): 'mean',
+                        ('PreGap_ns', 'max'):  'max',
                         ('Start_ns', 'min'):  'min',
                         ('Start_ns', 'max'):  'max',
                         })
             gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
             gaps_df.columns = \
-                [('Duration_ns', col[1]) if col[0]=='PreGap' else col \
+                [('Duration_ns', col[1]) if col[0]=='PreGap_ns' else col \
                  for col in gaps_df.columns]
 
             gaps_df.index = ((idx,) for idx in gaps_df.index)
@@ -494,7 +540,7 @@ class RaptorParser:
                   # Index : (Remapped-name, scale factor, display format)
                   [('Start_ns','min')   , "First_ms", 1e6, '{:+.3f}'],
                   [('Start_ns','max')   , "Last_ms", 1e6, '{:+.3f}'],
-                  [('PreGap','mean')   , "PreGap_mean_us", scale, '{:.1f}'],
+                  [('PreGap_ns','mean')   , "PreGap_mean_us", scale, '{:.1f}'],
                   [('Duration_ns','min')  , "Dur_min_us", scale, '{:.1f}'],
                   [('Duration_ns','mean') , "Dur_mean_us", scale, '{:.1f}'],
                   [('Duration_ns','max')  , "Dur_max_us", scale, '{:.1f}'],
@@ -557,13 +603,24 @@ class RaptorParser:
             self.monitor_df = pd.read_sql_query("select deviceId,start,end,value from rocpd_monitor where deviceType=='gpu' and monitorType=='sclk' %s order by start ASC" % self.sql_filter_str(add_where=False), self.con)
         return self.monitor_df
 
-    def set_auto_roi(self):
-        self.get_category_df()
+    def set_roi_from_kernel(self):
         top_df = self.get_top_df()
         top_row = top_df[self.top_df['Category'] != 'GAP'].iloc[0]
 
         self.set_roi_from_rel_ns(roi_start_ns=top_row[('Start_ns','min')],
                                  roi_end_ns=top_row[('Start_ns','max')])
+    def trim_idle_roi(self):
+        """
+        Trim idle time at beginning and end of RPD.
+        For multiple GPUs, greedily trim the largest region.
+        """
+        op_df = self.get_op_df()
+        gb = op_df.groupby('gpuId')
+        roi_start_ns = gb['Start_ns'].min().max()
+        roi_end_ns   = gb['End_ns'].max().min()
+
+        self.shrink_roi_from_rel_ns(roi_start_ns, roi_end_ns)
+        pass
 
     @staticmethod
     def read_category_file(category_file):
