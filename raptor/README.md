@@ -2,10 +2,10 @@
 ## Introduction
 Tool for parsing and post-processing RPD files:
 - slice, dice, and eviscerate RPD files into focused regions-of-interest.
-- generate summaries of top kernels and combine into categories (ie GEMM, Comm, Attention, etc).
+- generate summaries of kernels and combine into categories (ie GEMM, Comm, Attention, etc).
 - compute “Gaps” where GPU is idle.
 - compute kernel to kernel variability and percentage of execution time
-- auto-roi feature to focus on hottest region
+- auto-roi-top feature to focus ROI on the hottest kernel
 - tables in the RaptorParser class are organized into Pandas dataframes for interactive analysis via ipython/jupyter/etc.
 - show a text trace of each command's execution - kernel name, duration, idle gaps, etc
 - RAPTOR possibly stands for ROCm Profile-Data Tool and Output Refinement.
@@ -19,13 +19,13 @@ From inside the ./raptor/ directory (or add the full path to the script)
 ```
 
 ```
-# Print category and top kernel tables:
-./raptor.py tests/mytrace.rpd.gz --categorize --top
+# Print category and kernel tables:
+./raptor.py tests/mytrace.rpd.gz --categorize --kernelseq
 ```
 
 ```
-# Print category and top kernel tables, eliminating time before&after the hottest kernel first&last execution
-./raptor.py tests/mytrace.rpd.gz --categorize --top --auto-roi
+# Print category and kernelseq tables, eliminating time before&after the hottest kernel first&last execution
+./raptor.py tests/mytrace.rpd.gz --categorize --kernelseq --auto-roi-top
 ```
 
 ```
@@ -36,15 +36,24 @@ From inside the ./raptor/ directory (or add the full path to the script)
 The RaptorParser class can be used directly from interactive python (ipython on Linux, Jupyter, or VSCode).
 This provides an interactive experience which can be useful to iteratively explore the data - examine some results, then dive deeper on areas of interest, all within a Python experience.
 
-For example: get a list of the top kernels, then list all the instances of the top kernel and sort by kernel duration. Or - 
+For example: get a list of the hot kernels, then list all the instances of the kernel and sort by kernel duration. Or - 
 
 The RaptorParser class can also be included into other scripts - for example to extract the top5 kernels for a list of RPD files.
 See the cookbook/ directory for some specific examples.
 
+- Important Dataframes 
+   - op_df
+   - kernelseq_df
+   - category_df
+   - variability_df
+   - pretty_kernelseq_df
+- Caching
+- Using the API from a script
+
 ## Insider Info
 
 ### Kernel sequences
-Raptor 'top' kernels are uniqified using a sequence of preceding kernels.
+Raptor kernels are uniqified using a sequence of preceding kernels.
 This is useful to disambiguate cases where the same kernel is called in different contexts and thus aggregating on kernel name
 conflates information from multiple contexts.
 Sequences are useful in particular for automatic variability detection.
@@ -55,21 +64,21 @@ Set --prekernel-seq to set the number of kernels to use.
 ### Region-of-Interest (ROI)
 Sometimes RPD trace collection precisely captures the desired hot ROI, and this is the preferred flow when the user is familiar with the application under test and able to modify the source to enable/disable the collection.
 In cases where this not possible, raptor provides tools to explicitly or automatically set the ROI.
-The ROI is applied to all subsequent commands (category, tables, op-trace).
+The ROI is applied to all subsequent commands (category, tables, op-trace, etc) - these are always consistent and include only operations that are present in the ROI.
 In interactive mode, the ROI can be changed, and this will force re-computation of the tables.
 
 #### Explicit ROI
---roi-start, --roi-end parms explicity specify the start and end ROI.
+--roi-start, --roi-end parms explicity specify the start and end ROI, supporting a variety of different formats and syntactic sugar.
 The first time in the trace is always 0.    Start timestamps must be <= end timestamps.
 
-#### ROI Units
+##### ROI Units
 The default unit is 'ms', but ns, us, s, or sec may also be used. These all specify 123.45ms:
    - `--roi-start 123.45`
    - `--roi-start 123.45ms`
    - `--roi-start 123450ns`
    - `--roi-start .12345s`
 
-#### Start- and End- Relative 
+##### Start- and End- Relative 
 Use a leading plus sign to specify the timestamp is relative to the trace start (always 0, so this is same as no leading +)
    - `--roi-start=+123.45`
 
@@ -78,10 +87,19 @@ This example sets ROI to a 90ms region near the end of the trace:
 
    - `--roi-start=-100ms --roi-end=-10ms`
 
-#### ROI based on kernel name regex
+##### ROI based on kernel name regex
 Specify a regular expression that matches one or more kernel names.  The ROI will be set to the first occurence of the
 matching kernel name.
    - `--roi-start=Cijk_`
+
+#### Automatic ROI
+
+##### -auto-roi-top
+Set the ROI start time for the first instance of the hottest kernel, and set the ROI end time to the start time of the last instance of that same kernel.
+
+##### -auto-roi-trim
+Remove GPU idle time at the start and end of the trace. For multiple GPUs, greedily use the largest idle periods.  If specified 
+
 
 ### Categories
 
@@ -108,11 +126,12 @@ Raptor treats COMM kernels special for variability calculations.
 
 #### Custom Categories
 Categories are specified in a dictionary-like JSON file with the name of the category and corresponing list of kernel name regular expressions.
-The top view includes a "Category" column.  Kernels which don't match any defined category are shown as "_Other".
+The kernelseq view includes a "Category" column.  Kernels which don't match any defined category are shown as "_Other".
 
 The default file is show as an example below.  Users can add new categories (or expand the regex for existing ones) to get more clarity on "_Other" kernels.
-This can be useful if the top list shows a large percentage of kernels in the "_Other" category.
+This can be useful if the kernelseq list shows a large percentage of kernels in the "_Other" category.
 If a kernel matches multiple categories, the LAST category in the file wins - so add more specific categories at the END of the file.
+If using the variability metrics, ensure that the special "_COMM" category maps to all kernels used for barrier communication between GPUs.
 ```
 $ cat raptor_cat_vllm.json
 {
@@ -124,15 +143,40 @@ $ cat raptor_cat_vllm.json
     "Attention" : ["paged_attention*", "attn_fwd"]
 }
 ```
-
 ### Gaps and GPU-Idle
 Raptor computes the time before each kernel when the GPU is idle - this can be useful to detect underutilization due to exposed 
 host activity or synchronization or other causes.
-Gaps are shown in the top_df summary ("PreGap"), and in each record of the op-trace.
-In the category summary, gaps are accumlated into a "_GPU_Idle" field.
+Gaps are shown in the kernelseq_df summary ("PreGap_ns"), and in each record of the op-trace.
+In the category summary, gaps are accumlated into the "_GPU_Idle" field.
+Short gaps (<5us) are typical between kernels and indicate the expected gap between the end of the preceding kernel and the start of the next.
+Gaps in the 10us-20us may point to host synchronization events which drain the GPU input queue and expose the host to device kernel launch time.
+Long gaps (>1ms) can indicate exposed host activity or runtime overheads.
+User can specify the "bins" for the gaps - this can be useful to more precisely bucketize the gaps.
+
 
 ### Variability
-TODO
+Execution time for the same kernel can vary due to fluctations in clock frequency, dynamimic power management effects, micro-architecture differences, caches and TLB hit rates, or other factors.  Raptor provides two methods to track variability:
+
+#### Computing Per-Kernel-Seq Variability from `kernelseq_df`
+Variability uses the "kernelseq_df" to group instances of the same kernel.
+Kernel sequences can be used to disambiguate kernels which have the same name - this is critical for the variability analysis to work correctly.
+The fastest running instance is used as the "golden" target performance.
+The "VarSum" column in the kernelseq_df contains the sum of the deltas from the "golden" target for all kernel instances.
+
+#### Aggregation with `category_df`
+- by_comm : Measure variability between kernels in the special "_COMM" category - these should be communication collectives that include barrier synchronization.
+This metric assumes that each GPU is assigned an equal amount of work and thus should take the same amount of time.
+TODO - multiple GPUs?
+
+#### Outlier detection
+Raptor has a built-in mechanism to detect and remove outlier kernel instances using a z-score-based approach. The z-score, calculated as `(value - Mean) / StandardDeviation`, measures how far a data point deviates from the mean in terms of standard deviations. In a normal distribution, 99.7% of the values have an absolute z-score ≤ 3.
+
+If an instance’s absolute z-score exceeds a user-defined threshold, Raptor removes that instance from the associated KernelSeq before calculating the KernelSeq's derived statistics (including minimum, maximum, mean, and variability metrics).
+
+- **Op-Trace Display:** Although outlier instances are removed from KernelSeq calculations, the op-trace display retains all records and marks outliers with the `OUTLR` tag.
+- **Default Inclusion:** By default, all records are included (where `zscore == -1`), meaning no outliers are removed unless specified by the user.
+
+This approach allows Raptor to provide cleaner, more reliable statistical insights for KernelSeqs by reducing the influence of extreme values.
 
 ## Reference
 ### Directory Structure
@@ -140,6 +184,20 @@ TODO
 - raptor.py : Command-line driver.
 - ./cookbook : Interactive python examples and recipes showing how to use the RaptorParser API.
 - ./tests : PyTest-format tests and test inputs. 
+
+### Terminology
+- Op (Operation): Each unique execution of a kernel or data movement is considered an "op." An op has a distinct sequence ID (starting at "1"), start and stop timestamps, the kernel name, and various derived statistics (e.g., Duration, PreGap).
+- Kernel: A group of ops that share the same kernel name are aggregated into "kernel" records within the kernelseq_df.
+- KernelSeq: A unique sequence of one or more kernels. Kernels include information such as the kernel name, a list of associated ops, and derived statistics (e.g., the time of the first and last instance, variability statistics, total PreGap, etc.).
+- Instance: Each individual op within a given KernelSeq is called an "instance" of that KernelSeq.
+- Category: Categories are collections of kernels with similar functionality, grouping kernels that perform related types of operations or serve similar purposes.
+
+In essence:
+
+- "Ops" are individual execution points.
+- "KernelSeq" group ops with the same sequence of kernels. A sequence of 1 groups ops with the same kernel name.
+- "Instances" are the specific occurrences of ops within a kernel.
+- "Categories" group related kernels by functionality.
 
 ### Testing and Contribution Guidelines
 
@@ -149,6 +207,3 @@ TODO
 ```
 $ pytest tests/
 ```
-
-### TODO
-- Dataframes for analysis
