@@ -44,7 +44,7 @@ def test_gpu_filter():
     assert r.sql_filter_str() == "where start>=0 and start<=25 and gpuId==1"
 
 def test_gpu_df():
-    gpu_df = raptor.get_gpu_df()
-    gpu_df = raptor.get_gpu_df(duration_unit='ns')
+    gpu_df = raptor.get_gpu_ts_df()
+    gpu_df = raptor.get_gpu_ts_df(duration_unit='ns')
     print(gpu_df)
     assert gpu_df['Idle_pct'].iloc[0] == 20

@@ -434,100 +434,99 @@ class RaptorParser:
 
         return gaps_labels
 
-    def get_gpu_df(self, duration_unit='ms'):
+    def get_gpu_ts_df(self, duration_unit='ms'):
         op_df = self.get_op_df()
         gb = op_df.groupby('gpuId')
 
         duration_divisor = self._time_units[duration_unit]
 
-        gpu_df = pd.DataFrame()
-        gpu_df['PreGap_'+duration_unit]   = gb['PreGap_ns'].sum()/duration_divisor
-        gpu_df['Duration_'+duration_unit] = gb['Duration_ns'].sum()/duration_divisor
+        gpu_ts_df = pd.DataFrame()
+        gpu_ts_df['PreGap_'+duration_unit]   = gb['PreGap_ns'].sum()/duration_divisor
+        gpu_ts_df['Duration_'+duration_unit] = gb['Duration_ns'].sum()/duration_divisor
 
-        gpu_df['Idle_pct'] = gpu_df['PreGap_'+duration_unit]/(gpu_df['PreGap_'+duration_unit]+gpu_df['Duration_'+duration_unit])*100.0
-        gpu_df['LeadingIdle_'+duration_unit] = (gb['Start_ns'].min() - self.roi_start_ns)/duration_divisor
-        gpu_df['TrailingIdle_'+duration_unit] = (self.roi_end_ns - gb['End_ns'].max())/duration_divisor
+        gpu_ts_df['Idle_pct'] = gpu_ts_df['PreGap_'+duration_unit]/(gpu_ts_df['PreGap_'+duration_unit]+gpu_ts_df['Duration_'+duration_unit])*100.0
+        gpu_ts_df['LeadingIdle_'+duration_unit] = (gb['Start_ns'].min() - self.roi_start_ns)/duration_divisor
+        gpu_ts_df['TrailingIdle_'+duration_unit] = (self.roi_end_ns - gb['End_ns'].max())/duration_divisor
 
 
-        self.gpu_df = gpu_df
-        return self.gpu_df
+        self.gpu_ts_df = gpu_ts_df
+        return self.gpu_ts_df
 
-    def get_kernelseq_df(self, force: bool = False):
+    def _get_kernelseq_df(self, op_df:pd.DataFrame):
+        if self.prekernel_seq:
+            self.kernel_cols = ['Kernel']
+            for i in range(self.prekernel_seq):
+                shift_col_name = "Kernel+%d" % (i+1)
+                self.kernel_cols.append(shift_col_name)
+                op_df[shift_col_name] = op_df['Kernel'].shift(i+1)
+        else:
+            self.kernel_cols = ['Kernel']
+
+        top_gb_all = op_df.groupby(self.kernel_cols, sort=False)
+        self.top_gb_all = top_gb_all
+
+        op_df['Duration_zscore'] = top_gb_all['Duration_ns'].transform(lambda x : 0 if len(x)==1 else scipy.stats.zscore(x))
+        op_df['Outlier'] = False if self.zscore_threshold == -1 else (abs(op_df['Duration_zscore']) >= self.zscore_threshold)
+
+        top_gb_filter = op_df[~op_df['Outlier']].groupby(self.kernel_cols, sort=False)
+
+        agg_ops = {
+            'Start_ns' : ['min', 'max'],
+            'PreGap_ns' : ['sum', 'min', 'mean', 'std', 'max'],
+        }
+        agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
+
+        kernelseq_df = top_gb_filter.agg(agg_ops)
+
+        kernelseq_df['Outliers'] = (top_gb_all.size() - top_gb_filter.size()).astype("Int64")
+        kernelseq_df['TotalCalls'] = top_gb_filter.size()
+
+        # Gaps:
+        # Extract pre-gap info from each command and create separate rows 
+        # in the kernelseq_df summary.
+        # Multiple gap buckets are supported.
+        gaps_gb = kernelseq_df.groupby(pd.cut(kernelseq_df[('PreGap_ns', 'sum')],
+                                pd.Series(self.gaps)*1000,
+                                labels=self._make_gaps_labels(self.gaps)),
+                                observed=True)
+        gaps_df = gaps_gb.agg({
+                    ('PreGap_ns', 'sum'):  'sum',
+                    ('PreGap_ns', 'min'):  'min',
+                    ('PreGap_ns', 'mean'): 'mean',
+                    ('PreGap_ns', 'max'):  'max',
+                    ('Start_ns', 'min'):  'min',
+                    ('Start_ns', 'max'):  'max',
+                    })
+        gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
+        gaps_df.columns = \
+            [('Duration_ns', col[1]) if col[0]=='PreGap_ns' else col \
+             for col in gaps_df.columns]
+
+        gaps_df.index = ((idx,) for idx in gaps_df.index)
+
+        if not self.prekernel_seq:
+            kernelseq_df.index = ((idx,) for idx in kernelseq_df.index)
+        kernelseq_df = pd.concat([kernelseq_df, gaps_df])
+        kernelseq_df.index.name = "Kernel Sequence"
+
+        total_duration = kernelseq_df[('Duration_ns','sum')].sum()
+        kernelseq_df['PctTotal'] = kernelseq_df[('Duration_ns','sum')] / total_duration * 100
+        self._assign_categories(kernelseq_df=kernelseq_df)
+
+        kernelseq_df['VarSum_ns'] = \
+            ((kernelseq_df[('Duration_ns','mean')] - kernelseq_df[('Duration_ns','min')]) * \
+              kernelseq_df['TotalCalls']).astype(int)
+
+        kernelseq_df.loc[kernelseq_df['Category'].isin([self._gpu_idle_cat]),'VarSum_ns'] = np.nan
+
+        kernelseq_df = kernelseq_df.sort_values([('Duration_ns', 'sum')],
+                                         ascending=False)
+        return kernelseq_df
+
+    def get_kernelseq_df(self, force: bool = False, op_df:pd.DataFrame=None):
 
         if self.kernelseq_df is None or force:
-
-            op_df = self.get_op_df()
-
-            if self.prekernel_seq:
-                self.kernel_cols = ['Kernel']
-                for i in range(self.prekernel_seq):
-                    shift_col_name = "Kernel+%d" % (i+1)
-                    self.kernel_cols.append(shift_col_name)
-                    op_df[shift_col_name] = op_df['Kernel'].shift(i+1)
-            else:
-                self.kernel_cols = ['Kernel']
-
-            top_gb_all = op_df.groupby(self.kernel_cols, sort=False)
-            self.top_gb_all = top_gb_all
-
-            op_df['Duration_zscore'] = top_gb_all['Duration_ns'].transform(lambda x : 0 if len(x)==1 else scipy.stats.zscore(x))
-            op_df['Outlier'] = False if self.zscore_threshold == -1 else (abs(op_df['Duration_zscore']) >= self.zscore_threshold)
-
-            top_gb_filter = op_df[~op_df['Outlier']].groupby(self.kernel_cols, sort=False)
-
-            agg_ops = {
-                'Start_ns' : ['min', 'max'],
-                'PreGap_ns' : ['sum', 'min', 'mean', 'std', 'max'],
-            }
-            agg_ops['Duration_ns'] = ['sum', 'min', 'mean', 'std', 'max']
-
-            kernelseq_df = top_gb_filter.agg(agg_ops)
-
-            kernelseq_df['Outliers'] = (top_gb_all.size() - top_gb_filter.size()).astype("Int64")
-            kernelseq_df['TotalCalls'] = top_gb_filter.size()
-
-            # Gaps:
-            # Extract pre-gap info from each command and create separate rows 
-            # in the kernelseq_df summary.
-            # Multiple gap buckets are supported.
-            gaps_gb = kernelseq_df.groupby(pd.cut(kernelseq_df[('PreGap_ns', 'sum')],
-                                    pd.Series(self.gaps)*1000,
-                                    labels=self._make_gaps_labels(self.gaps)),
-                                    observed=True)
-            gaps_df = gaps_gb.agg({
-                        ('PreGap_ns', 'sum'):  'sum',
-                        ('PreGap_ns', 'min'):  'min',
-                        ('PreGap_ns', 'mean'): 'mean',
-                        ('PreGap_ns', 'max'):  'max',
-                        ('Start_ns', 'min'):  'min',
-                        ('Start_ns', 'max'):  'max',
-                        })
-            gaps_df['TotalCalls'] = gaps_gb['TotalCalls'].sum()
-            gaps_df.columns = \
-                [('Duration_ns', col[1]) if col[0]=='PreGap_ns' else col \
-                 for col in gaps_df.columns]
-
-            gaps_df.index = ((idx,) for idx in gaps_df.index)
-
-            if not self.prekernel_seq:
-                kernelseq_df.index = ((idx,) for idx in kernelseq_df.index)
-            kernelseq_df = pd.concat([kernelseq_df, gaps_df])
-            kernelseq_df.index.name = "Kernel Sequence"
-
-            total_duration = kernelseq_df[('Duration_ns','sum')].sum()
-            kernelseq_df['PctTotal'] = kernelseq_df[('Duration_ns','sum')] / total_duration * 100
-            self._assign_categories(kernelseq_df=kernelseq_df)
-
-            kernelseq_df['VarSum_ns'] = \
-                ((kernelseq_df[('Duration_ns','mean')] - kernelseq_df[('Duration_ns','min')]) * \
-                  kernelseq_df['TotalCalls']).astype(int)
-
-            kernelseq_df.loc[kernelseq_df['Category'].isin([self._gpu_idle_cat]),'VarSum_ns'] = np.nan
-
-            kernelseq_df = kernelseq_df.sort_values([('Duration_ns', 'sum')],
-                                             ascending=False)
-            self.kernelseq_df = kernelseq_df
-
+            self.kernelseq_df = self._get_kernelseq_df(op_df=self.get_op_df())
         return self.kernelseq_df
 
     def get_pretty_kernelseq_df(self, kernelseq_df=None):
@@ -657,6 +656,13 @@ class RaptorParser:
                 mask |= kernelseq_df.index.str[0].str.contains(pat=pat, regex=True)
             if len(mask):
                 kernelseq_df.loc[mask, 'Category'] = category_name
+
+    def get_category_per_gpu_df(self, categories:Dict=None,
+                                variability_method=None, duration_units='ms'):
+
+        cat_df = self.get_category_df(categories=categories,
+                                      variability_method=variability_method,
+                                      duration_units=duration_units)
 
     def get_category_df(self, kernelseq_df:pd.DataFrame=None, categories:Dict=None,
                         variability_method=None, duration_units='ms'):
