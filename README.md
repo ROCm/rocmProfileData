@@ -55,6 +55,10 @@ It will also build and install the native tracer, rpd_tracer.
 
 ## Tools
 
+#### Raptor
+Raptor is an RPD post-processing script (raptor/raptor.py), plus a parsing class to enable deeper analysis with Python Pandas.
+See the raptor [README](raptor/README.md) for more information.
+
 #### runTracer.sh
 RunTracer.sh is used to launch and trace a program.  It is installed in the system path as part of 'make install'.  It can trace any process and its subprocesses.
 ```

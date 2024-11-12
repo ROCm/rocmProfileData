@@ -155,11 +155,23 @@ User can specify the "bins" for the gaps - this can be useful to more precisely 
 
 
 ### Variability
-Execution time for the same kernel can vary due to fluctations in clock frequency, dynamic power management effects, micro-architecture differences, caches and TLB hit rates, or other factors.
-Variability is computed for each kernelseq and displayed in the kernelseq_df.
-Kernel sequences can be used to disambiguate kernels which have the same name - this is critical for the variability analysis to work correctly.
-The fastest running instance not marked as an outlier is used as the "golden" target performance.
-The "VarSum_ns" column in the kernelseq_df contains the sum of the deltas from the "golden" target for all kernel instances.
+#### Execution Time Variability
+Even when running the same kernel with identical input parameters, execution times can vary. This variation is due to factors like:
+* Clock frequency fluctuations
+* Effects of dynamic power management
+* Power consumption that depends on the data being processed
+* Differences in micro-architecture
+* Cache and TLB (Translation Lookaside Buffer) hit rates, among other things.
+
+#### Analyzing Variability
+* Raptor calculates various statistics to help analyze unexpected cases of variability in execution time.
+* This variability is measured for each kernel sequence (kernelseq) and shown in a dataframe named kernelseq_df.
+* Kernel sequences allow distinguishing between kernels with the same name, which is essential for accurate variability analysis.
+
+#### Computing Variability
+* Raptor designates the fastest instance of each kernel (excluding outliers) as the "golden" target for performance.
+* The "VarSum_ns" column in kernelseq_df contains the total of time differences (deltas) between each kernel instance and this "golden" performance target.
+
 
 #### Aggregation with `category_df`
 Aggregation with category_df in Raptor is designed to avoid double-counting when calculating variability. There are two approaches for this:
@@ -175,8 +187,6 @@ The variability_method parameter to get_category_df() allows users to specify wh
 - non_collective: All categories except "_Collective" are aggregated into the _Variability row.
 
 Both methods assume that each GPU receives an equal workload, meaning they are expected to complete in the same amount of time.
-
-
 
 #### Outlier detection
 Raptor has a built-in mechanism to detect and remove outlier kernel instances using a z-score-based approach. The z-score, calculated as `(value - Mean) / StandardDeviation`, measures how far a data point deviates from the mean in terms of standard deviations. In a normal distribution, 99.7% of the values have an absolute z-score ≤ 3.
