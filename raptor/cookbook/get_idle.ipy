@@ -1,0 +1,22 @@
+# Simple script to pull the GPU_Idle stat for a specified set of RPD files
+# Could be easily modified to extract other stats.
+# Run with ipython3 cookbook/get_idle.ipy
+
+auto_roi=False
+
+import os
+from raptor_parser import RaptorParser
+
+# Add your directory paths here:
+rpd_dirs = ["traces/vllm_benchmark_latency_results/","traces/vllm_benchmark_throughput_results"]
+
+rpd_files = []
+for dir in rpd_dirs:
+    rpd_files += [os.path.join(dir,f) for f in os.listdir(dir) if f.endswith(".rpd")]
+
+for rpd_file in rpd_files:
+    raptor = RaptorParser(rpd_file)
+    if auto_roi:
+        raptor.set_auto_roi()
+    cat_df = raptor.get_category_df()
+    print(rpd_file, ": %2.1f%%" % cat_df.loc["_GPU_Idle","Pct"])

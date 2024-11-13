@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 ################################################################################
 # Copyright (c) 2021 - 2023 Advanced Micro Devices, Inc. All rights reserved.
 #
@@ -35,13 +37,15 @@ import argparse
 
 parser = argparse.ArgumentParser(description='convert RPD to json for chrome tracing')
 parser.add_argument('input_rpd', type=str, help="input rpd db")
-parser.add_argument('output_json', type=str, help="chrome tracing json output")
+parser.add_argument('output_json', type=str, nargs='?', help="chrome tracing json output")
 parser.add_argument('--start', type=str, help="start time - default us or percentage %%. Number only is interpreted as us. Number with %% is interpreted as percentage")
 parser.add_argument('--end', type=str, help="end time - default us or percentage %%. See help for --start")
 parser.add_argument('--format', type=str, default="object", help="chome trace format, array or object")
 args = parser.parse_args()
 
-#print(args)
+if args.output_json is None:
+    import pathlib
+    args.output_json = pathlib.PurePath(args.input_rpd).with_suffix(".json")
 
 connection = sqlite3.connect(args.input_rpd)
 

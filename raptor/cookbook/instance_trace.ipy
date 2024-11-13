@@ -1,0 +1,54 @@
+""" 
+Extract instances for a given kernel into 'instance_df' and draw a chart.
+Run from an interactive python with graphing capabilities (ie VSCode)
+""" 
+#%%
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../")
+
+import pandas as pd
+import numpy as np
+from raptor_parser import RaptorParser
+pd.options.display.max_colwidth = 40 
+
+#%%
+rpd_file = "../tests/mytrace.rpd.gz"
+rpd_file = "../traces/mlperf_train/mlperf_llama_train.rpd"
+kernel_index=2
+
+#%%
+print ("info: reading RPD=", rpd_file)
+raptor = RaptorParser(rpd_file, zscore_threshold=-1)
+
+display(raptor.get_category_df())
+
+
+# %%
+kernel_df = raptor.get_kernelseq_df().iloc[kernel_index]
+
+# %%
+def chart_instance(instance_df:pd.DataFrame, xlabel:str):
+
+    instance_df = instance_df.reset_index()
+    instance_df['iter_num'] = instance_df.index
+    instance_df['Duration_us'] = instance_df['Duration_ns']/1000
+
+    kname = kernel_df.name[0][:80]
+    instance_df.plot.scatter(x='iter_num', y='Duration_us',
+                            title='Kernel#%d Duration\n%s'% (kernel_index, kname),
+                            ylabel='Duration_us',
+                            xlabel=xlabel,
+                            grid=True)
+
+# %%
+instance_df = raptor.get_instance_df_from_kernel_df(kernel_df, sort_by=None)
+chart_instance(instance_df, "Instance#")
+
+instance_df = raptor.get_instance_df_from_kernel_df(kernel_df, sort_by='Duration_ns')
+instance_df.sort_values(by='Duration_ns')
+chart_instance(instance_df, "Sorted Instance#")
+
+# %%
+instance_df
+# %%
