@@ -112,6 +112,11 @@ class RaptorParser:
             self.last_abs_ns = \
                 self.con.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
 
+            if self.first_abs_ns is None:
+                raise RuntimeError("Did not find start API - RPD file may not contain any valid APIs?")
+            if self.last_abs_ns is None:
+                raise RuntimeError("Did not find last API - RPD file may not contain any valid APIs?")
+
             assert self.last_abs_ns >= self.first_abs_ns
 
             self.set_roi_from_str(self.roi_start, self.roi_end)
