@@ -119,17 +119,8 @@ print("\nFilter: %s"%(rangeStringApi))
 print(f"Output duration: {(end_time-start_time)/1000000} seconds")
 
 # Output Ops
-'''
-# Hack for busted rocprofiler that can't populate kernel names
-for row in connection.execute("select A.string as optype, B.string as description, C.string as arg, gpuId, queueId, rocpd_op.start/1000, (rocpd_op.end-rocpd_op.start) / 1000 from rocpd_op LEFT JOIN rocpd_api_ops on op_id = rocpd_op.id INNER JOIN rocpd_api on api_id = rocpd_api.id INNER JOIN rocpd_string A on A.id = rocpd_op.opType_id INNER Join rocpd_string B on B.id = rocpd_op.description_id INNER JOIN rocpd_string C on C.id = rocpd_api.args_id %s"%(rangeString)):
-    try:
-        name = row[0] if len(row[2])==0 else row[2]
-        outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[3], row[4], name, row[5], row[6], row[0]))
-    except ValueError:
-        outfile.write("")
-'''
 
-for row in connection.execute("select A.string as optype, B.string as description, gpuId, queueId, rocpd_op.start/1000, (rocpd_op.end-rocpd_op.start) / 1000 from rocpd_op INNER JOIN rocpd_string A on A.id = rocpd_op.opType_id INNER Join rocpd_string B on B.id = rocpd_op.description_id %s"%(rangeStringOp)):
+for row in connection.execute("select A.string as optype, B.string as description, gpuId, queueId, rocpd_op.start/1000.0, (rocpd_op.end-rocpd_op.start) / 1000.0 from rocpd_op INNER JOIN rocpd_string A on A.id = rocpd_op.opType_id INNER Join rocpd_string B on B.id = rocpd_op.description_id %s"%(rangeStringOp)):
     try:
         name =  row[0] if len(row[1])==0 else row[1]
         outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3], name, row[4], row[5], row[0]))
@@ -138,7 +129,7 @@ for row in connection.execute("select A.string as optype, B.string as descriptio
 
 #Output Graph executions on GPU
 try:
-    for row in connection.execute('select graphExec, gpuId, queueId, min(start)/1000, (max(end)-min(start))/1000, count(*) from rocpd_graphLaunchapi A join rocpd_api_ops B on B.api_id = A.api_ptr_id join rocpd_op C on C.id = B.op_id %s group by api_ptr_id'%(rangeStringMonitor)):
+    for row in connection.execute('select graphExec, gpuId, queueId, min(start)/1000.0, (max(end)-min(start))/1000.0, count(*) from rocpd_graphLaunchapi A join rocpd_api_ops B on B.api_id = A.api_ptr_id join rocpd_op C on C.id = B.op_id %s group by api_ptr_id'%(rangeStringMonitor)):
         try:
             outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"kernels\":\"%s\"}}\n"%(row[1], row[2], f'Graph {row[0]}', row[3], row[4], row[5]))
         except ValueError:
@@ -147,7 +138,7 @@ except:
     pass
 
 #Output apis
-for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000, (rocpd_api.end-rocpd_api.start) / 1000, (rocpd_api.end != rocpd_api.start) as has_duration from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeStringApi)):
+for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000.0, (rocpd_api.end-rocpd_api.start) / 1000.0, (rocpd_api.end != rocpd_api.start) as has_duration from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeStringApi)):
     try:
         if row[0]=="UserMarker":
             if row[6] == 0:	# instantanuous "mark" messages
@@ -160,7 +151,7 @@ for row in connection.execute("select A.string as apiName, B.string as args, pid
         outfile.write("")
 
 #Output api->op linkage
-for row in connection.execute("select rocpd_api_ops.id, pid, tid, gpuId, queueId, rocpd_api.end/1000 - 2, rocpd_op.start/1000 from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id %s"%(rangeStringApi)):
+for row in connection.execute("select rocpd_api_ops.id, pid, tid, gpuId, queueId, rocpd_api.end/1000.0 - 2, rocpd_op.start/1000.0 from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id %s"%(rangeStringApi)):
     try:
         fromtime = row[5] if row[5] < row[6] else row[6]
         outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"cat\":\"api_op\",\"name\":\"api_op\",\"ts\":\"%s\",\"id\":\"%s\",\"ph\":\"s\"}\n"%(row[1], row[2], fromtime, row[0]))
@@ -169,7 +160,7 @@ for row in connection.execute("select rocpd_api_ops.id, pid, tid, gpuId, queueId
         outfile.write("")
 
 try:
-    for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_hsaApi.start/1000, (rocpd_hsaApi.end-rocpd_hsaApi.start) / 1000 from rocpd_hsaApi INNER JOIN rocpd_string A on A.id = rocpd_hsaApi.apiName_id INNER Join rocpd_string B on B.id = rocpd_hsaApi.args_id %s order by rocpd_hsaApi.id"%(rangeStringApi)):
+    for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_hsaApi.start/1000.0, (rocpd_hsaApi.end-rocpd_hsaApi.start) / 1000.0 from rocpd_hsaApi INNER JOIN rocpd_string A on A.id = rocpd_hsaApi.apiName_id INNER Join rocpd_string B on B.id = rocpd_hsaApi.args_id %s order by rocpd_hsaApi.id"%(rangeStringApi)):
         try:
             outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3]+1, row[0], row[4], row[5], row[1].replace('"','')))
         except ValueError:
@@ -202,7 +193,7 @@ for gpuId in gpuIdsPresent:
     #Create the queue depth counter
     depth = 0
     idle = 1
-    for row in connection.execute("select * from (select rocpd_api.start/1000 as ts, \"1\" from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id AND rocpd_op.gpuId = %s %s UNION ALL select rocpd_op.end/1000, \"-1\" from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id AND rocpd_op.gpuId = %s %s) order by ts"%(gpuId, rangeStringOp, gpuId, rangeStringOp)):
+    for row in connection.execute("select * from (select rocpd_api.start/1000.0 as ts, \"1\" from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id AND rocpd_op.gpuId = %s %s UNION ALL select rocpd_op.end/1000.0, \"-1\" from rocpd_api_ops INNER JOIN rocpd_api on rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op on rocpd_api_ops.op_id = rocpd_op.id AND rocpd_op.gpuId = %s %s) order by ts"%(gpuId, rangeStringOp, gpuId, rangeStringOp)):
         try:
            if idle and int(row[1]) > 0:
                idle = 0
@@ -220,20 +211,21 @@ for gpuId in gpuIdsPresent:
 
 # Create SMI counters
 try:
-    for row in connection.execute("select deviceId, monitorType, start/1000, value from rocpd_monitor %s"%(rangeStringMonitor)):
+    for row in connection.execute("select deviceId, monitorType, start/1000.0, value from rocpd_monitor %s"%(rangeStringMonitor)):
         outfile.write(',{"pid":"%s","name":"%s","ph":"C","ts":%s,"args":{"%s":%s}}\n'%(row[0], row[1], row[2], row[1], row[3]))
     # Output the endpoints of the last range
-    for row in connection.execute("select distinct deviceId, monitorType, max(end)/1000, value from rocpd_monitor %s group by deviceId, monitorType"%(rangeStringMonitor)):
+    for row in connection.execute("select distinct deviceId, monitorType, max(end)/1000.0, value from rocpd_monitor %s group by deviceId, monitorType"%(rangeStringMonitor)):
         outfile.write(',{"pid":"%s","name":"%s","ph":"C","ts":%s,"args":{"%s":%s}}\n'%(row[0], row[1], row[2], row[1], row[3]))
 except:
     print("Did not find SMI data")
 
 #Create the (global) memory counter
+'''
 sizes = {}    # address -> size
 totalSize = 0
 exp = re.compile("^ptr\((.*)\)\s+size\((.*)\)$")
 exp2 = re.compile("^ptr\((.*)\)$")
-for row in connection.execute("SELECT rocpd_api.end/1000 as ts, B.string, '1'  FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id=rocpd_api.args_id WHERE A.string='hipFree' UNION ALL SELECT rocpd_api.start/1000, B.string, '0' FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id=rocpd_api.args_id WHERE A.string='hipMalloc' ORDER BY ts asc"):
+for row in connection.execute("SELECT rocpd_api.end/1000.0 as ts, B.string, '1'  FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id=rocpd_api.args_id WHERE A.string='hipFree' UNION ALL SELECT rocpd_api.start/1000.0, B.string, '0' FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id=rocpd_api.args_id WHERE A.string='hipMalloc' ORDER BY ts asc"):
     try:
         if row[2] == '0':  #malloc
             m = exp.match(row[1])
@@ -256,6 +248,7 @@ for row in connection.execute("SELECT rocpd_api.end/1000 as ts, B.string, '1'  F
         outfile.write("")
 if T_end > 0:
     outfile.write(',{"pid":"0","name":"Allocated Memory","ph":"C","ts":%s,"args":{"depth":%s}}\n'%(T_end,totalSize))
+'''
 
 #Create "faux calling stack frame" on gpu ops traceS
 stacks = {}          # Call stacks built from UserMarker entres.     Key is 'pid,tid'
@@ -271,7 +264,7 @@ class GpuFrame:
         self.totalOps = 0
 
 # FIXME: include 'start' (in ns) so we can ORDER BY it and break ties?
-for row in connection.execute("SELECT '0', start/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 %s UNION ALL SELECT '1', end/1000, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000 != rocpd_api.end/1000 %s UNION ALL SELECT '2', rocpd_api.start/1000, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000, rocpd_op.end/1000 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id %s ORDER BY start/1000 asc"%(rangeStringApi, rangeStringApi, rangeStringApi)):
+for row in connection.execute("SELECT '0', start/1000.0, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000.0 != rocpd_api.end/1000.0 %s UNION ALL SELECT '1', end/1000.0, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000.0 != rocpd_api.end/1000.0 %s UNION ALL SELECT '2', rocpd_api.start/1000.0, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000.0, rocpd_op.end/1000.0 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id %s ORDER BY start/1000.0 asc"%(rangeStringApi, rangeStringApi, rangeStringApi)):
     try:
         key = (row[2], row[3])    # Key is 'pid,tid'
         if row[0] == '0':  # Frame start
