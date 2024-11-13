@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 ################################################################################
 # Copyright (c) 2021 - 2023 Advanced Micro Devices, Inc. All rights reserved.
 #
@@ -35,13 +37,15 @@ import argparse
 
 parser = argparse.ArgumentParser(description='convert RPD to json for chrome tracing')
 parser.add_argument('input_rpd', type=str, help="input rpd db")
-parser.add_argument('output_json', type=str, help="chrome tracing json output")
+parser.add_argument('output_json', type=str, nargs='?', help="chrome tracing json output")
 parser.add_argument('--start', type=str, help="start time - default us or percentage %%. Number only is interpreted as us. Number with %% is interpreted as percentage")
 parser.add_argument('--end', type=str, help="end time - default us or percentage %%. See help for --start")
 parser.add_argument('--format', type=str, default="object", help="chome trace format, array or object")
 args = parser.parse_args()
 
-#print(args)
+if args.output_json is None:
+    import pathlib
+    args.output_json = pathlib.PurePath(args.input_rpd).with_suffix(".json")
 
 connection = sqlite3.connect(args.input_rpd)
 
@@ -115,6 +119,7 @@ print("\nFilter: %s"%(rangeStringApi))
 print(f"Output duration: {(end_time-start_time)/1000000} seconds")
 
 # Output Ops
+
 for row in connection.execute("select A.string as optype, B.string as description, gpuId, queueId, rocpd_op.start/1000.0, (rocpd_op.end-rocpd_op.start) / 1000.0 from rocpd_op INNER JOIN rocpd_string A on A.id = rocpd_op.opType_id INNER Join rocpd_string B on B.id = rocpd_op.description_id %s"%(rangeStringOp)):
     try:
         name =  row[0] if len(row[1])==0 else row[1]
@@ -153,6 +158,16 @@ for row in connection.execute("select rocpd_api_ops.id, pid, tid, gpuId, queueId
         outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"cat\":\"api_op\",\"name\":\"api_op\",\"ts\":\"%s\",\"id\":\"%s\",\"ph\":\"f\", \"bp\":\"e\"}\n"%(row[3], row[4], row[6], row[0]))
     except ValueError:
         outfile.write("")
+
+try:
+    for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_hsaApi.start/1000.0, (rocpd_hsaApi.end-rocpd_hsaApi.start) / 1000.0 from rocpd_hsaApi INNER JOIN rocpd_string A on A.id = rocpd_hsaApi.apiName_id INNER Join rocpd_string B on B.id = rocpd_hsaApi.args_id %s order by rocpd_hsaApi.id"%(rangeStringApi)):
+        try:
+            outfile.write(",{\"pid\":\"%s\",\"tid\":\"%s\",\"name\":\"%s\",\"ts\":\"%s\",\"dur\":\"%s\",\"ph\":\"X\",\"args\":{\"desc\":\"%s\"}}\n"%(row[2], row[3]+1, row[0], row[4], row[5], row[1].replace('"','')))
+        except ValueError:
+            outfile.write("")
+except:
+    pass
+
 
 #
 # Counters
@@ -204,8 +219,8 @@ try:
 except:
     print("Did not find SMI data")
 
-'''
 #Create the (global) memory counter
+'''
 sizes = {}    # address -> size
 totalSize = 0
 exp = re.compile("^ptr\((.*)\)\s+size\((.*)\)$")
