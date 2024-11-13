@@ -46,11 +46,11 @@ __global__ void matrixTranspose(float* out, float* in, const int width) {
     out[y * width + x] = in[x * width + y];
 }
 
-bool isLogging = false;
-void rlog_callback() {
-    isLogging = rlog::isActive();
-    fprintf(stderr, "rlog_callback()  %s\n", isLogging ? "True" : "False");
-}
+//bool isLogging = false;
+//void rlog_callback() {
+//    isLogging = rlog::isActive();
+//    fprintf(stderr, "rlog_callback()  %s\n", isLogging ? "True" : "False");
+//}
 
 // CPU implementation of matrix transpose
 void matrixTransposeCPUReference(float* output, float* input, const unsigned int width) {
@@ -60,6 +60,27 @@ void matrixTransposeCPUReference(float* output, float* input, const unsigned int
         }
     }
 }
+
+namespace rlog {
+
+    bool isLogging;
+    void rlog_callback_function() {
+        isLogging = rlog::isActive();
+    }
+
+    class Client {
+    public:
+        Client() {
+            fprintf(stderr, "Client ++++++++++++++++\n");
+            rlog::init();
+            rlog::registerActiveCallback(&rlog_callback_function);
+            rlog::setDefaultDomain("MIOpen");
+            rlog::setDefaultCategory("");
+        }
+    };
+    Client client;
+} // namespace rlog
+
 
 int main() {
     float* Matrix;
@@ -95,12 +116,12 @@ int main() {
 
 
     // Fire up logging
-    rlog::init();
-    rlog::registerActiveCallback(&rlog_callback);
-    rlog::setDefaultDomain("MT");
-    rlog::setDefaultCategory("test");
-    if (isLogging)
-        rlog::mark("test", "nocall", "noargs");
+    //rlog::init();
+    //rlog::registerActiveCallback(&rlog_callback);
+    //rlog::setDefaultDomain("MT");
+    //rlog::setDefaultCategory("test");
+    //if (isLogging)
+    //    rlog::mark("test", "nocall", "noargs");
 
     // Warmup
     for (int i = 0 ; i < 100; ++i) {
@@ -161,7 +182,7 @@ int main() {
     for (int i = 0 ; i < count; ++i) {
         //roctxRangePushA(buff);
         //roctxRangePop();
-        if (isLogging) {
+        if (rlog::isLogging) {
             rlog::rangePush("static", buff);
             rlog::rangePop();
         }
@@ -180,7 +201,7 @@ int main() {
     for (int i = 0 ; i < count; ++i) {
         //roctxRangePushA(msg[i]);
         //roctxRangePop();
-        if (isLogging) {
+        if (rlog::isLogging) {
             rlog::rangePush("variable", msg[i]);
             rlog::rangePop();
         }

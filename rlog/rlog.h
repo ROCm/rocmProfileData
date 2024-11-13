@@ -45,6 +45,9 @@ namespace rlog {
   void setDefaultCategory(const char *);
   const char *getProperty(const char *domain, const char *property, const char *defaultValue);
 
+  int getVersion();
+  int localVersion = 1;
+
   // END API functions ---------------------------------------------------------
 
 namespace {
