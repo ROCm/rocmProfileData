@@ -26,12 +26,11 @@
 #include <rocprofiler-sdk/marker/api_id.h>
 #include <rocprofiler-sdk/registration.h>
 #include <rocprofiler-sdk/rocprofiler.h>
-//#include <rocprofiler-sdk/cxx/name_info.hpp>	// busted
 
-//#include "common/call_stack.hpp"
-//#include "common/defines.hpp"
-//#include "common/filesystem.hpp"
-//#include "common/name_info.hpp"
+#include "common/call_stack.hpp"
+#include "common/defines.hpp"
+#include "common/filesystem.hpp"
+#include "common/name_info.hpp"
 
 #include <vector>
 
@@ -66,8 +65,8 @@ namespace
     kernel_name_map_t kernel_names = {};
 
     // Manage buffer name - #betterThanRoctracer
-    //using common::buffer_name_info;
-    //buffer_name_info name_info = {};
+    using common::buffer_name_info;
+    buffer_name_info name_info = {};
 
 } // namespace
 
@@ -123,8 +122,8 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             char buff[4096];
             ApiTable::row row;
 
-            const char *name = fmt::format("{}::{}", record.kind, record.operation).c_str();
-            sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
+            //const char *name = fmt::format("{}::{}", record.kind, record.operation).c_str();
+            sqlite3_int64 name_id = logger.stringTable().getOrCreate(std::string(name_info[record.kind][record.operation]).c_str());
             row.pid = GetPid();
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
@@ -240,7 +239,7 @@ void RocprofDataSource::code_object_callback(rocprofiler_callback_tracing_record
         else if (record.phase == ROCPROFILER_CALLBACK_PHASE_UNLOAD)
         {
             kernel_info.erase(data->kernel_id);
-            kernel_names.erase(data->kernel_id);
+            //kernel_names.erase(data->kernel_id);
         }
     }
 }
@@ -268,7 +267,7 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
 {
     fprintf(stderr, "RocprofDataSource::toolInit\n");
 
-    //rocprofiler::sdk::get_callback_tracing_names();	// currently busted, compile error in header
+    name_info = common::get_buffer_tracing_names();
 
     rocprofiler_create_context(&client_ctx);
 
@@ -336,6 +335,9 @@ void RocprofDataSource::toolFinialize(void* tool_data)
     fprintf(stderr, "RocprofDataSource::toolFinalize\n");
 
     //end();	// FIXME: singleton - figure out startup order and teardown order
+
+    // FIXME: kernel code objects are already being removed by this point
+    //        keeping names (only) around to remedy this
 
     rocprofiler_stop_context(client_ctx);
     rocprofiler_flush_buffer(client_buffer);	// hopfully this blocks
