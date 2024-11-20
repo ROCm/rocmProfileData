@@ -14,9 +14,11 @@ RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTab
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
-        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
+        #RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
+        RPD_LIBS += -L/opt/rocm/lib -lrocprofiler-sdk #-lroctx64 -lamdhip64 #-lrocprofiler-sdk
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-        RPD_SRCS += RoctracerDataSource.cpp #RocmSmiDataSource.cpp
+        RPD_SRCS += RocprofDataSource.cpp #RoctracerDataSource.cpp #RocmSmiDataSource.cpp
+        RPD_INCLUDES += -I/opt/rocm/share/rocprofiler-sdk/samples
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
 endif
 
