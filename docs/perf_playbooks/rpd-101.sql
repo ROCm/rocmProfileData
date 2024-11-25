@@ -1,4 +1,4 @@
-.headers on
+.header on
 .print '### Top-10 kernels'
 select * from top limit 10;
 
