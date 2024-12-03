@@ -82,7 +82,7 @@ namespace {
 
     void createDeviceMap() {
         int dc = 0;
-        hipGetDeviceCount(&dc);
+        int ret = hipGetDeviceCount(&dc);
         hsa_iterate_agents(
             [](hsa_agent_t agent, void* data) {
            auto &deviceOffset = *static_cast<int*>(data);

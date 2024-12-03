@@ -215,7 +215,7 @@ void Logger::init()
     // Create one instance of each available datasource
     std::list<std::string> factories = {
         "RocprofDataSourceFactory",
-        "RoctracerDataSourceFactory",
+        //"RoctracerDataSourceFactory",
         "CuptiDataSourceFactory",
         "RocmSmiDataSourceFactory"
         };

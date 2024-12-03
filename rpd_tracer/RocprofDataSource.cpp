@@ -68,6 +68,11 @@ namespace
     using common::buffer_name_info;
     buffer_name_info name_info = {};
 
+    // Agent info
+    // <rocprofiler_profile_config_id_t.handle, rocprofiler_agent_v0_t>
+    using agent_info_map_t = std::unordered_map<uint64_t, rocprofiler_agent_v0_t>;
+    agent_info_map_t agents = {};
+
 } // namespace
 
 
@@ -77,6 +82,7 @@ namespace
 void RocprofDataSource::init()
 {
     fprintf(stderr, "RocprofDataSource::init\n");
+// FIXME force configure
     stopTracing();
 }
 
@@ -117,8 +123,10 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
 
         if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
                 timestamp = clocktime_ns();
+            //fprintf(stderr, "HIP_RUNTIME_API %d %s\n", record.phase, std::string(name_info[record.kind][record.operation]).c_str());
         }
         else {	     // ROCPROFILER_CALLBACK_PHASE_EXIT
+            //fprintf(stderr, "HIP_RUNTIME_API %d %s %llu\n", record.phase, std::string(name_info[record.kind][record.operation]).c_str(), clocktime_ns() - timestamp);
             char buff[4096];
             ApiTable::row row;
 
@@ -154,6 +162,90 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             logger.apiTable().insert(row);
         }
     } // ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API
+    else if (record.kind == ROCPROFILER_CALLBACK_TRACING_KERNEL_DISPATCH) {
+        //fprintf(stderr, "KERNEL_DISPATCH %d (kind = %d  operation = %d)\n", record.phase, record.kind, record.operation);
+        if (record.phase == ROCPROFILER_CALLBACK_PHASE_EXIT) {
+            // enqueue callback - caller's thread
+            auto &dispatch = *(static_cast<rocprofiler_callback_tracing_kernel_dispatch_data_t*>(record.payload));
+            auto &info = dispatch.dispatch_info;
+
+//fprintf(stderr, "%s\n", std::string(name_info[record.kind][record.operation]).c_str());
+//fprintf(stderr, "%d::%d\n", record.kind, record.operation);
+
+            KernelApiTable::row krow;
+            krow.api_id = record.correlation_id.internal;	// FIXME, from nested hip call
+            krow.stream = fmt::format("FIXME");
+            krow.gridX = info.grid_size.x;
+            krow.gridY = info.grid_size.y;
+            krow.gridZ = info.grid_size.z;
+            krow.workgroupX = info.workgroup_size.x;
+            krow.workgroupY = info.workgroup_size.y;
+            krow.workgroupZ = info.workgroup_size.z;
+            krow.groupSegmentSize = info.group_segment_size;
+            krow.privateSegmentSize = info.private_segment_size;
+            krow.kernelName_id = logger.stringTable().getOrCreate(kernel_names.at(info.kernel_id));
+
+            logger.kernelApiTable().insert(krow);
+        }
+        else if (record.phase == ROCPROFILER_CALLBACK_PHASE_NONE) {
+            // completion callback - runtime thread
+            auto &dispatch = *(static_cast<rocprofiler_callback_tracing_kernel_dispatch_data_t*>(record.payload));
+            auto &info = dispatch.dispatch_info;
+            static sqlite3_int64 name_id = logger.stringTable().getOrCreate("KernelExecution");
+
+            OpTable::row row;
+            //row.gpuId = mapDeviceId(record->device_id);
+            row.gpuId = agents.at(info.agent_id.handle).logical_node_type_id;
+            row.queueId = info.queue_id.handle;
+            row.sequenceId = 0;
+            strncpy(row.completionSignal, "", 18);
+            //row.start = record->begin_ns + toffset;	FIXME
+            //row.end = record->end_ns + toffset;
+            row.start = dispatch.start_timestamp;
+            row.end = dispatch.end_timestamp;
+            row.description_id = logger.stringTable().getOrCreate(kernel_names.at(info.kernel_id));
+            row.opType_id = name_id;
+            row.api_id = record.correlation_id.internal;
+
+            logger.opTable().insert(row);
+        }
+    }
+
+    else if (record.kind == ROCPROFILER_CALLBACK_TRACING_MEMORY_COPY) {
+        //fprintf(stderr, "(%d::%d) MEMORY_COPY %d (kind = %d  operation = %d)\n", GetPid(), GetTid(), record.phase, record.kind, record.operation);
+        if (record.phase == ROCPROFILER_CALLBACK_PHASE_EXIT) {
+            auto &copy = *(static_cast<rocprofiler_callback_tracing_memory_copy_data_t*>(record.payload));
+            CopyApiTable::row crow;
+            crow.api_id = record.correlation_id.internal;       // FIXME, from nested hip call
+            crow.size = (uint32_t)(copy.bytes);
+            // Use node_id.  Will not match node_type_id from ops.  Can express cpu location
+            crow.dstDevice = agents.at(copy.dst_agent_id.handle).logical_node_id;
+            crow.srcDevice = agents.at(copy.src_agent_id.handle).logical_node_id;
+            crow.kind = EMPTY_STRING_ID;
+            crow.sync = true;
+
+            logger.copyApiTable().insert(crow);
+
+            static sqlite3_int64 name_id = logger.stringTable().getOrCreate("Memcpy");
+            OpTable::row row;
+            //row.gpuId = mapDeviceId(record->device_id);
+            row.gpuId = 0;	// FIXME
+            row.queueId = 0;
+            row.sequenceId = 0;
+            strncpy(row.completionSignal, "", 18);
+            //row.start = record->begin_ns + toffset;   FIXME
+            //row.end = record->end_ns + toffset;
+            row.start = copy.start_timestamp;
+            row.end = copy.end_timestamp;
+            row.description_id = EMPTY_STRING_ID;
+            row.opType_id = name_id;
+            row.api_id = record.correlation_id.internal;
+
+            logger.opTable().insert(row);
+
+            //fprintf(stderr, "(%d::%d) copy %ld (%ld -> %ld)\n", GetPid(), GetTid(), copy.end_timestamp - copy.start_timestamp, copy.start_timestamp, copy.end_timestamp);
+        }
+    }
 }
 
 void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocprofiler_buffer_id_t buffer_id, rocprofiler_record_header_t** headers, size_t num_headers, void* user_data, uint64_t drop_count)
@@ -189,7 +281,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 
                 logger.opTable().insert(row);
             }
-            else if (header->kind == ROCPROFILER_BUFFER_TRACING_KERNEL_DISPATCH) {
+            else if (header->kind == ROCPROFILER_BUFFER_TRACING_MEMORY_COPY) {
 
                 auto *record = static_cast<rocprofiler_buffer_tracing_memory_copy_record_t*>(header->payload);
                 sqlite3_int64 name_id = logger.stringTable().getOrCreate(fmt::format("{}::{}", record->kind, record->operation).c_str());
@@ -263,11 +355,50 @@ rocprofiler_configure(uint32_t                 version,
     return &cfg;
 }
 
+std::vector<rocprofiler_agent_v0_t>
+get_gpu_device_agents()
+{
+    std::vector<rocprofiler_agent_v0_t> agents;
+
+    // Callback used by rocprofiler_query_available_agents to return
+    // agents on the device. This can include CPU agents as well. We
+    // select GPU agents only (i.e. type == ROCPROFILER_AGENT_TYPE_GPU)
+    rocprofiler_query_available_agents_cb_t iterate_cb = [](rocprofiler_agent_version_t agents_ver,
+                                                            const void**                agents_arr,
+                                                            size_t                      num_agents,
+                                                            void*                       udata) {
+        if(agents_ver != ROCPROFILER_AGENT_INFO_VERSION_0)
+            throw std::runtime_error{"unexpected rocprofiler agent version"};
+        auto* agents_v = static_cast<std::vector<rocprofiler_agent_v0_t>*>(udata);
+        for(size_t i = 0; i < num_agents; ++i)
+        {
+            const auto* agent = static_cast<const rocprofiler_agent_v0_t*>(agents_arr[i]);
+            //if(agent->type == ROCPROFILER_AGENT_TYPE_GPU) agents_v->emplace_back(*agent);
+            agents_v->emplace_back(*agent);
+        }
+        return ROCPROFILER_STATUS_SUCCESS;
+    };
+
+    // Query the agents, only a single callback is made that contains a vector
+    // of all agents.
+    rocprofiler_query_available_agents(ROCPROFILER_AGENT_INFO_VERSION_0,
+                                           iterate_cb,
+                                           sizeof(rocprofiler_agent_t),
+                                           const_cast<void*>(static_cast<const void*>(&agents)));
+    return agents;
+}
+
+
 int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, void* tool_data)
 {
     fprintf(stderr, "RocprofDataSource::toolInit\n");
 
     name_info = common::get_buffer_tracing_names();
+
+    auto agent_info = get_gpu_device_agents();
+    for (auto agent : agent_info) {
+        agents[agent.id.handle] = agent;
+    }
 
     rocprofiler_create_context(&client_ctx);
 
@@ -279,8 +410,24 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
                                                    nullptr);
                                                    //tool_data);
 
-// Magic stuff
+    rocprofiler_configure_callback_tracing_service(client_ctx,
+                                                   ROCPROFILER_CALLBACK_TRACING_KERNEL_DISPATCH,
+                                                   nullptr,
+                                                   0,
+                                                   api_callback,
+                                                   nullptr);
+                                                   //tool_data);
 
+    rocprofiler_configure_callback_tracing_service(client_ctx,
+                                                   ROCPROFILER_CALLBACK_TRACING_MEMORY_COPY,
+                                                   nullptr,
+                                                   0,
+                                                   api_callback,
+                                                   nullptr);
+                                                   //tool_data);
+
+
+    // Code Objects
     auto code_object_ops = std::vector<rocprofiler_tracing_operation_t>{
         ROCPROFILER_CODE_OBJECT_DEVICE_KERNEL_SYMBOL_REGISTER};
 
@@ -291,6 +438,7 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
                                                    RocprofDataSource::code_object_callback,
                                                    nullptr);
 
+#if 0
     constexpr auto buffer_size_bytes      = 0x40000;
     constexpr auto buffer_watermark_bytes = buffer_size_bytes / 2;
 
@@ -309,7 +457,7 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
                                                  client_buffer);
 
     rocprofiler_configure_buffer_tracing_service(client_ctx,
-                                                 ROCPROFILER_BUFFER_TRACING_KERNEL_DISPATCH,
+                                                 ROCPROFILER_BUFFER_TRACING_MEMORY_COPY,
                                                  nullptr,
                                                  0,
                                                  client_buffer);
@@ -317,6 +465,7 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
     auto client_thread = rocprofiler_callback_thread_t{};
     rocprofiler_create_callback_thread(&client_thread);
     rocprofiler_assign_callback_thread(client_buffer, client_thread);
+#endif
 
     int valid_ctx = 0;
     rocprofiler_context_is_valid(client_ctx, &valid_ctx);
