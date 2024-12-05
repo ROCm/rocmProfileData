@@ -39,11 +39,12 @@ public:
 };
 #endif
 
-
+class RocprofDataSourcePrivate;
 class RocprofDataSource : public DataSource
 {
 public:
-    //RocprofDataSource();
+    RocprofDataSource();
+    ~RocprofDataSource();
     void init() override;
     void end() override;
     void startTracing() override;
@@ -51,11 +52,10 @@ public:
     void flush() override;
 
 private:
-    //RocmApiIdList m_apiList;
+    RocprofDataSourcePrivate *d;
+    friend class RocprofDataSourcePrivate;
 
-//    roctracer_pool_t *m_hccPool{nullptr};
-//    static void api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
-//    static void hcc_activity_callback(const char* begin, const char* end, void* arg);
+    //RocmApiIdList m_apiList;
 
 public:
       static int toolInit(rocprofiler_client_finalize_t finalize_func, void* tool_data);
