@@ -24,6 +24,8 @@
 #include <roctracer.h>
 
 #include <string>
+#include <cstddef>
+#include <cstdint>
 
 #include "DataSource.h"
 #include "ApiIdList.h"

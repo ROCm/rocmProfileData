@@ -7,6 +7,9 @@
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 #include <cxxabi.h>
 #include <string>
+#include <cstddef>
+#include <cstdint>
+
 
 typedef uint64_t timestamp_t;
 

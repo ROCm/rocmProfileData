@@ -21,8 +21,6 @@
 ********************************************************************************/
 #include "RoctracerDataSource.h"
 
-//#include "hsa_rsrc_factory.h"
-
 #include <roctracer_hip.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
