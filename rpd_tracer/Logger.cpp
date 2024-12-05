@@ -21,8 +21,6 @@
 ********************************************************************************/
 #include "Logger.h"
 
-//#include "hsa_rsrc_factory.h"
-
 #include <list>
 #include <stdio.h>
 #include <stdlib.h>
