@@ -33,28 +33,6 @@ static inline const char* cxx_demangle(const char* symbol) {
   return (ret != NULL) ? ret : symbol;
 }
 
-#if 0
-  // Rainy day module
-
-  #include <amd_comgr/amd_comgr.h>
-  #include <cstring>
-
-  amd_comgr_data_t mangled;
-  amd_comgr_data_t demangled;
-  size_t size;
-  char bytes[4096];
-
-  amd_comgr_create_data(AMD_COMGR_DATA_KIND_BYTES, &mangled);
-  amd_comgr_set_data(mangled, strlen(symbol), symbol);
-
-  amd_comgr_demangle_symbol_name(mangled, &demangled);
-
-  amd_comgr_get_data(demangled, &size, bytes);
-
-  amd_comgr_release_data(mangled);
-  amd_comgr_release_data(demangled);
-#endif
-
 static timestamp_t timespec_to_ns(const timespec& time) {
     return ((timestamp_t)time.tv_sec * 1000000000) + time.tv_nsec;
   }
