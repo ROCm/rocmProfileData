@@ -167,6 +167,7 @@ public:
         int dstDevice {0};
         int srcDevice {0};
         int kind {0};
+        std::string kindStr;
         bool sync {false};
         bool pinned {false};
         sqlite3_int64 api_id {0};   // Baseclass ApiTable primary key (correlation id)
