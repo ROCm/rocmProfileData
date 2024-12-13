@@ -29,11 +29,9 @@ ifneq ($(CUDA_PATH),)
 
         # Find any libcupti.so* file
         CUPTI_LIB_FILE := $(shell find /usr/local/lib/python*/dist-packages/nvidia/cuda_cupti/lib -name "libcupti.so*" 2>/dev/null | head -n1)
-
-        #ifneq ($(CUPTI_LIB_FILE),)
         RPD_LIBS += -L$(dir $(CUPTI_LIB_FILE))
         RPD_LIBS += -l:$(notdir $(CUPTI_LIB_FILE))
-        #endif
+        RPD_LIBS += -Wl,-rpath,$(dir $(CUPTI_LIB_FILE))
 
         RPD_SRCS += CuptiDataSource.cpp
 endif
