@@ -10,7 +10,7 @@ TARGET=hcc
 
 RPD_LIBS = -lsqlite3 -lfmt
 RPD_INCLUDES =
-RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp MonitorTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp
+RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)

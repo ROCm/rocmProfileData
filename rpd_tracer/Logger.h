@@ -45,7 +45,7 @@ public:
     CopyApiTable &copyApiTable() { return *m_copyApiTable; }
     ApiTable &apiTable() { return *m_apiTable; }
     MonitorTable &monitorTable() { return *m_monitorTable; }
-
+    StackFrameTable &stackFrameTable() { return *m_stackFrameTable; }
 
     // External control to stop/stop logging
     void rpdstart();
@@ -80,6 +80,7 @@ private:
     CopyApiTable *m_copyApiTable {nullptr};
     ApiTable *m_apiTable {nullptr};
     MonitorTable *m_monitorTable {nullptr};
+    StackFrameTable *m_stackFrameTable {nullptr};
 
     void init();
     void finalize();

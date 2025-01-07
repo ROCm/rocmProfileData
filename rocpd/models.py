@@ -74,7 +74,7 @@ class KernelApi(Api):
     groupSegmentSize = models.IntegerField(default=0)
     privateSegmentSize = models.IntegerField(default=0)
     codeObject = models.ForeignKey(KernelCodeObject, on_delete=models.PROTECT)
-    kernelName = models.ForeignKey(String, on_delete=models.PROTECT)
+    kernelName = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
     kernelArgAddress = models.CharField(max_length=18)  #64 bit int
     aquireFence = models.CharField(max_length=8)   #(none, agent, system)
     releaseFence = models.CharField(max_length=8)  #(none, agent, system)
@@ -92,6 +92,11 @@ class CopyApi(Api):
     srcDevice = models.IntegerField(default=0) # GPU id or -1
     sync = models.BooleanField()
     pinned = models.BooleanField()
+
+class AnnotationApi(Api):
+    domain = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+    category = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+    data = models.CharField(max_length=8)
 
 class BarrierOp(Op):
     #op = models.OneToOneField(Ops, on_delete=models.PROTECT, primary_key=True)
@@ -117,6 +122,11 @@ class Monitor(models.Model):
     start = models.IntegerField(default=0)
     end = models.IntegerField(default=0)
     value = models.CharField(max_length=255)
+
+class StackFrame(models.Model):
+    api = models.ForeignKey(Api, related_name='+', on_delete=models.PROTECT)
+    depth = models.IntegerField(default=0)
+    name = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
 
 #class InputSignal(models.Model)
 #    op = models.ForeignKey(Ops, on_delete=models.PROTECT)
