@@ -26,11 +26,11 @@
 #include <rocprofiler-sdk/marker/api_id.h>
 #include <rocprofiler-sdk/registration.h>
 #include <rocprofiler-sdk/rocprofiler.h>
+#include <rocprofiler-sdk/cxx/name_info.hpp>
 
 #include "common/call_stack.hpp"
 #include "common/defines.hpp"
 #include "common/filesystem.hpp"
-#include "common/name_info.hpp"
 
 #include <vector>
 #include <array>
@@ -66,7 +66,7 @@ namespace
     using kernel_symbol_data_t = rocprofiler_callback_tracing_code_object_kernel_symbol_register_data_t;
     using kernel_symbol_map_t = std::unordered_map<rocprofiler_kernel_id_t, kernel_symbol_data_t>;
     using kernel_name_map_t = std::unordered_map<rocprofiler_kernel_id_t, const char *>;
-    using common::buffer_name_info;
+    using rocprofiler::sdk::buffer_name_info;
     using agent_info_map_t = std::unordered_map<uint64_t, rocprofiler_agent_v0_t>;
 
     // extract copy args
@@ -119,6 +119,78 @@ namespace
                 }
                 return 0;
             };
+
+    // copy api calls
+    bool isCopyApi(uint32_t id) {
+        switch (id) {
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy2D:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy2DAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy2DFromArray:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy2DFromArrayAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy2DToArray:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy2DToArrayAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy3D:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy3DAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyAtoH:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyDtoD:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyDtoDAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyDtoH:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyDtoHAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyFromArray:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyFromSymbol:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyFromSymbolAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyHtoA:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyHtoD:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyHtoDAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyParam2D:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyParam2DAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyPeer:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyPeerAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyToArray:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyToSymbol:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyToSymbolAsync:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyWithStream:
+                return true;
+                break;
+            default:
+                ;
+       }
+       return false;
+    }
+
+    // kernel api calls
+    bool isKernelApi(uint32_t id) {
+        switch (id) {
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipExtLaunchKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipExtLaunchMultiKernelMultiDevice:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchCooperativeKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchCooperativeKernelMultiDevice:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleLaunchCooperativeKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleLaunchCooperativeKernelMultiDevice:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipModuleLaunchKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipExtModuleLaunchKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipHccModuleLaunchKernel:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchCooperativeKernel_spt:
+            case ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchKernel_spt:
+                return true;
+                break;
+            default:
+                ;
+       }
+       return false;
+    }
+
+    class RocprofApiIdList : public ApiIdList
+    {
+    public:
+        RocprofApiIdList(buffer_name_info &names);
+        uint32_t mapName(const std::string &apiName) override;
+    private:
+        std::unordered_map<std::string, size_t> m_nameMap;
+    };
 
 } // namespace
 
@@ -237,24 +309,24 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
     if (record.kind == ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API) {
         thread_local sqlite3_int64 timestamp;	// FIXME: use userdata?  or stack?
 
-        //fprintf(stderr, "HIP_RUNTIME_API %d %s %llu\n", record.phase, std::string(s->name_info[record.kind][record.operation]).c_str(), clocktime_ns() - timestamp);
+        //fprintf(stderr, "%ld: HIP_RUNTIME_API %d %s %llu\n", record.correlation_id.internal, record.phase, std::string(s->name_info[record.kind][record.operation]).c_str(), clocktime_ns() - timestamp);
 
         if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
             timestamp = clocktime_ns();
 
-            // FIXME: test the pattern
-            //if (record.operation == ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy) {
-            if (record.operation == ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyWithStream) {
+            //---- Capture api args for copy and kernel ops
+            if (isCopyApi(record.operation)) {
                 rocprofiler_iterate_callback_tracing_kind_operation_args(
                     record, extract_copy_args, 1/*max_deref*/
                     , &instance.d->copyrows[record.correlation_id.internal]);
+//fprintf(stderr, "====== copyrow for %ld\n", record.correlation_id.internal);
             }
-            if (record.operation == ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchKernel) {
+            if (isKernelApi(record.operation)) {
                 rocprofiler_iterate_callback_tracing_kind_operation_args(
                     record, extract_kernel_args, 1/*max_deref*/
                     , &instance.d->kernelrows[record.correlation_id.internal]);
             }
-            // FIXME =================
+            //-----------------------------------------------
         }
         else {	     // ROCPROFILER_CALLBACK_PHASE_EXIT
             ApiTable::row row;
@@ -289,15 +361,16 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
 #endif
             logger.apiTable().insert(row);
 
-            // FIXME: test the pattern
-            //if (record.operation == ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpy) {
-            if (record.operation == ROCPROFILER_HIP_RUNTIME_API_ID_hipMemcpyWithStream) {
+            //---- Capture api args for copy and kernel ops
+            if (isCopyApi(record.operation)) {
+                // FIXME: do not remove here.  Used after the async operation
+                // DO it anyway, wait for crash,  async SDMA should assert below
                 instance.d->copyrows.erase(record.correlation_id.internal);
             }
-            if (record.operation == ROCPROFILER_HIP_RUNTIME_API_ID_hipLaunchKernel) {
+            if (isKernelApi(record.operation)) {
                 instance.d->kernelrows.erase(record.correlation_id.internal);
             }
-            // FIXME =================
+            //-------------------------------------------------
 
         }
     } // ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API
@@ -310,12 +383,23 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             // enqueue callback - caller's thread
             auto &dispatch = *(static_cast<rocprofiler_callback_tracing_kernel_dispatch_data_t*>(record.payload));
             auto &info = dispatch.dispatch_info;
-
             // Fetch data collected during api call
-            auto &krow = instance.d->kernelrows[record.correlation_id.internal];
 
+            std::string stream;
+
+            if (instance.d->kernelrows.count(record.correlation_id.internal) > 0) {
+                // This row can be missing.  Some copy api dispatch kernels under the hood
+                auto &krow = instance.d->kernelrows.at(record.correlation_id.internal);
+                stream = krow.stream;
+            }
+            else if (instance.d->copyrows.count(record.correlation_id.internal) > 0) {
+                // Grab the stream from the copy row instead
+                auto &crow = instance.d->copyrows.at(record.correlation_id.internal);
+                stream = crow.stream;
+            }
+            KernelApiTable::row krow;
             krow.api_id = record.correlation_id.internal;	// FIXME, from nested hip call
-            //krow.stream = ;
+            krow.stream = stream;
             krow.gridX = info.grid_size.x;
             krow.gridY = info.grid_size.y;
             krow.gridZ = info.grid_size.z;
@@ -355,10 +439,14 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             auto &copy = *(static_cast<rocprofiler_callback_tracing_memory_copy_data_t*>(record.payload));
 
             // Fetch data collected during api call
-            auto &crow = instance.d->copyrows[record.correlation_id.internal];
+            // FIXME async?  May need to remove it here rather than above
+//fprintf(stderr, "++++ looking for %ld\n", record.correlation_id.internal);
+            auto &crow = instance.d->copyrows.at(record.correlation_id.internal);
+            //CopyApiTable::row crow;
  
             crow.api_id = record.correlation_id.internal; // FIXME, from nested hip call. matches?
-            crow.size = (uint32_t)(copy.bytes);
+            // FIXME: split copies.  Crow has total size.  This record has a segment size
+            //crow.size = (uint32_t)(copy.bytes);
             //crow.dst = ;
             //crow.src = ;
             // Use node_id.  Will not match node_type_id from ops.  Can express cpu location
@@ -381,6 +469,10 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             row.opType_id = name_id;
             row.api_id = record.correlation_id.internal;
             logger.opTable().insert(row);
+
+            // dispose the copyapi row
+            //instance.d->copyrows.erase(record.correlation_id.internal);
+            // FIXME can not dispose after use.  Copyapi -> copyop can be 1:n
         }
     }
 }
@@ -587,7 +679,9 @@ rocprofiler_configure(uint32_t                 version,
 
 int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, void* tool_data)
 {
-    s->name_info = common::get_buffer_tracing_names();
+    //s->name_info = common::get_buffer_tracing_names();
+    s->name_info = rocprofiler::sdk::get_buffer_tracing_names();  // FIXME: decide
+    //s->name_info = rocprofiler::sdk::get_callback_tracing_names();
 
     auto agent_info = get_gpu_device_agents();
 
@@ -621,6 +715,23 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
 
     rocprofiler_start_context(s->utilityContext);
 
+    // select some api calls to omit, in the most inconvenient way possible
+    // #betterThanRoctracer
+
+    RocprofApiIdList apiList(s->name_info);
+    apiList.setInvertMode(true);  // Omit the specified api
+    apiList.add("hipGetDevice");
+    apiList.add("hipSetDevice");
+    apiList.add("hipGetLastError");
+    apiList.add("__hipPushCallConfiguration");
+    apiList.add("__hipPopCallConfiguration");
+    apiList.add("hipCtxSetCurrent");
+    apiList.add("hipEventRecord");
+    apiList.add("hipEventQuery");
+    apiList.add("hipGetDeviceProperties");
+    apiList.add("hipPeekAtLastError");
+    apiList.add("hipModuleGetFunction");
+    apiList.add("hipEventCreateWithFlags");
 
 
     // Instance s->contexts
@@ -721,3 +832,25 @@ void RocprofDataSource::toolFinialize(void* tool_data)
         context.handle = 0;
     }
 }
+
+
+RocprofApiIdList::RocprofApiIdList(buffer_name_info &names)
+: m_nameMap()
+{
+    auto hipapis = names[ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API].operations;
+
+    for (size_t i = 0; i < hipapis.size(); ++i) {
+        m_nameMap.emplace(hipapis[i], i);
+        //fprintf(stderr, "%lu: %s\n", i, std::string(hipapis[i]).c_str());
+    }
+}
+
+uint32_t RocprofApiIdList::mapName(const std::string &apiName)
+{
+    auto it = m_nameMap.find(apiName);
+    if (it != m_nameMap.end()) {
+        return it->second;
+    }
+    return 0;
+}
+

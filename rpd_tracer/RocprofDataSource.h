@@ -30,14 +30,6 @@
 #include "DataSource.h"
 #include "ApiIdList.h"
 
-#if 0
-class RocmApiIdList : public ApiIdList
-{
-public:
-    RocmApiIdList() { ; }
-    uint32_t mapName(const std::string &apiName) override;
-};
-#endif
 
 class RocprofDataSourcePrivate;
 class RocprofDataSource : public DataSource
