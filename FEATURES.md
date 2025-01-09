@@ -180,6 +180,35 @@ for row in connection.execute("select args, avg(cpu_time), avg(gpu_time) from ca
 ```
 
 
+--------------------------------------------------------------------------------
+## Stackframe recording
+Setting `RPDT_STACKFRAMES=1` as an environment variable enables recording stack traces for every HIP API call. The data is recorded in the `rocpd_stackframe` table:
+```
+> select * from rocpd_stackframe limit 20;
+id|api_ptr_id|depth|name_id
+1|2|0|5
+2|2|1|6
+3|2|2|7
+4|2|3|8
+5|2|4|9
+6|2|5|10
+7|3|0|12
+8|3|1|13
+9|3|2|14
+10|3|3|15
+11|3|4|16
+12|6|0|20
+13|6|1|21
+14|6|2|14
+15|6|3|15
+16|6|4|16
+17|9|0|20
+18|9|1|21
+19|9|2|14
+20|9|3|15
+```
+The `api_ptr_id` maps to the HIP API correlation ID, `depth` is the stack trace depth starting with 0, `name_id` is the stack frame mapping to `rocpd_string`.
+
 
 --------------------------------------------------------------------------------
 

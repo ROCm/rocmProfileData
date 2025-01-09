@@ -262,6 +262,13 @@ void Logger::init()
             m_worker = new std::thread(&Logger::autoflushWorker, this);
         }
     }
+
+    // Enable stack frame recording
+    const char *stackframe = getenv("RPDT_STACKFRAMES");
+    if (stackframe != nullptr) {
+        int val = atoi(stackframe);
+        m_writeStackFrames = (val != 0);
+    }
 }
 
 static bool doFinalize = true;

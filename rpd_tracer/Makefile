@@ -8,14 +8,16 @@ HIPCC=$(HIP_PATH)/bin/hipcc
 
 TARGET=hcc
 
-RPD_LIBS = -lsqlite3 -lfmt
+RPD_LIBS = -lsqlite3 -lfmt -L../../cpptrace_install/lib/ -lcpptrace -ldwarf -lz -lzstd -ldl
 RPD_INCLUDES =
 RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
         RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
-        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
+        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa -I../../cpptrace_install/include
+        # to disable stackframe support
+        #RPD_INCLUDES += -DRPD_NO_STACKFRAME_SUPPORT 
         RPD_SRCS += RoctracerDataSource.cpp #RocmSmiDataSource.cpp
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
 endif
