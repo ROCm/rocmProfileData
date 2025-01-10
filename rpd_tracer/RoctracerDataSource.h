@@ -55,6 +55,4 @@ private:
     roctracer_pool_t *m_hccPool{nullptr};
     static void api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
     static void hcc_activity_callback(const char* begin, const char* end, void* arg);
-    static inline int unwind(Logger &logger, const char* api, const sqlite_int64 api_id);
-
 };
