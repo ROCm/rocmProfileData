@@ -31,7 +31,8 @@ endif
 ifneq ($(CPPTRACE_INCLUDE_PATH),)
         $(info Building with cpptrace)
         RPD_INCLUDES += -DRPD_STACKFRAME_SUPPORT
-        RPD_LIBS += -L $(CPPTRACE_INCLUDE_PATH)/../build -lcpptrace -ldwarf -lz -lzstd -ldl
+        RPD_LIBS += $(CPPTRACE_INCLUDE_PATH)/../build/libcpptrace.a
+        RPD_LIBS += $(CPPTRACE_INCLUDE_PATH)/../build/_deps/libdwarf-build/src/lib/libdwarf/libdwarf.a
         RPD_INCLUDES += -I $(CPPTRACE_INCLUDE_PATH)
 endif
 
