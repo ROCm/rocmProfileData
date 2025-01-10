@@ -35,7 +35,7 @@ remote:
 CPPTRACE_MAKE?= $(wildcard cpptrace/Makefile)
 ifneq ($(CPPTRACE_MAKE),)
 cpptrace:
-	$(MAKE) release -C cpptrace
+	cd cpptrace; cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../cpptrace_install; cmake --build build; cmake --install build
 cpptrace-clean:
 	$(MAKE) clean -C cpptrace
 else

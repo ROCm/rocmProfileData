@@ -3,7 +3,7 @@ PREFIX = /usr/local
 
 HIP_PATH?= $(wildcard /opt/rocm/)
 CUDA_PATH?= $(wildcard /usr/local/cuda/)
-CPPTRACE_INCLUDE_PATH?= $(wildcard ../cpptrace/include)
+CPPTRACE_INCLUDE_PATH?= $(wildcard ../cpptrace_install/include)
 
 HIPCC=$(HIP_PATH)/bin/hipcc
 
@@ -31,8 +31,7 @@ endif
 ifneq ($(CPPTRACE_INCLUDE_PATH),)
         $(info Building with cpptrace)
         RPD_INCLUDES += -DRPD_STACKFRAME_SUPPORT
-        RPD_LIBS += $(CPPTRACE_INCLUDE_PATH)/../build/libcpptrace.a
-        RPD_LIBS += $(CPPTRACE_INCLUDE_PATH)/../build/_deps/libdwarf-build/src/lib/libdwarf/libdwarf.a
+        RPD_LIBS += -L$(CPPTRACE_INCLUDE_PATH)/../lib -lcpptrace -ldwarf -lz -lzstd -ldl
         RPD_INCLUDES += -I $(CPPTRACE_INCLUDE_PATH)
 endif
 

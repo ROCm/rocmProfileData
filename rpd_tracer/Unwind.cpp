@@ -26,6 +26,7 @@
 #ifdef RPD_STACKFRAME_SUPPORT
 #include <cpptrace/cpptrace.hpp>
 #include <sstream>
+#include <iostream>
 
 // FIXME: can we avoid shutdown corruption?
 // Other rocm libraries crashing on unload
@@ -38,6 +39,7 @@ static std::once_flag registerDoubleAgain_once;
 
 int unwind(Logger &logger, const char *api, const sqlite_int64 api_id) {
 
+    std::cout << "unwinding" << std::endl;
     if (!logger.writeStackFrames()) return 0;
 
 #if 0
@@ -92,13 +94,16 @@ int unwind(Logger &logger, const char *api, const sqlite_int64 api_id) {
 
     std::call_once(registerDoubleAgain_once, atexit, Logger::rpdFinalize);
 
+    std::cout << "returning" << std::endl;
+
     return 0;
 }
 
 #else
 
 int unwind(Logger &logger, const char *api, const sqlite_int64 api_id) {
-    return 0;
+    std::cout << "not supported" << std:endl;
+    	return 0;
 }
 
 #endif

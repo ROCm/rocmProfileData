@@ -46,8 +46,6 @@ make; make install
 This will install python modules that are used to manipulate trace files.
 It will also build and install the native tracer, rpd_tracer.
 
-Stackframe support will require [cpptrace](https://github.com/jeremy-rifkin/cpptrace). `install.sh` will clone and build a local copy. Disabling stack frames requires editing `rpd_tracer/Makefile` to include `-DRPD_NO_STACKFRAME_SUPPORT`.
-
 ## Quickstart
 
 + Install per the [Installation](#installation) section.
@@ -134,3 +132,20 @@ make clean
 ```
 
 Follow the README.md file within the autocoplite submodule for additional instructions and examples for how to run. 
+
+### cpptrace submodule setup
+
+The cpptrace submodule adds the ability to capture stacktraces for every HIP API invocation. The module needs to be initialized and updated for this:
+```sh
+git submodule update --init --recursive
+```
+
+This command will initialize, fetch and checkout the submodule to the commit specified in the main repository.
+
+To update the submodule at any time and pull the latest changes, run:
+
+```sh
+git submodule update --remote
+```
+
+`make` will subsequently build `cpptrace` and link `rpd_tracer` against it. Enabling stacktrace capture requires setting `RPDT_STACKFRAMES=1`.
