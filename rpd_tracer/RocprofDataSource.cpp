@@ -188,6 +188,7 @@ namespace
     public:
         RocprofApiIdList(buffer_name_info &names);
         uint32_t mapName(const std::string &apiName) override;
+        std::vector<rocprofiler_tracing_operation_t> allEnabled();
     private:
         std::unordered_map<std::string, size_t> m_nameMap;
     };
@@ -733,6 +734,8 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
     apiList.add("hipModuleGetFunction");
     apiList.add("hipEventCreateWithFlags");
 
+    // Get a vector of the enabled api calls
+    auto apis = apiList.allEnabled();
 
     // Instance s->contexts
     //-------------------------------------------------------
@@ -746,8 +749,8 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
 
         rocprofiler_configure_callback_tracing_service(context,
                                                    ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API,
-                                                   nullptr,
-                                                   0,
+                                                   apis.data(),
+                                                   apis.size(),
                                                    api_callback,
                                                    instance);
 
@@ -837,11 +840,10 @@ void RocprofDataSource::toolFinialize(void* tool_data)
 RocprofApiIdList::RocprofApiIdList(buffer_name_info &names)
 : m_nameMap()
 {
-    auto hipapis = names[ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API].operations;
+    auto &hipapis = names[ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API].operations;
 
     for (size_t i = 0; i < hipapis.size(); ++i) {
         m_nameMap.emplace(hipapis[i], i);
-        //fprintf(stderr, "%lu: %s\n", i, std::string(hipapis[i]).c_str());
     }
 }
 
@@ -854,3 +856,12 @@ uint32_t RocprofApiIdList::mapName(const std::string &apiName)
     return 0;
 }
 
+std::vector<rocprofiler_tracing_operation_t> RocprofApiIdList::allEnabled()
+{
+    std::vector<rocprofiler_tracing_operation_t> oplist;
+    for (auto &it : m_nameMap) {
+        if (contains(it.second))
+            oplist.push_back(it.second);
+    }
+    return oplist;
+}
