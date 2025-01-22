@@ -66,6 +66,7 @@ class RaptorParser:
 
     prekernel_seq : int = 2
     zscore_threshold : int = -1 # -1 disables, but 3.0 is good value to capture 99.7% of a normal distribution 
+    category_latency_ns = 0
 
     roi_start_ns : int = None
     roi_end_ns   : int = None
@@ -75,6 +76,7 @@ class RaptorParser:
     # Special internal category names:
     _other_cat = "_Other"
     _gpu_idle_cat = "_GPU_Idle"
+    _latency_cat = "_Latency"
     _collective_cat = "_Collective"
     _var_cat = "_Variability"
 
@@ -694,6 +696,20 @@ class RaptorParser:
                 ('VarSum_ns','') : 'sum'
             }) 
         category_df = pd.concat([category_df, df], axis='columns')
+        if self.category_latency_ns:
+            idle_filter = category_df.index.str.endswith(self._gpu_idle_cat)
+            cat_no_idle_df = category_df[~idle_filter]
+            latency_row = (
+                cat_no_idle_df['UniqKernels'].sum(),
+                cat_no_idle_df[('TotalCalls','')].sum(),
+                cat_no_idle_df[('TotalCalls','')].sum() * self.category_latency_ns,
+                0)
+            new_dur = \
+                category_df.loc[~idle_filter, [('Duration_ns', 'sum')]].iloc[:,0] - \
+                category_df.loc[~idle_filter, [('TotalCalls','')]].iloc[:,0] * self.category_latency_ns
+            category_df.loc[~idle_filter, [('Duration_ns', 'sum')]] = new_dur
+
+            category_df.loc[self._latency_cat] = latency_row
 
         # rename columns and index:
         total_dur_col = 'TotalDur_' + duration_units

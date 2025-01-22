@@ -24,6 +24,8 @@ summary_g.add_argument("--categorize", "-c", action='store_true',
 summary_g.add_argument("--category-json", "-C", type=str,
                     default=os.path.join(pathlib.Path(__file__).parent.resolve(), "raptor_cat_vllm.json"),
                     help="File containing category definitions, specified as a JSON-format dictionary.  See tools/raptor_cat_vllm.json for an example.  If a kernel name matches more than one pattern, the LAST match in the file determines the category.")
+summary_g.add_argument("--category-latency-ns", "-l", type=int, default=0,
+                    help="The specified number of nano-seconds will be removed from each kernel record and accumulated into a '_Latency' category.  Useful to separate the latency-dominated kernel phases from other activity")
 summary_g.add_argument("--variability", "-v", action='store_true',
                     help="Show variability df")
 summary_g.add_argument("--kernelseq", "-k", action='store_true',
@@ -104,6 +106,8 @@ raptor.print_timestamps(indent="   ")
 
 if args.auto_roi_top:
     raptor.set_roi_from_kernel()
+if args.category_latency_ns:
+    raptor.category_latency_ns = args.category_latency_ns
 
 if args.categorize: 
     category_df = raptor.get_category_df(raptor.get_kernelseq_df())
