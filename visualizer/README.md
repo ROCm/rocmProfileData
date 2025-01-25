@@ -36,7 +36,8 @@ A suite of interactive visualization and analysis tools for ROCm Profile Data (.
 cd visualizer
 
 3. Install the required Python packages:
-
+Use python -m venv .pdviz
+source .pdviz/bin/active
 pip install -r requirements.txt
 
 ## Usage

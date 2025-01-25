@@ -1,4 +1,6 @@
-streamlit>=1.20.0
-pandas>=1.5.0
-streamlit-aggrid>=0.3.3
-streamlit-mermaid>=0.1.0
+pyarrow
+altair
+streamlit
+panda
+plotly
+streamlit-aggrid
