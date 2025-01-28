@@ -12,6 +12,7 @@ Contents:
 - [Graph Subclass](#graph-subclass)
 - [Pytorch Autograd Subclass](#pytorch-autograd-subclass)
 - [Call Stack Accounting](#call-stack-accounting)
+- [Stackframe recording](#stackframe-recording)
 - [Rpd_tracer Start/stop](#rpd_tracer-startstop)
 - [Schema v2](#schema-v2)
 
@@ -182,7 +183,7 @@ for row in connection.execute("select args, avg(cpu_time), avg(gpu_time) from ca
 
 --------------------------------------------------------------------------------
 ## Stackframe recording
-Setting `RPDT_STACKFRAMES=1` as an environment variable enables recording stack traces for every HIP API call. The data is recorded in the `rocpd_stackframe` table:
+Stackframe recording requires initialization of the `ccptrace` submodule. Additionally,`RPDT_STACKFRAMES=1` must must be set at profiling time as an environment variable to record stack traces for every HIP API call. The data is recorded in the `rocpd_stackframe` table:
 ```
 > select * from rocpd_stackframe limit 20;
 id|api_ptr_id|depth|name_id

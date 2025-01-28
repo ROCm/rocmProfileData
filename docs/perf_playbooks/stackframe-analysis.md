@@ -76,7 +76,7 @@ id|hip_api|args|depth|frame
 ```
 In this instance, two stacks ended in `hipMemcpy` - one from `main.hip:170`, the other from `main.hip:217`.
 
-More advanced usage modes filtering on, e.g., API arguments are possible. Similarily, more fields cna be exposed from the joined HIP API table and filtered over such as start times.
+More advanced usage modes filtering on, e.g., API arguments are possible. Similarily, more fields can be exposed from the joined HIP API table and filtered over such as start times.
 
 ### Use with hybrid Python/C++ workloads
 After creating the same temporary view as above and filtering for all `hipMalloc` invocations an exemplary output for a standalone Faiss benchmark would be:
@@ -352,4 +352,4 @@ showing a `hipMalloc` invocation from MIOpen setup during initialization trackin
 
 
 ### Summary
-Stackframe analysis helps to identify call chains in native code to the HIP API. With debug symbols present, full resolution through the native laye is possible.
+Stackframe analysis helps to identify call chains in native code to the HIP API. With debug symbols present, full resolution through the native layer is possible.
