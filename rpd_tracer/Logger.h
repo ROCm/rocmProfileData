@@ -45,7 +45,7 @@ public:
     CopyApiTable &copyApiTable() { return *m_copyApiTable; }
     ApiTable &apiTable() { return *m_apiTable; }
     MonitorTable &monitorTable() { return *m_monitorTable; }
-
+    StackFrameTable &stackFrameTable() { return *m_stackFrameTable; }
 
     // External control to stop/stop logging
     void rpdstart();
@@ -66,6 +66,7 @@ public:
     static void rpdFinalize() __attribute__((destructor));
 
     const std::string filename() { return m_filename; };
+    bool writeStackFrames() { return m_writeStackFrames; };
 
 private:
     int m_activeCount {0};
@@ -80,12 +81,14 @@ private:
     CopyApiTable *m_copyApiTable {nullptr};
     ApiTable *m_apiTable {nullptr};
     MonitorTable *m_monitorTable {nullptr};
+    StackFrameTable *m_stackFrameTable {nullptr};
 
     void init();
     void finalize();
 
     std::string m_filename;
     bool m_writeOverheadRecords {true};
+    bool m_writeStackFrames {false};
 
     bool m_done {false};
     int m_period{1};

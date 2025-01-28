@@ -44,3 +44,6 @@ static timestamp_t clocktime_ns() {
 }
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
+
+class Logger;
+int unwind(Logger &logger, const char *api, const sqlite_int64 api_id);

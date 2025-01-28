@@ -13,3 +13,6 @@ CREATE VIEW copy AS SELECT B.id, pid, tid, start, end, C.string AS apiName, stre
 
 -- Async copies (op timing)
 CREATE VIEW copyop AS SELECT B.id, gpuId, queueId, sequenceId, B.start, B.end, (B.end-B.start) AS duration, stream, size, width, height, kind, dst, src, dstDevice, srcDevice, sync, pinned, E.string AS apiName FROM rocpd_api_ops A JOIN rocpd_op B ON B.id = A.op_id JOIN rocpd_copyapi C ON C.api_ptr_id = A.api_id JOIN rocpd_api D on D.id = A.api_id JOIN rocpd_string E ON E.id = D.apiName_id;
+
+-- Stack Frames
+CREATE VIEW stackframe AS SELECT B.id, C.string, depth, D.string FROM rocpd_stackframe A JOIN rocpd_api B ON B.id = A.api_ptr_id JOIN rocpd_string C ON C.id = B.apiname_id JOIN rocpd_string D ON D.id = A.name_id;

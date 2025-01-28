@@ -104,6 +104,7 @@ namespace {
     int mapDeviceId(int id) { return id - deviceOffset; };
 } // namespace
 
+
 void RoctracerDataSource::api_callback(
     uint32_t domain,
     uint32_t cid,
@@ -138,12 +139,12 @@ void RoctracerDataSource::api_callback(
                     std::snprintf(buff, 4096, "ptr=%p | size=0x%x",
                         *data->args.hipMalloc.ptr,
                         (uint32_t)(data->args.hipMalloc.size));
-                    row.args_id = logger.stringTable().getOrCreate(std::string(buff)); 
+                    row.args_id = logger.stringTable().getOrCreate(std::string(buff));
                     break;
                 case HIP_API_ID_hipFree:
                     std::snprintf(buff, 4096, "ptr=%p",
                         data->args.hipFree.ptr);
-                    row.args_id = logger.stringTable().getOrCreate(std::string(buff)); 
+                    row.args_id = logger.stringTable().getOrCreate(std::string(buff));
                     break;
 
                 case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice:
@@ -746,6 +747,7 @@ void RoctracerDataSource::api_callback(
             }
 #endif
             logger.apiTable().insert(row);
+            unwind(logger, name, row.api_id);
         }
     }
 

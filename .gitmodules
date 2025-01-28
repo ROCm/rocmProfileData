@@ -4,3 +4,6 @@
 [submodule "autocoplite"]
 	path = autocoplite
 	url = https://github.com/brieflynn/autocoplite.git
+[submodule "cpptrace"]
+	path = cpptrace
+	url = https://github.com/jeremy-rifkin/cpptrace.git
