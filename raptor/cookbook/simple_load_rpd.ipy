@@ -1,21 +1,23 @@
 %load_ext autoreload
 %autoreload 2
 
+import sys
+import argparse
 from importlib import reload
 import pandas as pd
 import numpy as np
 from raptor_parser import RaptorParser
+import cookbook_utils
 
-pd.set_option('display.max_rows', 100)
-pd.options.display.max_colwidth = 40 
-pd.set_option('display.float_format', '{:.1f}'.format)
+sys.argv = cookbook_utils.setup(sys.argv, __file__)
 
+parser = argparse.ArgumentParser(prog=__file__)
+parser.add_argument("rpd_file_name")
+args=parser.parse_args()
 
-rpd_file = "traces/vllm_benchmark_latency_results/Meta-Llama-3.1-70B-Instruct-FP8-KV_in_512_out_2048_batch_41.rpd"
+print ("info: reading RPD=", args.rpd_file_name)
 
-print ("info: reading RPD=", rpd_file)
-
-raptor = RaptorParser(rpd_file)
+raptor = RaptorParser(args.rpd_file_name)
 
 raptor.get_category_df()
 kernelseq_df = raptor.get_kernelseq_df()
