@@ -35,7 +35,7 @@ remote:
 CPPTRACE_MAKE?= $(wildcard cpptrace/Makefile)
 ifneq ($(CPPTRACE_MAKE),)
 cpptrace:
-	cd cpptrace; cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../cpptrace_install; cmake --build build; cmake --install build; cd ../cpptrace_install; ln -s lib lib64
+	cd cpptrace; cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../cpptrace_install; cmake --build build; cmake --install build; cd ../cpptrace_install; if [ ! -d ./lib ]; then ln -s lib64 lib; fi
 cpptrace-clean:
 	$(MAKE) clean -C cpptrace
 	rm -r cpptrace_install
