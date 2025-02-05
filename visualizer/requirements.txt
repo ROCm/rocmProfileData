@@ -1,0 +1,6 @@
+pyarrow
+altair
+streamlit
+panda
+plotly
+streamlit-aggrid
