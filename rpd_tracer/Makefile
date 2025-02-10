@@ -15,10 +15,16 @@ RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTab
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
-        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
-        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
+        RPD_LIBS += -L/opt/rocm/lib
+        RPD_LIBS += -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
+        RPD_LIBS += -lrocprofiler-sdk 
+
         RPD_SRCS += RoctracerDataSource.cpp #RocmSmiDataSource.cpp
+        RPD_SRCS += RocprofDataSource.cpp
+
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
+        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
+        RPD_INCLUDES += -I/opt/rocm/share/rocprofiler-sdk/samples
 endif
 
 ifneq ($(CUDA_PATH),)
@@ -54,7 +60,7 @@ $(RPD_MAIN): $(RPD_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -g
 
 .cpp.o:
-	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):
 #	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@
