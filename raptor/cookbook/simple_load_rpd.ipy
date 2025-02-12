@@ -1,0 +1,32 @@
+%load_ext autoreload
+%autoreload 2
+
+import sys
+import argparse
+from importlib import reload
+import pandas as pd
+import numpy as np
+from raptor_parser import RaptorParser
+import cookbook_utils
+
+sys.argv = cookbook_utils.setup(sys.argv, __file__)
+
+parser = argparse.ArgumentParser(prog=__file__)
+parser.add_argument("rpd_file_name")
+args=parser.parse_args()
+
+print ("info: reading RPD=", args.rpd_file_name)
+
+raptor = RaptorParser(args.rpd_file_name)
+
+raptor.get_category_df()
+kernelseq_df = raptor.get_kernelseq_df()
+
+pretty_kernelseq_df = raptor.get_pretty_kernelseq_df(kernelseq_df)
+
+display(pretty_kernelseq_df)
+print()
+display(raptor.category_df)
+print()
+display(raptor.get_variability_df())
+

@@ -26,6 +26,8 @@
 
 #include <string>
 #include <unordered_map>
+#include <cstddef>
+#include <cstdint>
 
 #include "DataSource.h"
 #include "ApiIdList.h"

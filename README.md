@@ -46,7 +46,6 @@ make; make install
 This will install python modules that are used to manipulate trace files.
 It will also build and install the native tracer, rpd_tracer.
 
-
 ## Quickstart
 
 + Install per the [Installation](#installation) section.
@@ -54,6 +53,10 @@ It will also build and install the native tracer, rpd_tracer.
 + You can refer to our step-by-step [tutorial](examples/rocm-profile-data/README.md) in this repository to profile and trace your application. Additionally, we have provided a list of key tables and views defined in the generated `rpd` file for your reference.
 
 ## Tools
+
+#### Raptor
+Raptor is an RPD post-processing script (raptor/raptor.py), plus a parsing class to enable deeper analysis with Python Pandas.
+See the raptor [README](raptor/README.md) for more information.
 
 #### runTracer.sh
 RunTracer.sh is used to launch and trace a program.  It is installed in the system path as part of 'make install'.  It can trace any process and its subprocesses.
@@ -129,3 +132,20 @@ make clean
 ```
 
 Follow the README.md file within the autocoplite submodule for additional instructions and examples for how to run. 
+
+### cpptrace submodule setup
+
+The cpptrace submodule adds the ability to capture stacktraces for every HIP API invocation. The module needs to be initialized and updated for this:
+```sh
+git submodule update --init --recursive
+```
+
+This command will initialize, fetch and checkout the submodule to the commit specified in the main repository.
+
+To update the submodule at any time and pull the latest changes, run:
+
+```sh
+git submodule update --remote
+```
+
+`make` will subsequently build `cpptrace` and link `rpd_tracer` against it. Enabling stacktrace capture requires setting `RPDT_STACKFRAMES=1`.

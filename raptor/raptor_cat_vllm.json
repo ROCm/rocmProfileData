@@ -1,0 +1,11 @@
+{
+    "GEMM" : ["^Cijk_", "^void wvSpltK"],
+    "CopyD2D" : ["CopyDeviceToDevice"],
+    "_Collective" : ["ncclDevKernel_Generic","void vllm::cross_device_reduce"],
+    "aten" : ["^.* at::"],
+    "vllm" : ["vllm::.*"],
+    "topk" : ["^.*topk"],
+    "DecodeAttn" : ["paged_attention*"],
+    "PrefillAttn" : ["attn_fwd"],
+    "SILU" : ["_ZN4vllm25scaled_act_and_mul_kernelIN3c104HalfETnPFT_RKS3_EXadL_ZNS_11silu_kernelIS2_EES3_S5_EEEEvPNS1_15Float8_e4m3fnuzEPS4_if"]
+}

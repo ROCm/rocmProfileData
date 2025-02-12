@@ -3,6 +3,7 @@ PREFIX = /usr/local
 
 HIP_PATH?= $(wildcard /opt/rocm/)
 CUDA_PATH?= $(wildcard /usr/local/cuda/)
+CPPTRACE_INCLUDE_PATH?= $(wildcard ../cpptrace_install/include)
 
 HIPCC=$(HIP_PATH)/bin/hipcc
 
@@ -10,13 +11,13 @@ TARGET=hcc
 
 RPD_LIBS = -lsqlite3 -lfmt
 RPD_INCLUDES =
-RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp MonitorTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp
+RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp Unwind.cpp
 
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
         RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-        RPD_SRCS += RoctracerDataSource.cpp
+        RPD_SRCS += RoctracerDataSource.cpp #RocmSmiDataSource.cpp
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
 endif
 
@@ -25,6 +26,13 @@ ifneq ($(CUDA_PATH),)
         RPD_LIBS += -L/usr/local/cuda/lib64 -lcupti
         RPD_INCLUDES += -I/usr/local/cuda/include
         RPD_SRCS += CuptiDataSource.cpp
+endif
+
+ifneq ($(CPPTRACE_INCLUDE_PATH),)
+        $(info Building with cpptrace)
+        RPD_INCLUDES += -DRPD_STACKFRAME_SUPPORT
+        RPD_LIBS += -L$(CPPTRACE_INCLUDE_PATH)/../lib -lcpptrace -ldwarf -lz -lzstd -ldl
+        RPD_INCLUDES += -I $(CPPTRACE_INCLUDE_PATH)
 endif
 
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
