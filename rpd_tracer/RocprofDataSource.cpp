@@ -422,7 +422,7 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             OpTable::row row;
             row.gpuId = s->agents.at(info.agent_id.handle).logical_node_type_id;
             row.queueId = info.queue_id.handle;
-            row.sequenceId = 0;
+            row.sequenceId = info.dispatch_id;
             strncpy(row.completionSignal, "", 18);
             row.start = dispatch.start_timestamp;
             row.end = dispatch.end_timestamp;

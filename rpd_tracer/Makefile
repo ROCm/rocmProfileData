@@ -15,7 +15,7 @@ RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTab
 ifneq (,$(HIP_PATH))
         $(info Building with roctracer)
         RPD_LIBS += -L/opt/rocm/lib
-        RPD_LIBS += -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
+        RPD_LIBS += -lroctracer64 -lroctx64 -lamdhip64 #-lrocm_smi64
         RPD_LIBS += -lrocprofiler-sdk 
 
         RPD_SRCS += RoctracerDataSource.cpp #RocmSmiDataSource.cpp
