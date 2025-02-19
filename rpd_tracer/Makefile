@@ -39,7 +39,7 @@ RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 
 
 RPD_MAIN = librpd_tracer.so
-RPD_SCRIPT = runTracer.sh loadTracer.sh
+RPD_SCRIPT = runTracer.sh 
 
 PYTHON = python3
 PIP = pip3
