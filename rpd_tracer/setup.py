@@ -23,8 +23,7 @@
 
 from setuptools import setup
 
-setup(
-    name='rpdTracer',
+setup(name='rpdTracer',
     version='1.0',
     description='Tracer control from user code',
     py_modules=['rpdTracerControl'],
