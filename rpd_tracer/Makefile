@@ -65,7 +65,7 @@ install: all
 	cp $(RPD_MAIN)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) $(PREFIX)/bin/
 	ldconfig
-	$(PYTHON) setup.py install
+	$(PYTHON) -m pip install .
 
 .PHONY: uninstall
 uninstall:
