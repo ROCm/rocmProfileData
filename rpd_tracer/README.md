@@ -61,3 +61,12 @@ This is a tracer that can attach to any process and record hip apis, ops, and ro
         init_tracing();
         ```
 <b>Note:</b> You can utilize `nm -gd <PATH_TO_librpd_tracer.so>` to find out symbol names in your library.
+
+<b>Delay Option:</b>
+- You can delay the start of profiling/autoflush by setting the environment variable `RPDT_DELAY` to the number of seconds to wait before tracing begins. This is useful for large workloads where you want to skip initial setup time.
+- Example usage:
+  ```bash
+  export RPDT_DELAY=10  # Delay start by 10 seconds
+  export RPDT_AUTOFLUSH=1
+  <your launch command>
+  ```
