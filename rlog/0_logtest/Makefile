@@ -30,7 +30,7 @@ HIPCC=$(HIP_PATH)/bin/hipcc
 
 TARGET=hcc
 
-SOURCES = MatrixTranspose.cpp
+SOURCES = MatrixTranspose.cpp ../rlog.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
 EXECUTABLE=./MatrixTranspose
