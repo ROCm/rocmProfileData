@@ -40,4 +40,4 @@ fi
 
 export RPDT_FILENAME=${OUTPUT_FILE}
 export RPDT_AUTOSTART=0
-LD_PRELOAD=librpd_tracer.so "$@"
+LD_PRELOAD=libroctx64.so:librpd_tracer.so "$@"
