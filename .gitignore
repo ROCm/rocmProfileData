@@ -211,4 +211,9 @@ tags
 # Persistent undo
 [._]*.un~
 
+# rpd stuff
+*.rpd
+*.json
+*.o
+
 # End of https://www.gitignore.io/api/vim,python,django
