@@ -21,6 +21,8 @@
 ********************************************************************************/
 #pragma once
 
+#include <cstdint>
+
 #include <string>
 #include <map>
 #include <unordered_map>
