@@ -39,6 +39,8 @@
 #include <sqlite3.h>
 #include <fmt/format.h>
 
+#include <nlohmann/json.hpp>
+
 #include "Logger.h"
 #include "Utility.h"
 
@@ -140,6 +142,22 @@ namespace
                     auto &data = *(static_cast<ApiData*>(cb_data));
                     data.stream = *(reinterpret_cast<const hipStream_t*>(arg_value_addr));
                 }
+                return 0;
+            };
+
+    // Extract hip args to json
+            auto extract_hip_args = [](rocprofiler_buffer_tracing_kind_t,
+                  rocprofiler_tracing_operation_t,
+                   uint32_t          arg_num,
+                   const void* const arg_value_addr,
+                   int32_t           indirection_count,
+                   const char*       arg_type,
+                   const char*       arg_name,
+                   const char*       arg_value_str,
+                   void*             cb_data) -> int {
+                nlohmann::json &json = *(static_cast<nlohmann::json*>(cb_data));
+                json[arg_name] = arg_value_str;
+                //fprintf(stderr, "%s: %s\n", arg_name, arg_value_str);
                 return 0;
             };
 
@@ -657,8 +675,15 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 
                 logger.copyApiTable().insert(crow);
             }
-            else if (header->kind == ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API) {
-                auto &hipapi = *(static_cast<rocprofiler_buffer_tracing_hip_api_record_t*>(header->payload));
+            else if (header->kind == ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API_EXT) {
+                auto &hipapi = *(static_cast<rocprofiler_buffer_tracing_hip_api_ext_record_t*>(header->payload));
+
+                // extract args as json
+                nlohmann::json json;
+                rocprofiler_iterate_buffer_tracing_record_args(
+                    *header, extract_hip_args,
+                    &json);
+                fprintf(stderr, "%s\n", json.dump().c_str());
 
                 // Add an api table entry
                 sqlite3_int64 name_id = logger.stringTable().getOrCreate(std::string(s->name_info[hipapi.kind][hipapi.operation]).c_str());
@@ -897,7 +922,7 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
                                                      buffer);
 
         rocprofiler_configure_buffer_tracing_service(context,
-                                                     ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API,
+                                                     ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API_EXT,
                                                      apis.data(),
                                                      apis.size(),
                                                      buffer);

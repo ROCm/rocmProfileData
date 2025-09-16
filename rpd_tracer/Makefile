@@ -24,6 +24,7 @@ ifneq (,$(HIP_PATH))
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
         RPD_INCLUDES += -I/opt/rocm/share/rocprofiler-sdk/samples
+        RPD_INCLUDES += -Ijson/include
 endif
 
 ifneq ($(CUDA_PATH),)
