@@ -683,7 +683,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 rocprofiler_iterate_buffer_tracing_record_args(
                     *header, extract_hip_args,
                     &json);
-                fprintf(stderr, "%s\n", json.dump().c_str());
+                //fprintf(stderr, "%s\n", json.dump().c_str());
 
                 // Add an api table entry
                 sqlite3_int64 name_id = logger.stringTable().getOrCreate(std::string(s->name_info[hipapi.kind][hipapi.operation]).c_str());
