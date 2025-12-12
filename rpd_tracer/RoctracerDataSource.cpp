@@ -872,6 +872,9 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
             row.queueId = record->queue_id;
             row.sequenceId = 0;
             strncpy(row.completionSignal, "", 18);
+            // TOASK : who's recoding record->begin_ns?
+            // Where should we call the init functions? (MAYBE have a structure like init etc)
+            // TODO for ALI For the timebeing, we just add the offsets here
             row.start = record->begin_ns + toffset;
             row.end = record->end_ns + toffset;
             row.description_id = ((record->kind == HIP_OP_DISPATCH_KIND_KERNEL_)

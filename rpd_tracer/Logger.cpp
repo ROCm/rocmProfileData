@@ -229,6 +229,13 @@ void Logger::init()
                 //fprintf(stderr, "Using: %s\n", (*it).c_str());
             }
         }
+        if (getenv("RPDT_CLOCKSYNC_IP") != nullptr) {
+            DataSource* (*func) (void) = (DataSource* (*)()) dlsym(dl, "ChronoSyncDataSourceFactory");
+            if (func) {
+                m_sources.push_back(func());
+                //fprintf(stderr, "Using: ClockSyncDataSourceFactory\n");
+            }
+        }
     }
 
     // Initialize data sources
