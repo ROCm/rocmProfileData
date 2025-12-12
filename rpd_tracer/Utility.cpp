@@ -1,8 +1,7 @@
+/**************************************************************************
+ * Copyright (c) 2023 Advanced Micro Devices, Inc.
+ **************************************************************************/
 
-
-// TODO create a namespace with atomic offset
-// factory writes to clock_sync::offset
-// In the init function to get an inital offset value
 #include "Utility.h"
 #include <atomic>
 
