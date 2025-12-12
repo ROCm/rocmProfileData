@@ -14,6 +14,8 @@
 #include <string>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include <time.h>
 #include <sqlite3.h>
 #include "rlog/client.h"
 
@@ -45,10 +47,45 @@ static timestamp_t timespec_to_ns(const timespec& time) {
     return ((timestamp_t)time.tv_sec * 1000000000) + time.tv_nsec;
   }
 
-static timestamp_t clocktime_ns() {
+// Seqlock-protected clock sync state, written by ChronoSync's Firefly algorithm.
+// Inlined here so the seq==0 fast path (no sync active) costs only a single
+// load+branch on the ~80 clocktime_ns() call sites in the tracing hot path.
+namespace firefly {
+
+struct SvcState {
+    std::atomic<unsigned int> sequence{0};
+    timespec referenceTime{};
+    int64_t  offset{0};
+    double   drift{0.0};
+};
+
+extern SvcState g_svcState;
+
+} // namespace firefly
+
+static inline int64_t svc_read_offset_ns(timestamp_t now_ns) {
+    unsigned seq = firefly::g_svcState.sequence.load(std::memory_order_acquire);
+    if (seq == 0)
+        return 0;
+
+    int64_t offset;
+    double drift;
+    timestamp_t ref_ns;
+    do {
+        offset = firefly::g_svcState.offset;
+        drift = firefly::g_svcState.drift;
+        ref_ns = timespec_to_ns(firefly::g_svcState.referenceTime);
+    } while ((seq & 1) || firefly::g_svcState.sequence.load(std::memory_order_acquire) != seq);
+
+    int64_t elapsed = static_cast<int64_t>(now_ns - ref_ns);
+    return offset + static_cast<int64_t>(drift * elapsed);
+}
+
+static inline timestamp_t clocktime_ns() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
+    timestamp_t now_ns = ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
+    return now_ns + svc_read_offset_ns(now_ns);
 }
 
 std::map<std::string, std::string>& configMap();

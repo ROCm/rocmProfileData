@@ -200,6 +200,13 @@ void Logger::init()
             std::string sourceName = it->substr(0, it->size() - 7);  // strip "Factory"
             m_storage->metadataTable().insert("process_datasource", fmt::format("pid={} source={}", GetPid(), sourceName));
         }
+        if (getenv("RPDT_CLOCKSYNC_IP") != nullptr) {
+            DataSource* (*func) (void) = (DataSource* (*)()) dlsym(dl, "ChronoSyncDataSourceFactory");
+            if (func) {
+                m_sources.push_back(func());
+                //fprintf(stderr, "Using: ClockSyncDataSourceFactory\n");
+            }
+        }
     }
 
     // Initialize data sources
