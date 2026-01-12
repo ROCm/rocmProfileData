@@ -594,6 +594,9 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 
     Logger &logger = Logger::singleton();
 
+    int64_t last_correlation = -1;
+    const timestamp_t cb_begin_time = clocktime_ns();
+
     for (size_t i = 0; i < num_headers; ++i) {
         auto* header = headers[i];
 
@@ -637,6 +640,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 krow.kernelName_id = desc_id;
 
                 logger.kernelApiTable().insert(krow);
+                last_correlation = record->correlation_id.internal;
             }
             else if (header->kind == ROCPROFILER_BUFFER_TRACING_MEMORY_COPY) {
 
@@ -674,6 +678,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 crow.sync = true;
 
                 logger.copyApiTable().insert(crow);
+                last_correlation = copy.correlation_id.internal;
             }
             else if (header->kind == ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API_EXT) {
                 auto &hipapi = *(static_cast<rocprofiler_buffer_tracing_hip_api_ext_record_t*>(header->payload));
@@ -698,9 +703,14 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.api_id = hipapi.correlation_id.internal;
 
                 logger.apiTable().insert(row);
+                last_correlation = hipapi.correlation_id.internal;
             }
         }
     }
+    const timestamp_t cb_end_time = clocktime_ns();
+    char buff[4096];
+    std::snprintf(buff, 4096, "count=%ld last=%ld", num_headers, last_correlation);
+    logger.createOverheadRecord(cb_begin_time, cb_end_time, "RocprofDataSource::buffer_callback", buff);
 }
 #endif
 
@@ -898,7 +908,7 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
 #if 1
         // Buffers
         constexpr auto buffer_size_bytes      = 0x40000;
-        constexpr auto buffer_watermark_bytes = buffer_size_bytes / 2;
+        constexpr auto buffer_watermark_bytes = buffer_size_bytes / 8;
 
         rocprofiler_create_buffer(context,
                                   buffer_size_bytes,
