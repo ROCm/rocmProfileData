@@ -699,7 +699,8 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.start = hipapi.start_timestamp;
                 row.end = hipapi.end_timestamp;
                 row.apiName_id = name_id;
-                row.args_id = EMPTY_STRING_ID;
+                //row.args_id = EMPTY_STRING_ID;
+                row.args_id = logger.stringTable().getOrCreate(json.dump());
                 row.api_id = hipapi.correlation_id.internal;
 
                 logger.apiTable().insert(row);
@@ -855,12 +856,9 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
     apiList.add("__hipPushCallConfiguration");
     apiList.add("__hipPopCallConfiguration");
     apiList.add("hipCtxSetCurrent");
-    apiList.add("hipEventRecord");
-    apiList.add("hipEventQuery");
     apiList.add("hipGetDeviceProperties");
     apiList.add("hipPeekAtLastError");
     apiList.add("hipModuleGetFunction");
-    apiList.add("hipEventCreateWithFlags");
 
     // Get a vector of the enabled api calls
     auto apis = apiList.allEnabled();
