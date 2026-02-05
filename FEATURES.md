@@ -20,6 +20,27 @@ Contents:
 
 
 --------------------------------------------------------------------------------
+## Schema V3
+The RPD schema was changed to support better annotation and improve performance.  The api table has addtional columns and string storage has been bifurcated.
+
+New columns in *rocpd_api*:
+- *domain*
+- *category*
+
+The *domain* column in intended to hold the name of the "library" that owns the calling function.  E.g. 'hip', 'cuda', 'roctx', 'miopen', 'hipblas', etc.
+The *category* column is domain specific and can subdivide the domain.  This is highly optional and may be blank in most cases.
+
+String storage has been split into two classes: enum-like and random.  Previously all strings where deduplicated to save storage space (at a performance cost).  Random strings do not benefit from the deduping but also hurt performance for the recurring strings.
+
+The string tables are now:
+- *rocpd_string*: (not new) contains 'enum-like' strings that are expected to repeat (e.g. apinames, kernelnames)
+- *rocpd_ustring*: contain unique strings that aren't expected to repeat (e.g. function arguments) 
+
+The initial use of *rocpd_ustring* is in the *rocpd_api(args_id)* column which holds function call arguments and user annotations.
+
+The key-value pair in (*rocpd_metadata*) with the schema version is now ("schema_version", "3")
+
+
 ## Remote Start/stop
 Recording can be started and stoped externally through a loader, librpd_remote.so
 

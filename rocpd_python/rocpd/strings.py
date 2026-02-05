@@ -26,8 +26,9 @@ def cleanStrings(imp, fix_autograd):
     string_users = [
     ("rocpd_op", "description_id"),
     ("rocpd_op", "opType_id"),
+    ("rocpd_api", "domain_id"),
+    ("rocpd_api", "category_id"),
     ("rocpd_api", "apiName_id"),
-    ("rocpd_api", "args_id"),
     ("rocpd_kernelapi", "kernelName_id"),
     ]
     # Explicity declared in rocpd_metadata.   Format is: tag = 'references::rocpd_string.id', value = '("table_name", "column_name")'

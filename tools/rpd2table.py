@@ -57,7 +57,7 @@ def process_rpd_to_df(rpd_path, markers_list):
         FROM rocpd_api A
         JOIN rocpd_string B on B.id = args_id
         WHERE apiname_id IN (select id from rocpd_string where string = 'UserMarker')
-        AND args_id IN (select id from rocpd_string where string in ({', '.join(['?'] * len(markers_list))}))
+        AND args_id IN (select id from rocpd_ustring where string in ({', '.join(['?'] * len(markers_list))}))
     """
     print(f"Extracting markers for: {markers_list}")
     connection.execute(marker_list_update_query, markers_list)
