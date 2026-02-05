@@ -30,9 +30,12 @@ class RaptorParser:
     """
     Pandas dataframes:
 
-    op_df       : Record for each GPU operation (ie kernel).  Includes pre-gap, duration,
-                  call count, name, etc.  op_df is the foundational dataframe required to compute all the other dataframes.
+    op_df       : Record for each GPU operation (ie kernel).
+                  Includes pre-gap, duration, call count, name, etc.
+                  op_df is the foundational dataframe required to compute all the other dataframes.
+
     kernelseq_df: Group ops witn same kernel sequence into a summary.  
+
     category_df : Group kernels with the same name based on user-specified categories.  
                   Add "Other" category for kernels not matching any of the patterns.
     
@@ -66,6 +69,7 @@ class RaptorParser:
 
     prekernel_seq : int = 2
     zscore_threshold : int = -1 # -1 disables, but 3.0 is good value to capture 99.7% of a normal distribution 
+    category_latency_ns = 0
 
     roi_start_ns : int = None
     roi_end_ns   : int = None
@@ -75,6 +79,7 @@ class RaptorParser:
     # Special internal category names:
     _other_cat = "_Other"
     _gpu_idle_cat = "_GPU_Idle"
+    _latency_cat = "_Latency"
     _collective_cat = "_Collective"
     _var_cat = "_Variability"
 
@@ -112,6 +117,11 @@ class RaptorParser:
             self.last_abs_ns = \
                 self.con.execute("select MAX(end) from rocpd_api;").fetchall()[0][0]
 
+            if self.first_abs_ns is None:
+                raise RuntimeError("Did not find start API - RPD file may not contain any valid APIs?")
+            if self.last_abs_ns is None:
+                raise RuntimeError("Did not find last API - RPD file may not contain any valid APIs?")
+
             assert self.last_abs_ns >= self.first_abs_ns
 
             self.set_roi_from_str(self.roi_start, self.roi_end)
@@ -123,9 +133,10 @@ class RaptorParser:
             except FileNotFoundError:
                 pass
 
-    def reset(self):
+    def reset(self, reset_op_df=True):
         """ Reset all cached data-frames to force re-computation. """
-        self.op_df = None
+        if reset_op_df:
+            self.op_df = None
         self.kernelseq_df = None
         self.category_df = None
         self.variability_df = None
@@ -150,6 +161,10 @@ class RaptorParser:
         self.gaps.sort()
         self.gaps = [0] + self.gaps + [np.inf]
         self.reset()
+
+    def set_category_json(self, category_json):
+        self.category_json = category_json
+        self.reset(reset_op_df=False)
 
     def shrink_roi_from_rel_ns(self, roi_start_ns, roi_end_ns):
         """ Shrink (or do not change) the ROI """
@@ -403,6 +418,7 @@ class RaptorParser:
         if outfile is None:
             f = sys.stdout
         else:
+            print("info: writing results to ", os.getcwd(), outfile)
             f = open(outfile, "w")
 
         print ("%10s %9s %13s %13s %10s %5s %s" % ("GPU.Seq_Id", "PreGap_us", "Start_ms", "End_ms", "Dur_us", "Outlr?", "Kernel"), file=f)
@@ -604,6 +620,7 @@ class RaptorParser:
         return self.monitor_df
 
     def set_roi_from_kernel(self):
+        """ Automatically set the ROI around the hottest kernel """
         kernelseq_df = self.get_kernelseq_df()
         top_row = kernelseq_df[self.kernelseq_df['Category'] != 'GAP'].iloc[0]
 
@@ -621,6 +638,7 @@ class RaptorParser:
 
         self.shrink_roi_from_rel_ns(roi_start_ns, roi_end_ns)
         pass
+
 
     @staticmethod
     def read_category_file(category_file):
@@ -680,7 +698,7 @@ class RaptorParser:
 
         self._assign_categories(kernelseq_df, categories)
 
-        # Create the category db 
+        # Create the category df 
         cat_gb = kernelseq_df.groupby('Category')
         category_df = pd.DataFrame(cat_gb.size(), columns=['UniqKernels'])
         df = cat_gb.agg({
@@ -689,6 +707,20 @@ class RaptorParser:
                 ('VarSum_ns','') : 'sum'
             }) 
         category_df = pd.concat([category_df, df], axis='columns')
+        if self.category_latency_ns:
+            idle_filter = category_df.index.str.endswith(self._gpu_idle_cat)
+            cat_no_idle_df = category_df[~idle_filter]
+            latency_row = (
+                cat_no_idle_df['UniqKernels'].sum(),
+                cat_no_idle_df[('TotalCalls','')].sum(),
+                cat_no_idle_df[('TotalCalls','')].sum() * self.category_latency_ns,
+                0)
+            new_dur = \
+                category_df.loc[~idle_filter, [('Duration_ns', 'sum')]].iloc[:,0] - \
+                category_df.loc[~idle_filter, [('TotalCalls','')]].iloc[:,0] * self.category_latency_ns
+            category_df.loc[~idle_filter, [('Duration_ns', 'sum')]] = new_dur
+
+            category_df.loc[self._latency_cat] = latency_row
 
         # rename columns and index:
         total_dur_col = 'TotalDur_' + duration_units
@@ -757,7 +789,8 @@ class RaptorParser:
         if xls_file_name == None:
             xls_file_name = pathlib.PurePath(self.rpd_file).with_suffix(".xlsx")
         with pd.ExcelWriter(xls_file_name) as writer:
-            print ("info: writing xls file", xls_file_name)
+            xls_file_name = os.path.abspath(xls_file_name)
+            print ("info: writing xls file '", xls_file_name, "'")
             self.get_kernelseq_df().to_excel(writer, sheet_name="kernelseq_df")
             self.get_pretty_kernelseq_df().to_excel(writer, sheet_name="pretty_kernelseq_df")
             self.get_category_df().to_excel(writer, sheet_name="category_df")

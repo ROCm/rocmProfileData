@@ -28,27 +28,37 @@ class Metadata(models.Model):
     tag = models.CharField(max_length=4096)
     value = models.CharField(max_length=4096)
 
+# Commonly repeated strings - e.g. enums
 class String(models.Model):
     string = models.CharField(max_length=4096)
     class Meta:
         indexes = [
              models.Index(fields=['string'])
         ]
-
-class KernelCodeObject(models.Model):
-    vgpr = models.IntegerField(default=0)
-    sgpr = models.IntegerField(default=0)
-    fbar = models.IntegerField(default=0)
+# Unique strings - rarely/never repeating, not deduped
+class UString(models.Model):
+    string = models.CharField(max_length=4096)
+    class Meta:
+        indexes = [
+             models.Index(fields=['string'])
+        ]
 
 class Api(models.Model):
     pid = models.IntegerField(default=0)
     tid = models.IntegerField(default=0)
+    domain = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+    category = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
     apiName = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
-    args = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+    args = models.ForeignKey(UString, related_name='+', on_delete=models.PROTECT)
     #ops = models.ManyToManyField(Op, through = 'ApiOps')
     ops = models.ManyToManyField('Op')
     start = models.IntegerField(default=0)
     end = models.IntegerField(default=0)
+
+#class Annotation(models.Model):
+#    domain = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+#    category = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+#    args = models.ForeignKey(UString, related_name='+', on_delete=models.PROTECT)
 
 class Op(models.Model):
     gpuId = models.IntegerField(default=0)
@@ -57,8 +67,8 @@ class Op(models.Model):
     opType = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT) 
     description = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
     #inputSignals = models.ManyToManyField(Op, through = 'InputSignal')
-    inputSignals = models.ManyToManyField('self')
-    completionSignal = models.CharField(max_length=18)  #64 bit int
+    #inputSignals = models.ManyToManyField('self')
+    #completionSignal = models.CharField(max_length=18)  #64 bit int
     start = models.IntegerField(default=0)
     end = models.IntegerField(default=0)
 
@@ -73,11 +83,11 @@ class KernelApi(Api):
     workgroupZ = models.IntegerField(default=0)
     groupSegmentSize = models.IntegerField(default=0)
     privateSegmentSize = models.IntegerField(default=0)
-    codeObject = models.ForeignKey(KernelCodeObject, on_delete=models.PROTECT)
     kernelName = models.ForeignKey(String, on_delete=models.PROTECT)
-    kernelArgAddress = models.CharField(max_length=18)  #64 bit int
-    aquireFence = models.CharField(max_length=8)   #(none, agent, system)
-    releaseFence = models.CharField(max_length=8)  #(none, agent, system)
+    #codeObject = models.ForeignKey(KernelCodeObject, on_delete=models.PROTECT)
+    #kernelArgAddress = models.CharField(max_length=18)  #64 bit int
+    #aquireFence = models.CharField(max_length=8)   #(none, agent, system)
+    #releaseFence = models.CharField(max_length=8)  #(none, agent, system)
 
 class CopyApi(Api):
     #api = models.OneToOneField(Api, on_delete=models.PROTECT, primary_key=True)
@@ -93,11 +103,10 @@ class CopyApi(Api):
     sync = models.BooleanField()
     pinned = models.BooleanField()
 
-class BarrierOp(Op):
-    #op = models.OneToOneField(Ops, on_delete=models.PROTECT, primary_key=True)
-    signalCount = models.IntegerField()
-    aquireFence = models.CharField(max_length=8)   #(none, agent, system)
-    releaseFence = models.CharField(max_length=8)  #(none, agent, system)
+class Counter(models.Model):
+    op = models.ForeignKey(Op, related_name='+', on_delete=models.PROTECT)
+    name = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+    value = models.FloatField()
 
 class Monitor(models.Model):
     class DeviceType(models.TextChoices):
@@ -118,9 +127,11 @@ class Monitor(models.Model):
     end = models.IntegerField(default=0)
     value = models.CharField(max_length=255)
 
-#class InputSignal(models.Model)
-#    op = models.ForeignKey(Ops, on_delete=models.PROTECT)
-#    inputOp = models.ForeignKey(Ops, on_delete=models.PROTECT)
+class StackFrame(models.Model):
+    api_ptr = models.ForeignKey(Api, related_name='+', on_delete=models.PROTECT)
+    depth = models.IntegerField(default=0)
+    name = models.ForeignKey(String, related_name='+', on_delete=models.PROTECT)
+
 
 #class ApiOps(models.Model)
 #    api = models.ForeignKey(Api, on_delete=models.PROTECT)

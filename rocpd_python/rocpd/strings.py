@@ -26,8 +26,9 @@ def cleanStrings(imp, fix_autograd):
     string_users = [
     ("rocpd_op", "description_id"),
     ("rocpd_op", "opType_id"),
+    ("rocpd_api", "domain_id"),
+    ("rocpd_api", "category_id"),
     ("rocpd_api", "apiName_id"),
-    ("rocpd_api", "args_id"),
     ("rocpd_kernelapi", "kernelName_id"),
     ]
     # Explicity declared in rocpd_metadata.   Format is: tag = 'references::rocpd_string.id', value = '("table_name", "column_name")'
@@ -55,10 +56,10 @@ def cleanStrings(imp, fix_autograd):
 
     # Clean up unrefferenced strings.  Tools can change strings (names, args, etc) and may leave strings that are no longer being used.
     imp.connection.execute("""
-        CREATE TEMPORARY TABLE IF NOT EXISTS "temp.activeString" ("id" integer NOT NULL PRIMARY KEY);
+        CREATE TEMPORARY TABLE IF NOT EXISTS "activeString" ("id" integer NOT NULL PRIMARY KEY);
         """)
     for column in string_users:
-        query = f"""INSERT OR IGNORE INTO "temp.activeString" SELECT {column[1]} from {column[0]}"""
+        query = f"""INSERT OR IGNORE INTO "activeString" SELECT {column[1]} from {column[0]}"""
         #print(query)
         imp.connection.execute(query)
 
@@ -74,13 +75,15 @@ def cleanStrings(imp, fix_autograd):
         CREATE INDEX "rocpd_strin_string_c7b9cd_idx" ON "rocpd_string" ("string");
         """)
     imp.connection.execute("""
-        INSERT into rocpd_string(string) SELECT distinct string from rocpd_string_original where id in (SELECT id FROM "temp.activeString") order by id;
+        INSERT into rocpd_string(string) SELECT distinct string from rocpd_string_original where id in (SELECT id FROM "activeString") order by id;
         """)
 
 
     # Map from old id to new; UPDATE all table with new string id
+    # WARNING: the 2nd union term handles a string referenced but not present in rocpd_string.
+    #    E.g. a corrupt file.
     imp.connection.execute("""
-        CREATE TEMPORARY VIEW IF NOT EXISTS mapper as SELECT A.id as before, B.id as after from rocpd_string_original A join rocpd_string B on B.string = A.string;
+        CREATE TEMPORARY VIEW IF NOT EXISTS mapper as SELECT A.id as before, B.id as after from rocpd_string_original A join rocpd_string B on B.string = A.string UNION ALL select id, 1 from activeString where id not in (select distinct id from rocpd_string_original);
         """)
 
     for column in string_users:
@@ -93,7 +96,7 @@ def cleanStrings(imp, fix_autograd):
         DROP TABLE rocpd_string_original
         """)
     imp.connection.execute("""
-        DROP TABLE "temp.activeString"
+        DROP TABLE "activeString"
         """)
 
     imp.connection.commit()

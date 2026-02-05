@@ -26,6 +26,7 @@
 #include <string>
 #include <map>
 #include <unordered_map>
+#include <cstddef>
 #include <cstdint>
 
 //#include <roctracer_hip.h>

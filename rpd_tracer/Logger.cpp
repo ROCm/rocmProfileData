@@ -21,8 +21,6 @@
 ********************************************************************************/
 #include "Logger.h"
 
-//#include "hsa_rsrc_factory.h"
-
 #include <list>
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,6 +135,7 @@ void Logger::rpdflush()
     m_opTable->flush();
     m_apiTable->flush();
     m_monitorTable->flush();
+    m_stackFrameTable->flush();
 
     const timestamp_t cb_end_time = clocktime_ns();
     createOverheadRecord(cb_begin_time, cb_end_time, "rpdflush", "");
@@ -197,20 +196,24 @@ void Logger::init()
 
     m_metadataTable = new MetadataTable(filename);
     m_stringTable = new StringTable(filename);
+    m_ustringTable = new UStringTable(filename);
     m_kernelApiTable = new KernelApiTable(filename);
     m_copyApiTable = new CopyApiTable(filename);
     m_opTable = new OpTable(filename);
     m_apiTable = new ApiTable(filename);
     m_monitorTable = new MonitorTable(filename);
+    m_stackFrameTable = new StackFrameTable(filename);
 
     // Offset primary keys so they do not collide between sessions
     sqlite3_int64 offset = m_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
     m_metadataTable->setIdOffset(offset);
     m_stringTable->setIdOffset(offset);
+    m_ustringTable->setIdOffset(offset);
     m_kernelApiTable->setIdOffset(offset);
     m_copyApiTable->setIdOffset(offset);
     m_opTable->setIdOffset(offset);
     m_apiTable->setIdOffset(offset);
+    m_stackFrameTable->setIdOffset(offset);
 
     // Create one instance of each available datasource
     std::list<std::string> factories = {
@@ -262,6 +265,13 @@ void Logger::init()
             m_worker = new std::thread(&Logger::autoflushWorker, this);
         }
     }
+
+    // Enable stack frame recording
+    const char *stackframe = getenv("RPDT_STACKFRAMES");
+    if (stackframe != nullptr) {
+        int val = atoi(stackframe);
+        m_writeStackFrames = (val != 0);
+    }
 }
 
 static bool doFinalize = true;
@@ -289,8 +299,10 @@ void Logger::finalize()
         m_kernelApiTable->finalize();
         m_copyApiTable->finalize();
         m_monitorTable->finalize();
+        m_stackFrameTable->finalize();
         m_writeOverheadRecords = false;	// Don't make any new overhead records (api calls)
         m_apiTable->finalize();
+        m_ustringTable->finalize();
         m_stringTable->finalize();	// String table last
 
         const timestamp_t end_time = clocktime_ns();
@@ -316,7 +328,7 @@ void Logger::createOverheadRecord(uint64_t start, uint64_t end, const std::strin
     row.start = start;
     row.end = end;
     row.apiName_id = m_stringTable->getOrCreate(name);
-    row.args_id = m_stringTable->getOrCreate(args);
+    row.args_id = m_ustringTable->create(args);
     row.api_id = 0;
 
     //fprintf(stderr, "overhead: %s (%s) - %f usec\n", name.c_str(), args.c_str(), (end-start) / 1000.0);

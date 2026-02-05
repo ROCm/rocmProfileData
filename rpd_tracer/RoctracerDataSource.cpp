@@ -21,8 +21,6 @@
 ********************************************************************************/
 #include "RoctracerDataSource.h"
 
-//#include "hsa_rsrc_factory.h"
-
 #include <roctracer_hip.h>
 #include <roctracer_ext.h>
 #include <roctracer_roctx.h>
@@ -106,6 +104,7 @@ namespace {
     int mapDeviceId(int id) { return id - deviceOffset; };
 } // namespace
 
+
 void RoctracerDataSource::api_callback(
     uint32_t domain,
     uint32_t cid,
@@ -125,12 +124,16 @@ void RoctracerDataSource::api_callback(
             char buff[4096];
             ApiTable::row row;
 
+            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
+
             const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
             sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
             row.pid = GetPid();
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
+            row.domain_id = domain_id;
+            row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
             row.api_id = data->correlation_id;
@@ -140,12 +143,12 @@ void RoctracerDataSource::api_callback(
                     std::snprintf(buff, 4096, "ptr=%p | size=0x%x",
                         *data->args.hipMalloc.ptr,
                         (uint32_t)(data->args.hipMalloc.size));
-                    row.args_id = logger.stringTable().getOrCreate(std::string(buff)); 
+                    row.args_id = logger.ustringTable().create(std::string(buff));
                     break;
                 case HIP_API_ID_hipFree:
                     std::snprintf(buff, 4096, "ptr=%p",
                         data->args.hipFree.ptr);
-                    row.args_id = logger.stringTable().getOrCreate(std::string(buff)); 
+                    row.args_id = logger.ustringTable().create(std::string(buff));
                     break;
 
                 case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice:
@@ -719,27 +722,27 @@ void RoctracerDataSource::api_callback(
                     }
                     break;
                 case HIP_API_ID_hipStreamBeginCapture:
-                    row.args_id = logger.stringTable().getOrCreate(
+                    row.args_id = logger.ustringTable().create(
                         fmt::format("stream = {} | mode = {}", (void*)data->args.hipStreamBeginCapture.stream, data->args.hipStreamBeginCapture.mode)
                     );
                     break;
                 case HIP_API_ID_hipStreamEndCapture:
-                    row.args_id = logger.stringTable().getOrCreate(
+                    row.args_id = logger.ustringTable().create(
                         fmt::format("stream = {} | graph = {}", (void*)data->args.hipStreamEndCapture.stream, (void*)*(data->args.hipStreamEndCapture.pGraph))
                     );
                     break;
                 case HIP_API_ID_hipGraphInstantiate:
-                    row.args_id = logger.stringTable().getOrCreate(
+                    row.args_id = logger.ustringTable().create(
                         fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiate.pGraphExec), (void *)data->args.hipGraphInstantiate.graph)
                     );
                     break;
                 case HIP_API_ID_hipGraphInstantiateWithFlags:
-                    row.args_id = logger.stringTable().getOrCreate(
+                    row.args_id = logger.ustringTable().create(
                         fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiateWithFlags.pGraphExec), (void *)data->args.hipGraphInstantiateWithFlags.graph)
                     );
                     break;
                 case HIP_API_ID_hipGraphLaunch:
-                    row.args_id = logger.stringTable().getOrCreate(
+                    row.args_id = logger.ustringTable().create(
                         fmt::format("graphExec = {} | stream = {}", (void *)data->args.hipGraphLaunch.graphExec, (void *)data->args.hipGraphLaunch.stream)
                     );
                     break;
@@ -748,6 +751,7 @@ void RoctracerDataSource::api_callback(
             }
 #endif
             logger.apiTable().insert(row);
+            unwind(logger, name, row.api_id);
         }
     }
 
@@ -759,6 +763,9 @@ void RoctracerDataSource::api_callback(
         row.tid = GetTid();
         row.start = clocktime_ns();
         row.end = row.start;
+        static sqlite3_int64 roctxId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+        row.domain_id = roctxId;
+        row.category_id = EMPTY_STRING_ID;
         static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
         row.apiName_id = markerId;
         row.args_id = EMPTY_STRING_ID;
@@ -766,11 +773,11 @@ void RoctracerDataSource::api_callback(
 
         switch (cid) {
             case ROCTX_API_ID_roctxMarkA:
-                row.args_id = logger.stringTable().getOrCreate(data->args.message);
+                row.args_id = logger.ustringTable().create(data->args.message);
                 logger.apiTable().insertRoctx(row);
                 break;
             case ROCTX_API_ID_roctxRangePushA:
-                row.args_id = logger.stringTable().getOrCreate(data->args.message);
+                row.args_id = logger.ustringTable().create(data->args.message);
                 logger.apiTable().pushRoctx(row);
                 break;
             case ROCTX_API_ID_roctxRangePop:
@@ -871,7 +878,6 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
             row.gpuId = mapDeviceId(record->device_id);
             row.queueId = record->queue_id;
             row.sequenceId = 0;
-            strncpy(row.completionSignal, "", 18);
             row.start = record->begin_ns + toffset;
             row.end = record->end_ns + toffset;
             row.description_id = ((record->kind == HIP_OP_DISPATCH_KIND_KERNEL_)

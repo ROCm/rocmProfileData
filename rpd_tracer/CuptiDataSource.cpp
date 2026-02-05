@@ -608,6 +608,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                     break;
             }
             logger.apiTable().insert(row);
+            unwind(logger, name, row.api_id);
         }
     }
     else if (domain = CUPTI_CB_DOMAIN_NVTX) {

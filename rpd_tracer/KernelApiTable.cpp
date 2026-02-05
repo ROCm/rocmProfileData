@@ -29,7 +29,9 @@
 #include "Utility.h"
 
 
-const char *SCHEMA_KERNELAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_kernelapi\" (\"api_ptr_id\" integer NOT NULL PRIMARY KEY, \"stream\" varchar(18) NOT NULL, \"gridX\" integer NOT NULL, \"gridY\" integer NOT NULL, \"gridz\" integer NOT NULL, \"workgroupX\" integer NOT NULL, \"workgroupY\" integer NOT NULL, \"workgroupZ\" integer NOT NULL, \"groupSegmentSize\" integer NOT NULL, \"privateSegmentSize\" integer NOT NULL, \"kernelArgAddress\" varchar(18) NOT NULL, \"aquireFence\" varchar(8) NOT NULL, \"releaseFence\" varchar(8) NOT NULL, \"codeObject_id\" integer, \"kernelName_id\" integer NOT NULL)";
+const char *SCHEMA_KERNELAPI = R"|(
+CREATE TEMPORARY TABLE  "temp_rocpd_kernelapi" ("api_ptr_id" bigint NOT NULL PRIMARY KEY REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "stream" varchar(18) NOT NULL, "gridX" integer NOT NULL, "gridY" integer NOT NULL, "gridZ" integer NOT NULL, "workgroupX" integer NOT NULL, "workgroupY" integer NOT NULL, "workgroupZ" integer NOT NULL, "groupSegmentSize" integer NOT NULL, "privateSegmentSize" integer NOT NULL, "kernelName_id" bigint NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED)
+)|";
 
 class KernelApiTablePrivate
 {
@@ -54,7 +56,7 @@ KernelApiTable::KernelApiTable(const char *basefile)
     ret = sqlite3_exec(m_connection, SCHEMA_KERNELAPI, NULL, NULL, NULL);
 
     // prepare queries to insert row
-    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_kernelapi(api_ptr_id, stream, gridX, gridY, gridz, workgroupX, workgroupY, workgroupZ, groupSegmentSize, privateSegmentSize, kernelArgAddress, aquireFence, releaseFence, codeObject_id, kernelName_id) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", -1, &d->apiInsert, NULL);
+    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_kernelapi(api_ptr_id, stream, gridX, gridY, gridz, workgroupX, workgroupY, workgroupZ, groupSegmentSize, privateSegmentSize, kernelName_id) values (?,?,?,?,?,?,?,?,?,?,?)", -1, &d->apiInsert, NULL);
 }
 
 
@@ -125,10 +127,6 @@ void KernelApiTable::writeRows()
         sqlite3_bind_int(d->apiInsert, index++, r.workgroupZ);
         sqlite3_bind_int(d->apiInsert, index++, r.groupSegmentSize);
         sqlite3_bind_int(d->apiInsert, index++, r.privateSegmentSize);
-        sqlite3_bind_text(d->apiInsert, index++, "", -1, SQLITE_STATIC);
-        sqlite3_bind_text(d->apiInsert, index++, "", -1, SQLITE_STATIC);
-        sqlite3_bind_text(d->apiInsert, index++, "", -1, SQLITE_STATIC);
-        sqlite3_bind_text(d->apiInsert, index++, "", -1, SQLITE_STATIC);
         sqlite3_bind_int64(d->apiInsert, index++, r.kernelName_id + m_idOffset);
         int ret = sqlite3_step(d->apiInsert);
         sqlite3_reset(d->apiInsert);

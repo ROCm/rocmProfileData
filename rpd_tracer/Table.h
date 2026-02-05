@@ -81,6 +81,30 @@ private:
 };
 
 
+class UStringTablePrivate;
+class UStringTable: public BufferedTable
+{
+public:
+    UStringTable(const char *basefile);
+    virtual ~UStringTable();
+
+    struct row {
+        std::string string;
+        sqlite3_int64 string_id;
+    };
+
+    //void insert(const row&);
+    sqlite3_int64 create(const std::string&);
+
+private:
+    UStringTablePrivate *d;
+    friend class UStringTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
+};
+
+
 class ApiTablePrivate;
 class ApiTable: public BufferedTable
 {
@@ -93,6 +117,8 @@ public:
         int tid;
         sqlite3_int64 start;
         sqlite3_int64 end;
+        sqlite3_int64 domain_id;
+        sqlite3_int64 category_id;
         sqlite3_int64 apiName_id;
         sqlite3_int64 args_id;
         sqlite3_int64 api_id;  // correlation id
@@ -218,7 +244,6 @@ public:
         int gpuId;
         int queueId;
         int sequenceId;
-        char completionSignal[18];
         sqlite3_int64 start;
         sqlite3_int64 end;
         sqlite3_int64 description_id;
@@ -277,6 +302,30 @@ public:
 private:
     MonitorTablePrivate *d;
     friend class MonitorTablePrivate;
+
+    virtual void writeRows() override;
+    virtual void flushRows() override;
+};
+
+
+class StackFrameTablePrivate;
+class StackFrameTable: public BufferedTable
+{
+public:
+    StackFrameTable(const char *basefile);
+    virtual ~StackFrameTable();
+
+    struct row {
+        sqlite3_int64 api_id {0};   // ApiTable primary key (correlation id)
+        int depth;
+        sqlite3_int64 name_id;
+    };
+
+    void insert(const row&);
+
+private:
+    StackFrameTablePrivate *d;
+    friend class StackFrameTablePrivate;
 
     virtual void writeRows() override;
     virtual void flushRows() override;

@@ -56,6 +56,16 @@ if args.format == "object":
 
 outfile.write("[ {}\n");
 
+# quick compatability hack for schema v2 -> v3
+try:
+    schema_version = connection.execute("SELECT value from rocpd_metadata where tag='schema_version'").fetchall()[0][0]
+except:
+    schema_version = None
+
+if schema_version == None or int(schema_version) <= 2:
+    connection.execute("CREATE TEMPORARY VIEW rocpd_ustring as SELECT * from rocpd_string")
+    print(f"Schema: v{schema_version}")
+
 for row in connection.execute("select distinct gpuId from rocpd_op"):
     try:
         outfile.write(",{\"name\": \"process_name\", \"ph\": \"M\", \"pid\":\"%s\",\"args\":{\"name\":\"%s\"}}\n"%(row[0], "GPU"+str(row[0])))
@@ -138,7 +148,7 @@ except:
     pass
 
 #Output apis
-for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000.0, (rocpd_api.end-rocpd_api.start) / 1000.0, (rocpd_api.end != rocpd_api.start) as has_duration from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_string B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeStringApi)):
+for row in connection.execute("select A.string as apiName, B.string as args, pid, tid, rocpd_api.start/1000.0, (rocpd_api.end-rocpd_api.start) / 1000.0, (rocpd_api.end != rocpd_api.start) as has_duration from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id INNER Join rocpd_ustring B on B.id = rocpd_api.args_id %s order by rocpd_api.id"%(rangeStringApi)):
     try:
         if row[0]=="UserMarker":
             if row[6] == 0:	# instantanuous "mark" messages
@@ -225,7 +235,7 @@ sizes = {}    # address -> size
 totalSize = 0
 exp = re.compile("^ptr\((.*)\)\s+size\((.*)\)$")
 exp2 = re.compile("^ptr\((.*)\)$")
-for row in connection.execute("SELECT rocpd_api.end/1000.0 as ts, B.string, '1'  FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id=rocpd_api.args_id WHERE A.string='hipFree' UNION ALL SELECT rocpd_api.start/1000.0, B.string, '0' FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id=rocpd_api.args_id WHERE A.string='hipMalloc' ORDER BY ts asc"):
+for row in connection.execute("SELECT rocpd_api.end/1000.0 as ts, B.string, '1'  FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_ustring B ON B.id=rocpd_api.args_id WHERE A.string='hipFree' UNION ALL SELECT rocpd_api.start/1000.0, B.string, '0' FROM rocpd_api INNER JOIN rocpd_string A ON A.id=rocpd_api.apiName_id INNER JOIN rocpd_ustring B ON B.id=rocpd_api.args_id WHERE A.string='hipMalloc' ORDER BY ts asc"):
     try:
         if row[2] == '0':  #malloc
             m = exp.match(row[1])
@@ -264,7 +274,7 @@ class GpuFrame:
         self.totalOps = 0
 
 # FIXME: include 'start' (in ns) so we can ORDER BY it and break ties?
-for row in connection.execute("SELECT '0', start/1000.0, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000.0 != rocpd_api.end/1000.0 %s UNION ALL SELECT '1', end/1000.0, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_string B on B.id = rocpd_api.args_id AND rocpd_api.start/1000.0 != rocpd_api.end/1000.0 %s UNION ALL SELECT '2', rocpd_api.start/1000.0, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000.0, rocpd_op.end/1000.0 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id %s ORDER BY start/1000.0 asc"%(rangeStringApi, rangeStringApi, rangeStringApi)):
+for row in connection.execute("SELECT '0', start/1000.0, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_ustring B on B.id = rocpd_api.args_id AND rocpd_api.start/1000.0 != rocpd_api.end/1000.0 %s UNION ALL SELECT '1', end/1000.0, pid, tid, B.string as label, '','','', '' from rocpd_api INNER JOIN rocpd_string A on A.id = rocpd_api.apiName_id AND A.string = 'UserMarker' INNER JOIN rocpd_ustring B on B.id = rocpd_api.args_id AND rocpd_api.start/1000.0 != rocpd_api.end/1000.0 %s UNION ALL SELECT '2', rocpd_api.start/1000.0, pid, tid, '' as label, gpuId, queueId, rocpd_op.start/1000.0, rocpd_op.end/1000.0 from rocpd_api_ops INNER JOIN rocpd_api ON rocpd_api_ops.api_id = rocpd_api.id INNER JOIN rocpd_op ON rocpd_api_ops.op_id = rocpd_op.id %s ORDER BY start/1000.0 asc"%(rangeStringApi, rangeStringApi, rangeStringApi)):
     try:
         key = (row[2], row[3])    # Key is 'pid,tid'
         if row[0] == '0':  # Frame start

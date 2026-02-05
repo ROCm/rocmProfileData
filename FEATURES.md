@@ -8,10 +8,12 @@ This is a changelog that describes new features as they are added.  Newest first
 Contents:
 <!-- toc -->
 
+- [Schema v3](#schema-v3)
 - [Remote Start/stop](#remote-startstop)
 - [Graph Subclass](#graph-subclass)
 - [Pytorch Autograd Subclass](#pytorch-autograd-subclass)
 - [Call Stack Accounting](#call-stack-accounting)
+- [Stackframe recording](#stackframe-recording)
 - [Rpd_tracer Start/stop](#rpd_tracer-startstop)
 - [Schema v2](#schema-v2)
 
@@ -19,6 +21,29 @@ Contents:
 
 
 --------------------------------------------------------------------------------
+## Schema V3
+The RPD schema was changed to support better annotation and improve performance.  The api table has addtional columns and string storage has been bifurcated.
+
+#### Api Calls
+New columns in *rocpd_api*:
+- **domain**
+- **category**
+
+The **domain** column in intended to hold the name of the "library" that owns the calling function.  E.g. 'hip', 'cuda', 'roctx', 'miopen', 'hipblas', etc.
+The **category** column is domain specific and can subdivide the domain.  This is highly optional and may be blank in most cases.
+
+#### Strings
+String storage has been split into two classes: enum-like and random.  Previously all strings where deduplicated to save storage space (at a performance cost).  Random strings do not benefit from the deduping but also hurt performance for the recurring strings.
+
+The string tables are now:
+- **rocpd_string**: (not new) contains 'enum-like' strings that are expected to repeat (e.g. apinames, kernelnames)
+- **rocpd_ustring**: contains unique strings that aren't expected to repeat (e.g. function arguments)
+
+The initial use of *rocpd_ustring* is in the *rocpd_api(args_id)* column which holds function call arguments and user annotations.
+
+The key-value pair in metadata (*rocpd_metadata*) with the schema version is now ("schema_version", "3")
+
+
 ## Remote Start/stop
 Recording can be started and stoped externally through a loader, librpd_remote.so
 
@@ -180,6 +205,35 @@ for row in connection.execute("select args, avg(cpu_time), avg(gpu_time) from ca
 ```
 
 
+--------------------------------------------------------------------------------
+## Stackframe recording
+Stackframe recording requires initialization of the `ccptrace` submodule. Additionally,`RPDT_STACKFRAMES=1` must must be set at profiling time as an environment variable to record stack traces for every HIP API call. The data is recorded in the `rocpd_stackframe` table:
+```
+> select * from rocpd_stackframe limit 20;
+id|api_ptr_id|depth|name_id
+1|2|0|5
+2|2|1|6
+3|2|2|7
+4|2|3|8
+5|2|4|9
+6|2|5|10
+7|3|0|12
+8|3|1|13
+9|3|2|14
+10|3|3|15
+11|3|4|16
+12|6|0|20
+13|6|1|21
+14|6|2|14
+15|6|3|15
+16|6|4|16
+17|9|0|20
+18|9|1|21
+19|9|2|14
+20|9|3|15
+```
+The `api_ptr_id` maps to the HIP API correlation ID, `depth` is the stack trace depth starting with 0, `name_id` is the stack frame mapping to `rocpd_string`.
+
 
 --------------------------------------------------------------------------------
 
@@ -257,4 +311,4 @@ The following views will be available in newly created files:
 - **copyop**  
     Subset of copies that generated gpu ops, with gpu timing
 
-There is now a key-value pair in (*rocpd_metadata*) with the schema version. E.g. ("schema_version", "2")
+There is now a key-value pair in metadata (*rocpd_metadata*) with the schema version. E.g. ("schema_version", "2")
