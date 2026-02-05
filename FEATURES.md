@@ -8,6 +8,7 @@ This is a changelog that describes new features as they are added.  Newest first
 Contents:
 <!-- toc -->
 
+- [Schema v3](#schema-v3)
 - [Remote Start/stop](#remote-startstop)
 - [Graph Subclass](#graph-subclass)
 - [Pytorch Autograd Subclass](#pytorch-autograd-subclass)
@@ -20,6 +21,29 @@ Contents:
 
 
 --------------------------------------------------------------------------------
+## Schema V3
+The RPD schema was changed to support better annotation and improve performance.  The api table has addtional columns and string storage has been bifurcated.
+
+#### Api Calls
+New columns in *rocpd_api*:
+- **domain**
+- **category**
+
+The **domain** column in intended to hold the name of the "library" that owns the calling function.  E.g. 'hip', 'cuda', 'roctx', 'miopen', 'hipblas', etc.
+The **category** column is domain specific and can subdivide the domain.  This is highly optional and may be blank in most cases.
+
+#### Strings
+String storage has been split into two classes: enum-like and random.  Previously all strings where deduplicated to save storage space (at a performance cost).  Random strings do not benefit from the deduping but also hurt performance for the recurring strings.
+
+The string tables are now:
+- **rocpd_string**: (not new) contains 'enum-like' strings that are expected to repeat (e.g. apinames, kernelnames)
+- **rocpd_ustring**: contains unique strings that aren't expected to repeat (e.g. function arguments)
+
+The initial use of *rocpd_ustring* is in the *rocpd_api(args_id)* column which holds function call arguments and user annotations.
+
+The key-value pair in metadata (*rocpd_metadata*) with the schema version is now ("schema_version", "3")
+
+
 ## Remote Start/stop
 Recording can be started and stoped externally through a loader, librpd_remote.so
 
@@ -287,4 +311,4 @@ The following views will be available in newly created files:
 - **copyop**  
     Subset of copies that generated gpu ops, with gpu timing
 
-There is now a key-value pair in (*rocpd_metadata*) with the schema version. E.g. ("schema_version", "2")
+There is now a key-value pair in metadata (*rocpd_metadata*) with the schema version. E.g. ("schema_version", "2")

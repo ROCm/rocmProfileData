@@ -30,9 +30,13 @@
 #include "Utility.h"
 
 
-const char *SCHEMA_OP = "CREATE TEMPORARY TABLE \"temp_rocpd_op\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"gpuId\" integer NOT NULL, \"queueId\" integer NOT NULL, \"sequenceId\" integer NOT NULL, \"completionSignal\" varchar(18) NOT NULL, \"start\" integer NOT NULL, \"end\" integer NOT NULL, \"description_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"opType_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED)";
+const char *SCHEMA_OP = R"|(
+CREATE TEMPORARY TABLE "temp_rocpd_op" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "gpuId" integer NOT NULL, "queueId" integer NOT NULL, "sequenceId" integer NOT NULL, "start" integer NOT NULL, "end" integer NOT NULL, "description_id" bigint NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED, "opType_id" bigint NOT NULL REFERENCES "rocpd_string" ("id") DEFERRABLE INITIALLY DEFERRED);
+)|";
 
-const char *SCHEMA_API_OPS = "CREATE TEMPORARY TABLE \"temp_rocpd_api_ops\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"api_id\" integer NOT NULL REFERENCES \"rocpd_api\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"op_id\" integer NOT NULL REFERENCES \"rocpd_op\" (\"id\") DEFERRABLE INITIALLY DEFERRED)";
+const char *SCHEMA_API_OPS = R"|(
+CREATE TEMPORARY TABLE "temp_rocpd_api_ops" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "api_id" bigint NOT NULL REFERENCES "rocpd_api" ("id") DEFERRABLE INITIALLY DEFERRED, "op_id" bigint NOT NULL REFERENCES "rocpd_op" ("id") DEFERRABLE INITIALLY DEFERRED);
+)|";
 
 
 class OpTablePrivate
@@ -62,7 +66,7 @@ OpTable::OpTable(const char *basefile)
     ret = sqlite3_exec(m_connection, SCHEMA_API_OPS, NULL, NULL, NULL);
 
     // prepare queries to insert row
-    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, completionSignal, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
+    ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
     ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api_ops(api_id, op_id) values (?,?)", -1, &d->apiOpInsert, NULL);
 }
 
@@ -152,7 +156,6 @@ void OpTable::writeRows()
         sqlite3_bind_int(d->opInsert, index++, r.gpuId);
         sqlite3_bind_int(d->opInsert, index++, r.queueId);
         sqlite3_bind_int(d->opInsert, index++, r.sequenceId);
-        sqlite3_bind_text(d->opInsert, index++, "", -1, SQLITE_STATIC);
         sqlite3_bind_int64(d->opInsert, index++, r.start);
         sqlite3_bind_int64(d->opInsert, index++, r.end);
         sqlite3_bind_int64(d->opInsert, index++, r.description_id + m_idOffset);
