@@ -563,6 +563,8 @@ void RocprofDataSource::roctx_callback(rocprofiler_callback_tracing_record_t rec
         row.start = clocktime_ns();
         row.end = row.start;
         static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+        row.domain_id = markerId;
+        row.category_id = EMPTY_STRING_ID;
         row.apiName_id = markerId;
         row.args_id = EMPTY_STRING_ID;
         row.api_id = 0;
@@ -571,11 +573,11 @@ void RocprofDataSource::roctx_callback(rocprofiler_callback_tracing_record_t rec
 
         switch (record.operation) {
             case ROCPROFILER_MARKER_CORE_API_ID_roctxMarkA:
-                row.args_id = logger.stringTable().getOrCreate(data.args.roctxMarkA.message);
+                row.args_id = logger.ustringTable().create(data.args.roctxMarkA.message);
                 logger.apiTable().insertRoctx(row);
             break;
             case ROCPROFILER_MARKER_CORE_API_ID_roctxRangePushA:
-                row.args_id = logger.stringTable().getOrCreate(data.args.roctxRangePushA.message);
+                row.args_id = logger.ustringTable().create(data.args.roctxRangePushA.message);
                 logger.apiTable().pushRoctx(row);
             break;
             case ROCPROFILER_MARKER_CORE_API_ID_roctxRangePop:
@@ -613,7 +615,6 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.gpuId = s->agents.at(dispatch.agent_id.handle).logical_node_type_id;
                 row.queueId = dispatch.queue_id.handle;
                 row.sequenceId = 0;
-                strncpy(row.completionSignal, "", 18);
                 row.start = record->start_timestamp;
                 row.end = record->end_timestamp;
                 row.description_id = desc_id;
@@ -653,7 +654,6 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.gpuId = 0;
                 row.queueId = 0;	// FIXME, all wrong
                 row.sequenceId = 0;
-                strncpy(row.completionSignal, "", 18);
                 row.start = copy.start_timestamp;
                 row.end = copy.end_timestamp;
                 row.description_id = desc_id;
@@ -682,6 +682,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
             }
             else if (header->kind == ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API_EXT) {
                 auto &hipapi = *(static_cast<rocprofiler_buffer_tracing_hip_api_ext_record_t*>(header->payload));
+                static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
 
                 // extract args as json
                 nlohmann::json json;
@@ -698,9 +699,11 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.tid = hipapi.thread_id;
                 row.start = hipapi.start_timestamp;
                 row.end = hipapi.end_timestamp;
+                row.domain_id = domain_id;
+                row.category_id = EMPTY_STRING_ID;
                 row.apiName_id = name_id;
                 //row.args_id = EMPTY_STRING_ID;
-                row.args_id = logger.stringTable().getOrCreate(json.dump());
+                row.args_id = logger.ustringTable().create(json.dump());
                 row.api_id = hipapi.correlation_id.internal;
 
                 logger.apiTable().insert(row);
