@@ -245,6 +245,17 @@ void Logger::init()
         if (autostart == 0)
             startTracing = false;
     }
+
+    // Add delay before starting tracing/autoflush if RPDT_DELAY is set
+    const char *delay_env = getenv("RPDT_DELAY");
+    if (delay_env != nullptr) {
+        int delay_sec = atoi(delay_env);
+        if (delay_sec > 0) {
+            fprintf(stderr, "rpd_tracer: delaying start by %d seconds (RPDT_DELAY)\n", delay_sec);
+            sleep(delay_sec);
+        }
+    }
+
     if (startTracing == true) {
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->startTracing();
