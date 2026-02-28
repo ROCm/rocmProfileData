@@ -1,24 +1,42 @@
 
 PREFIX = /usr/local
 
-HIP_PATH?= $(wildcard /opt/rocm/)
-CUDA_PATH?= $(wildcard /usr/local/cuda/)
-CPPTRACE_INCLUDE_PATH?= $(wildcard ../cpptrace_install/include)
+HIP_PATH ?= $(wildcard /opt/rocm/)
+CUDA_PATH ?= $(wildcard /usr/local/cuda/)
+CPPTRACE_INCLUDE_PATH ?= $(wildcard ../cpptrace_install/include)
 
-HIPCC=$(HIP_PATH)/bin/hipcc
-
-TARGET=hcc
+ROCM_VERSION ?= $(shell cat /opt/rocm/.info/version)
 
 RPD_LIBS = -lsqlite3 -lfmt
 RPD_INCLUDES =
 RPD_SRCS = Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp UStringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp Unwind.cpp
 
 ifneq (,$(HIP_PATH))
-        $(info Building with roctracer)
-        RPD_LIBS += -L/opt/rocm/lib -lroctracer64 -lroctx64 -lamdhip64 -lrocm_smi64
-        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/roctracer -I/opt/rocm/include/hsa
-        RPD_SRCS += RoctracerDataSource.cpp #RocmSmiDataSource.cpp
+        $(info rocm_version is ${ROCM_VERSION})
+        #USE_ROCPROFILER_SDK = false
+        ifneq (,$(wildcard /opt/rocm/include/rocprofiler-sdk))
+        ifneq ($(shell echo ${ROCM_VERSION} | cut -d. -f1), 6)
+            USE_ROCPROFILER_SDK = true
+        endif
+        endif
+
+        ifeq ($(USE_ROCPROFILER_SDK), true)
+                $(info Building with rocprofiler-sdk)
+		RPD_LIBS += -lrocprofiler-sdk -lrocprofiler-sdk-roctx
+		RPD_SRCS += RocprofDataSource.cpp
+        else
+                $(info Building with roctracer)
+		RPD_LIBS += -lroctracer64 -lroctx64
+		RPD_SRCS += RoctracerDataSource.cpp
+		RPD_INCLUDES += -I/opt/rocm/include/roctracer
+        endif
+
+        RPD_LIBS += -L/opt/rocm/lib
+        RPD_LIBS += -lamdhip64 #-lrocm_smi64
+
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
+        RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/hsa
+        RPD_INCLUDES += -Ijson/include
 endif
 
 ifneq ($(CUDA_PATH),)
@@ -54,7 +72,7 @@ $(RPD_MAIN): $(RPD_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -g
 
 .cpp.o:
-	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++11 -fPIC -g -O3
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):
 #	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@
