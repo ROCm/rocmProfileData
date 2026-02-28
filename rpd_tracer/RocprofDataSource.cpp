@@ -28,10 +28,6 @@
 #include <rocprofiler-sdk/rocprofiler.h>
 #include <rocprofiler-sdk/cxx/name_info.hpp>
 
-#include "common/call_stack.hpp"
-#include "common/defines.hpp"
-#include "common/filesystem.hpp"
-
 #include <vector>
 #include <array>
 #include <string>
@@ -157,7 +153,6 @@ namespace
                    void*             cb_data) -> int {
                 nlohmann::json &json = *(static_cast<nlohmann::json*>(cb_data));
                 json[arg_name] = arg_value_str;
-                //fprintf(stderr, "%s: %s\n", arg_name, arg_value_str);
                 return 0;
             };
 
@@ -299,6 +294,7 @@ public:
     std::mutex apiDataMutex;
     //std::atomic<uint64_t> apiDataHead{0}, apiDataTail{0};	// wrap detection
 
+    bool logArgs { true };
 };
 
 
@@ -317,6 +313,13 @@ RocprofDataSource::RocprofDataSource()
     d->id = s->nextContext++;
     s->instances[d->id] = this;
     d->apiData.reserve(d->apiDataSize);
+
+    // Backdoor to suppress args logging
+    char *val = getenv("RPDT_ROCPROF_NOARGS");
+    if (val != NULL) {
+        int noargs = atoi(val);
+        d->logArgs = (noargs == 0);
+    }
 }
 
 RocprofDataSource::~RocprofDataSource()
@@ -686,10 +689,11 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 
                 // extract args as json
                 nlohmann::json json;
-                rocprofiler_iterate_buffer_tracing_record_args(
-                    *header, extract_hip_args,
-                    &json);
-                //fprintf(stderr, "%s\n", json.dump().c_str());
+                if (instance.d->logArgs) {
+                    rocprofiler_iterate_buffer_tracing_record_args(
+                        *header, extract_hip_args,
+                        &json);
+                }
 
                 // Add an api table entry
                 sqlite3_int64 name_id = logger.stringTable().getOrCreate(std::string(s->name_info[hipapi.kind][hipapi.operation]).c_str());
@@ -702,8 +706,10 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.domain_id = domain_id;
                 row.category_id = EMPTY_STRING_ID;
                 row.apiName_id = name_id;
-                //row.args_id = EMPTY_STRING_ID;
-                row.args_id = logger.ustringTable().create(json.dump());
+                if (instance.d->logArgs)
+                    row.args_id = logger.ustringTable().create(json.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+                else
+                    row.args_id = EMPTY_STRING_ID;
                 row.api_id = hipapi.correlation_id.internal;
 
                 logger.apiTable().insert(row);
