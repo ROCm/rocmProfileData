@@ -39,4 +39,4 @@ if [ $? != 0 ] ; then
 fi
 
 export RPDT_FILENAME=${OUTPUT_FILE}
-LD_PRELOAD=librpd_tracer.so "$@"
+LD_PRELOAD=libroctx64.so:librpd_tracer.so "$@"

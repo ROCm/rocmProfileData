@@ -1,4 +1,4 @@
-CREATE VIEW api AS SELECT rocpd_api.id,pid,tid,start,end,A.string AS apiName, B.string AS args FROM rocpd_api INNER JOIN rocpd_string A ON A.id = rocpd_api.apiName_id INNER JOIN rocpd_string B ON B.id = rocpd_api.args_id;
+CREATE VIEW api as SELECT rocpd_api.id,pid,tid,start,end,A.string AS domain, B.string AS category, C.string AS apiName, D.string AS args FROM rocpd_api JOIN rocpd_string A ON A.id = rocpd_api.domain_id JOIN rocpd_string B ON B.id = rocpd_api.category_id JOIN rocpd_string C ON C.id = rocpd_api.apiName_id JOIN rocpd_ustring D ON D.id = rocpd_api.args_id;
 CREATE VIEW op AS SELECT rocpd_op.id,gpuId,queueId,sequenceId,start,end,A.string AS description, B.string AS opType FROM rocpd_op INNER JOIN rocpd_string A ON A.id = rocpd_op.description_id INNER JOIN rocpd_string B ON B.id = rocpd_op.opType_id;
 CREATE VIEW busy AS select A.gpuId, GpuTime, WallTime, GpuTime*1.0/WallTime as Busy from (select gpuId, sum(end-start) as GpuTime from rocpd_op group by gpuId) A INNER JOIN (select max(end) - min(start) as WallTime from rocpd_op);
 
@@ -16,3 +16,7 @@ CREATE VIEW copyop AS SELECT B.id, gpuId, queueId, sequenceId, B.start, B.end, (
 
 -- Stack Frames
 CREATE VIEW stackframe AS SELECT B.id, C.string, depth, D.string FROM rocpd_stackframe A JOIN rocpd_api B ON B.id = A.api_ptr_id JOIN rocpd_string C ON C.id = B.apiname_id JOIN rocpd_string D ON D.id = A.name_id;
+
+-- Multinode view
+CREATE VIEW napi as SELECT rocpd_api.id,pid/(select value from rocpd_metadata where tag='pid_stride') as node, pid%(select value from rocpd_metadata where tag='pid_stride') as pid, tid%(select value from rocpd_metadata where tag='pid_stride') as tid,start,end,A.string AS domain, B.string AS category, C.string AS apiName, D.string AS args FROM rocpd_api JOIN rocpd_string A ON A.id = rocpd_api.domain_id JOIN rocpd_string B ON B.id = rocpd_api.category_id JOIN rocpd_string C ON C.id = rocpd_api.apiName_id JOIN rocpd_ustring D ON D.id = rocpd_api.args_id;
+CREATE VIEW nop AS SELECT rocpd_op.id,gpuId/(select value from rocpd_metadata where tag='gpu_stride') as node, gpuId%(select value from rocpd_metadata where tag='gpu_stride') as gpuId, queueId%(select value from rocpd_metadata where tag='gpu_stride') as queueId,sequenceId,start,end,A.string AS description, B.string AS opType FROM rocpd_op INNER JOIN rocpd_string A ON A.id = rocpd_op.description_id INNER JOIN rocpd_string B ON B.id = rocpd_op.opType_id;

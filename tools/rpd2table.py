@@ -45,41 +45,61 @@ def process_rpd_to_df(rpd_path, markers_list):
     rangeStringApi = ""
     rangeStringOp = ""
 
+    # Make a clone of the api table to hold the marker ranges we want to investigate
     create_marker_list = f"""CREATE TEMPORARY TABLE ext_marker ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "pid" integer NOT NULL, "tid" integer NOT NULL, "name" varchar(255) NOT NULL, "start" integer NOT NULL, "end" integer NOT NULL)"""
     connection.execute(create_marker_list)
 
+    # Populate the marker table with the matching named markers
     markers_list = markers_list[0].split(", ")
     marker_list_update_query = f"""
-        INSERT INTO ext_marker (pid, tid, name, start, end)
-        SELECT pid, tid, args, start, end
-        FROM api
-        WHERE apiName = 'UserMarker' AND args IN ({', '.join(['?'] * len(markers_list))})
+        INSERT INTO ext_marker (id, pid, tid, name, start, end)
+        SELECT A.id, pid, tid, B.string, start, end
+        FROM rocpd_api A
+        JOIN rocpd_string B on B.id = args_id
+        WHERE apiname_id IN (select id from rocpd_string where string = 'UserMarker')
+        AND args_id IN (select id from rocpd_ustring where string in ({', '.join(['?'] * len(markers_list))}))
     """
+    print(f"Extracting markers for: {markers_list}")
     connection.execute(marker_list_update_query, markers_list)
 
+    # Add an index to speed up the timestamp search
+    print(f"Creating index for: rocpd_api")
+    connection.execute("CREATE INDEX IF NOT EXISTS rocpd_api_tid_pid_start_idx ON rocpd_api(tid,pid,start)");
+    print(f"Creating index for: rocpd_api_ops")
+    connection.execute("CREATE INDEX IF NOT EXISTS rocpd_api_ops_api_op_idx ON rocpd_api_ops(api_id,op_id)");
+    print(f"Analyze")
+    connection.execute("ANALYZE");
+
     collect_api_query = f"""
-        CREATE TEMPORARY VIEW marker as 
-        SELECT A.pid, A.tid, A.id as marker_id, A.name as marker_name, B.id as api_id, apiName 
-        FROM ext_marker A join api B 
-        ON B.start >= A.start and B.end <= A.end and A.pid = B.pid and A.tid and B.tid
+        CREATE TEMPORARY VIEW marker_id as
+        SELECT A.pid, A.tid, A.id as marker_id, A.name as marker_name, B.id as api_id, apiName_id 
+        FROM ext_marker A join rocpd_api B
+        ON B.start between A.start and A.end and A.pid = B.pid and A.tid = B.tid
+        WHERE marker_id in (select id from ext_marker)
     """
+    # WHERE clause is redundant, but triggers use of the indexes
     connection.execute(collect_api_query)
 
     collect_kernel_query = f"""
-        CREATE TEMPORARY VIEW marker_kernel as 
-        SELECT B.*, gpuid, C.optype as optype, C.description as kernel_name, (end - start) as duration 
-        FROM rocpd_api_ops A join marker B on B.api_id = A.api_id join op C on C.id = A.op_id
+        CREATE TEMPORARY VIEW marker_kernel_id as
+        SELECT marker_name, marker_id, gpuid, C.description_id as kernel_name_id, (end - start) as duration
+        FROM rocpd_api_ops A join marker_id B on B.api_id = A.api_id join rocpd_op C on C.id = A.op_id
+        WHERE marker_id in (select id from ext_marker)
     """
+    # WHERE clause is redundant, but triggers use of the indexes
     connection.execute(collect_kernel_query)
 
     generate_table_query = f"""
-        SELECT marker_name, marker_id, gpuid, kernel_name, COUNT(DISTINCT marker_id) as marker_count, count(duration) as kernel_count, sum(duration) as total_dur, avg(duration) as avg_dur, min(duration) as min_dur, max(duration) as max_dur,
+        SELECT marker_name, gpuid, B.string as kernel_name, marker_count, kernel_count, total_dur, avg_dur, min_dur, max_dur, kernel_percentage FROM (
+        SELECT marker_name, gpuid, kernel_name_id, COUNT(DISTINCT marker_id) as marker_count, count(duration) as kernel_count, sum(duration) as total_dur, avg(duration) as avg_dur, min(duration) as min_dur, max(duration) as max_dur,
         (SUM(duration) * 100.0 / SUM(SUM(duration)) OVER (PARTITION BY marker_name, gpuid)) AS kernel_percentage
-        FROM marker_kernel 
-        GROUP BY marker_name, gpuid, kernel_name
-        ORDER BY gpuid
+        FROM marker_kernel_id
+        GROUP BY marker_name, gpuid, kernel_name_id
+        ORDER BY gpuid ) A
+        JOIN rocpd_string B on B.id = A.kernel_name_id;
     """
 
+    print(f"Generating report...")
     table_df = pd.read_sql_query(generate_table_query, connection)
 
     return table_df

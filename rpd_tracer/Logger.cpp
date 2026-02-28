@@ -196,6 +196,7 @@ void Logger::init()
 
     m_metadataTable = new MetadataTable(filename);
     m_stringTable = new StringTable(filename);
+    m_ustringTable = new UStringTable(filename);
     m_kernelApiTable = new KernelApiTable(filename);
     m_copyApiTable = new CopyApiTable(filename);
     m_opTable = new OpTable(filename);
@@ -207,6 +208,7 @@ void Logger::init()
     sqlite3_int64 offset = m_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
     m_metadataTable->setIdOffset(offset);
     m_stringTable->setIdOffset(offset);
+    m_ustringTable->setIdOffset(offset);
     m_kernelApiTable->setIdOffset(offset);
     m_copyApiTable->setIdOffset(offset);
     m_opTable->setIdOffset(offset);
@@ -299,6 +301,7 @@ void Logger::finalize()
         m_stackFrameTable->finalize();
         m_writeOverheadRecords = false;	// Don't make any new overhead records (api calls)
         m_apiTable->finalize();
+        m_ustringTable->finalize();
         m_stringTable->finalize();	// String table last
 
         const timestamp_t end_time = clocktime_ns();
@@ -324,7 +327,7 @@ void Logger::createOverheadRecord(uint64_t start, uint64_t end, const std::strin
     row.start = start;
     row.end = end;
     row.apiName_id = m_stringTable->getOrCreate(name);
-    row.args_id = m_stringTable->getOrCreate(args);
+    row.args_id = m_ustringTable->create(args);
     row.api_id = 0;
 
     //fprintf(stderr, "overhead: %s (%s) - %f usec\n", name.c_str(), args.c_str(), (end-start) / 1000.0);

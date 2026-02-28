@@ -40,6 +40,7 @@ public:
     // Table writer classes.  Used directly by DataSources
     MetadataTable &metadataTable() { return *m_metadataTable; }
     StringTable &stringTable() { return *m_stringTable; }
+    UStringTable &ustringTable() { return *m_ustringTable; }
     OpTable &opTable() { return *m_opTable; }
     KernelApiTable &kernelApiTable() { return *m_kernelApiTable; }
     CopyApiTable &copyApiTable() { return *m_copyApiTable; }
@@ -76,6 +77,7 @@ private:
 
     MetadataTable *m_metadataTable {nullptr};
     StringTable *m_stringTable {nullptr};
+    UStringTable *m_ustringTable {nullptr};
     OpTable *m_opTable {nullptr};
     KernelApiTable *m_kernelApiTable {nullptr};
     CopyApiTable *m_copyApiTable {nullptr};

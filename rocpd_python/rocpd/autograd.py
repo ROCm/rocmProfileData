@@ -46,7 +46,7 @@ def generateAutograd(imp):
     #importData.commitStrings()
 
     #Upgrade "UserMarker" calls to "PytorchAutograd" calls
-    imp.connection.execute('UPDATE rocpd_api set apiName_id = ? where id in (select A.id  from rocpd_api A join rocpd_string B on B.id = A.args_id where B.string like "%, op_id = %" OR B.string like "%, seq = %" OR B.string like "%, sizes = %" OR B.string like "%, input_op_ids = %")', (agStringId, ))
+    imp.connection.execute('UPDATE rocpd_api set apiName_id = ? where id in (select A.id  from rocpd_api A join rocpd_ustring B on B.id = A.args_id where B.string like "%, op_id = %" OR B.string like "%, seq = %" OR B.string like "%, sizes = %" OR B.string like "%, input_op_ids = %")', (agStringId, ))
 
     count = 0
     ag_inserts = [] # rows to bulk insert
@@ -58,7 +58,7 @@ def generateAutograd(imp):
         imp.connection.commit()
         ag_inserts = []
 
-    for row in imp.connection.execute("SELECT A.id, B.string FROM rocpd_api A JOIN rocpd_string B ON B.id = A.args_id WHERE A.apiName_id = ?", (agStringId, )):
+    for row in imp.connection.execute("SELECT A.id, B.string FROM rocpd_api A JOIN rocpd_ustring B ON B.id = A.args_id WHERE A.apiName_id = ?", (agStringId, )):
         if (count % 100000 == 99999):
             commitRecords()
 
@@ -89,7 +89,7 @@ def generateAutograd(imp):
 
     # Replace rocpd_api.args with just the operator name instead of name(args)
     #imp.connection.execute('delete from rocpd_string where id in (select args_id from rocpd_api where apiName_id = ?)', (agStringId, )) # not safe, saves so much filesize, do it right?
-    imp.connection.execute('update rocpd_api set args_id = (select autogradName_id from ext_autogradapi where ext_autogradapi.api_ptr_id = rocpd_api.id) where id in (select api_ptr_id from ext_autogradapi)')
+    #imp.connection.execute('update rocpd_api set args_id = (select autogradName_id from ext_autogradapi where ext_autogradapi.api_ptr_id = rocpd_api.id) where id in (select api_ptr_id from ext_autogradapi)')
     # Set calls back to UserMarker for now.  We can't reliably distinguish all of them from other markers
     umStringId = importData.getStringId("UserMarker")
     imp.connection.execute('UPDATE rocpd_api SET apiName_id = ? WHERE apiName_id = ?', (umStringId, agStringId))
