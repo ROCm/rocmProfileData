@@ -67,6 +67,7 @@ void CuptiDataSource::init()
 
     // Callback API
     //cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
+    //cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
     //cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
 
     // Async Activity
@@ -106,6 +107,7 @@ void CuptiDataSource::startTracing()
         }
     }
 
+    cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
     cuptiEnableDomain(1, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
     cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY);
     cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET);
@@ -115,6 +117,7 @@ void CuptiDataSource::startTracing()
 void CuptiDataSource::stopTracing()
 {
     cuptiEnableDomain(0, m_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API);
+    cuptiEnableDomain(0, m_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
     cuptiEnableDomain(0, m_subscriber, CUPTI_CB_DOMAIN_NVTX);
     cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
     cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET);
@@ -612,7 +615,33 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                     break;
             }
             logger.apiTable().insert(row);
-            unwind(logger, name, row.api_id);
+        }
+    }
+    else if (domain = CUPTI_CB_DOMAIN_DRIVER_API) {
+        thread_local sqlite3_int64 timestamp;
+
+        if (cbInfo->callbackSite == CUPTI_API_ENTER) {
+            timestamp = clocktime_ns();
+        }
+        else { // cbInfo->callbackSite == CUPTI_API_EXIT
+            char buff[4096];
+            ApiTable::row row;
+
+            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("cuda");
+
+            const char *name = "";
+            cuptiGetCallbackName(domain, cbid, &name);
+            sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
+            row.pid = GetPid();
+            row.tid = GetTid();
+            row.start = timestamp;  // From TLS from preceding enter call
+            row.end = clocktime_ns();
+            row.domain_id = domain_id;
+            row.category_id = EMPTY_STRING_ID;
+            row.apiName_id = name_id;
+            row.args_id = EMPTY_STRING_ID;
+            row.api_id = cbInfo->correlationId;
+            logger.apiTable().insert(row);
         }
     }
     else if (domain = CUPTI_CB_DOMAIN_NVTX) {
