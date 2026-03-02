@@ -627,6 +627,8 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             char buff[4096];
             ApiTable::row row;
 
+            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("cuda");
+
             const char *name = "";
             cuptiGetCallbackName(domain, cbid, &name);
             sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
