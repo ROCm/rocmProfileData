@@ -38,6 +38,11 @@ ifneq (,$(HIP_PATH))
         RPD_INCLUDES += -Ijson/include
 endif
 
+ifneq (,$(wildcard $(HIP_PATH)/include/hip/amd_detail/hip_profiler_ext.h))
+        $(info Building with ClrDataSource)
+        RPD_SRCS += ClrDataSource.cpp
+endif
+
 ifneq ($(CUDA_PATH),)
         $(info Building with cupti)
         RPD_LIBS += -L/usr/local/cuda/lib64 -lcupti
