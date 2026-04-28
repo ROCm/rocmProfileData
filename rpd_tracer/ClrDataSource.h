@@ -22,6 +22,7 @@ public:
 private:
     std::vector<uint64_t> m_startIds;
     std::vector<uint64_t> m_endIds;
+    size_t m_processedCount {0};
 };
 
 }    // namespace rpdtracer

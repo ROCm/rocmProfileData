@@ -19,6 +19,12 @@ extern "C" {
     DataSource *ClrDataSourceFactory() { return new ClrDataSource(); }
 }  // extern "C"
 
+// FIXME: can we avoid shutdown corruption?
+// Other rocm libraries crashing on unload
+// libsqlite unloading before we are done using it
+
+static std::once_flag register_once;
+
 
 void ClrDataSource::init()
 {
@@ -40,6 +46,7 @@ void ClrDataSource::startTracing()
     (void)hipProfilerEnableExt(&startId, 0);
     m_startIds.push_back(startId);
     fprintf(stderr, "ClrDataSource::startTracing(): %lu\n", startId);
+    std::call_once(register_once, atexit, Logger::rpdFinalize);
 }
 
 void ClrDataSource::stopTracing()
@@ -61,14 +68,17 @@ void ClrDataSource::flush()
     static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
     static uint64_t correlation_id = 0;
 
-    for (size_t c = 0; c < chunk_count; ++c) {
+    size_t start_chunk = m_processedCount / chunk_size;
+    size_t start_index = m_processedCount % chunk_size;
+
+    for (size_t c = start_chunk; c < chunk_count; ++c) {
         size_t n = (total_count - c * chunk_size < chunk_size)
                    ? total_count - c * chunk_size : chunk_size;
-        for (size_t i = 0; i < n; ++i) {
+        for (size_t i = (c == start_chunk ? start_index : 0); i < n; ++i) {
             const HipApiRecordExt* r = &chunks[c][i];
             ApiTable::row row;
             row.pid = GetPid();
-            row.tid = static_cast<int>(r->thread_id);
+            row.tid = static_cast<int>(static_cast<sqlite3_int64>(r->thread_id)); // FIXME need OS tid
             row.start = static_cast<sqlite3_int64>(r->start_ns);
             row.end = static_cast<sqlite3_int64>(r->end_ns);
             row.domain_id = domain_id;
@@ -97,14 +107,14 @@ void ClrDataSource::flush()
 
                     if (gpu->op == HIP_OP_DISPATCH_EXT) {
                         oprow.opType_id = dispatch_type_id;
-                        oprow.description_id = (gpu->kernel_name)
+                        oprow.description_id = (gpu->kernel_name && !gpu->is_graph)
                             ? logger.stringTable().getOrCreate(gpu->kernel_name)
                             : EMPTY_STRING_ID;
 
                         KernelApiTable::row krow;
                         krow.api_id = row.api_id;
                         krow.stream = fmt::format("{}", (void*)r->stream);
-                        krow.kernelName_id = oprow.description_id;
+                        krow.kernelName_id = oprow.description_id;  // EMPTY_STRING_ID for graph launches
                         krow.gridX = static_cast<int>(gpu->grid_x);
                         krow.gridY = static_cast<int>(gpu->grid_y);
                         krow.gridZ = static_cast<int>(gpu->grid_z);
@@ -138,6 +148,8 @@ void ClrDataSource::flush()
             }
         }
     }
+    m_processedCount = total_count;
+    fprintf(stderr, "ClrDataSource::flush() %lu\n", total_count);
 }
 
 }    // namespace rpdtracer
