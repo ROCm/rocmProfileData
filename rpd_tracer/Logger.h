@@ -47,8 +47,8 @@ public:
 
     // Used on library load and unload.
     //  Needs assistance from DataSources to avoid shutdown corruption
-    static void rpdInit() __attribute__((constructor));
-    static void rpdFinalize() __attribute__((destructor));
+    static void rpdInit();
+    static void rpdFinalize();
 
     const std::string filename() { return m_filename; };
     bool writeStackFrames() { return m_writeStackFrames; };

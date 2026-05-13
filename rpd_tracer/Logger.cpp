@@ -14,34 +14,6 @@ using rpdtracer::Logger;
 
 namespace rpdtracer { void rlogClientInit(); }
 
-// Hide the C-api here for now
-extern "C" {
-void rpdstart()
-{
-    Logger::singleton().rpdstart();
-}
-
-void rpdstop()
-{
-    Logger::singleton().rpdstop();
-}
-
-void rpdflush()
-{
-    Logger::singleton().rpdflush();
-}
-
-void rpd_rangePush(const char *domain, const char *apiName, const char* args)
-{
-    Logger::singleton().rpd_rangePush(domain, apiName, args);
-}
-
-void rpd_rangePop()
-{
-    Logger::singleton().rpd_rangePop();
-}
-}  // extern "C"
-
 // GFH - This mirrors the function in the pre-refactor code.  Allows both code paths to compile.
 //   See table classes for users.  Todo: build a proper threaded record writer
 void rpdtracer::createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args)
