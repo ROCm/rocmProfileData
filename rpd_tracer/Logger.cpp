@@ -143,7 +143,7 @@ void Logger::init()
             "NvtxDataSourceFactory",
             "RtlDataSourceFactory",
             "RocprofDataSourceFactory",
-            "RoctracerDataSourceFactory",
+            //"RoctracerDataSourceFactory",
             "CuptiDataSourceFactory",
             "RlogDataSourceFactory",
             "RocmSmiDataSourceFactory"
