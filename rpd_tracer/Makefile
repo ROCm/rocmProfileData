@@ -29,18 +29,31 @@ ifneq (,$(HIP_PATH))
 		RPD_SRCS += RoctracerDataSource.cpp
         endif
 
+        ifneq (,$(wildcard $(HIP_PATH)/include/hip/amd_detail/hip_profiler_ext.h))
+                $(info Building with ClrDataSource)
+                RPD_SRCS += ClrDataSource.cpp
+        endif
+
         RPD_LIBS += -L$(HIP_PATH)/lib
         RPD_LIBS += -lamdhip64
-        RPD_SRCS += AmdSmiDataSource.cpp
 
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
         RPD_INCLUDES += -I$(HIP_PATH)/include -I$(HIP_PATH)/include/hsa
         RPD_INCLUDES += -Ijson/include
-endif
 
-ifneq (,$(wildcard $(HIP_PATH)/include/hip/amd_detail/hip_profiler_ext.h))
-        $(info Building with ClrDataSource)
-        RPD_SRCS += ClrDataSource.cpp
+        # rocm-trace-lite (RTL) data source — requires submodule init
+        ifneq (,$(wildcard ../rocm-trace-lite/src/trace_db.h))
+                $(info Building with rocm-trace-lite)
+                RTL_SRC = ../rocm-trace-lite/src
+                RPD_SRCS += RtlDataSource.cpp
+                RPD_INCLUDES += -I$(RTL_SRC)
+                RPD_LIBS += -lhsa-runtime64
+
+                RTL_SUBMODULE_SRCS = $(RTL_SRC)/hsa_intercept.cpp $(RTL_SRC)/hip_api_intercept.cpp $(RTL_SRC)/trace_db.cpp
+                RTL_SUBMODULE_OBJS = hsa_intercept.o hip_api_intercept.o trace_db_rtl.o
+        else
+                $(warning rocm-trace-lite submodule not initialized — skipping RtlDataSource (run: git submodule update --init))
+        endif
 endif
 
 ifneq ($(CUDA_PATH),)
@@ -67,6 +80,8 @@ endif
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
 RPD_DEPS = $(RPD_OBJS:.o=.d)
 
+RTL_SUBMODULE_OBJS ?=
+
 RPD_TRACER = librpd_tracer.so
 RPD_EMBEDDED = librpd_embedded.so
 RPD_SCRIPT = runTracer.sh loadTracer.sh
@@ -77,7 +92,7 @@ PIP = pip3
 
 all: $(RPD_TRACER) $(RPD_EMBEDDED) rpdrun
 
-.PHONY: all 
+.PHONY: all
 
 SCHEMA_DIR = ../rocpd_python/rocpd/schema_data
 
@@ -100,10 +115,10 @@ rpd_capi_tracer.o: rpd_capi.cpp
 rpd_capi_embedded.o: rpd_capi.cpp
 	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3 -MMD -MP
 
-$(RPD_TRACER): $(RPD_OBJS) rpd_capi_tracer.o
+$(RPD_TRACER): $(RPD_OBJS) rpd_capi_tracer.o $(RTL_SUBMODULE_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -Wl,--version-script=marker_shim.ver -g
 
-$(RPD_EMBEDDED): $(RPD_OBJS) rpd_capi_embedded.o
+$(RPD_EMBEDDED): $(RPD_OBJS) rpd_capi_embedded.o $(RTL_SUBMODULE_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -Wl,--version-script=marker_shim.ver -g
 
 rpdrun: rpdrun.c
@@ -112,14 +127,20 @@ rpdrun: rpdrun.c
 %.o: %.cpp
 	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3 -MMD -MP
 
-#$(PREFIX)/lib/lib$(RPD_MAIN):
-#	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@
+# rocm-trace-lite submodule objects (source lives outside rpd_tracer/)
+hsa_intercept.o: $(RTL_SRC)/hsa_intercept.cpp
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
+
+hip_api_intercept.o: $(RTL_SRC)/hip_api_intercept.cpp
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
+
+trace_db_rtl.o: $(RTL_SRC)/trace_db.cpp
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
 
 -include $(RPD_DEPS)
 -include rpd_capi_tracer.d rpd_capi_embedded.d
 
 .PHONY: install
-#install: | $(PREFIX)/lib/lib$(RPD_MAIN)
 install: all
 	cp $(RPD_TRACER) $(RPD_EMBEDDED)  $(PREFIX)/lib/
 	cp $(RPD_SCRIPT) rpdrun $(PREFIX)/bin/
@@ -130,6 +151,7 @@ install: all
 uninstall:
 	rm $(PREFIX)/lib/$(RPD_TRACER) $(PREFIX)/lib/$(RPD_EMBEDDED)
 	rm $(PREFIX)/bin/$(RPD_SCRIPT)
+
 .PHONY: clean
 clean:
 	rm -f *.o *.so *.d tableSchema.h utilitySchema.h rpdrun

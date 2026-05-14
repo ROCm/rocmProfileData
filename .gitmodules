@@ -11,3 +11,6 @@
 	path = rlog
 	url = https://github.com/ROCm/rocmProfileData.git
 	branch = rlog
+[submodule "rocm-trace-lite"]
+	path = rocm-trace-lite
+	url = https://github.com/sunway513/rocm-trace-lite.git
