@@ -72,6 +72,7 @@ static inline int64_t svc_read_offset_ns(timestamp_t now_ns) {
     double drift;
     timestamp_t ref_ns;
     do {
+        seq = firefly::g_svcState.sequence.load(std::memory_order_acquire);
         offset = firefly::g_svcState.offset;
         drift = firefly::g_svcState.drift;
         ref_ns = timespec_to_ns(firefly::g_svcState.referenceTime);
