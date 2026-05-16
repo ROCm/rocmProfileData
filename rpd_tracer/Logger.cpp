@@ -187,6 +187,10 @@ void Logger::init()
         "RoctracerDataSourceFactory"
         };
 
+    // FIXME: use rlog property
+    if (getenv("RPDT_CLOCKSYNC_IP") != nullptr)
+        factories.push_back("ChronoSyncDataSourceFactory");
+
     bool rocmSourceAdded = false;
     for (auto it = factories.begin(); it != factories.end(); ++it) {
         bool isRocmFactory = std::find(rocmFactories.begin(), rocmFactories.end(), *it) != rocmFactories.end();
@@ -199,13 +203,6 @@ void Logger::init()
                 rocmSourceAdded = true;
             std::string sourceName = it->substr(0, it->size() - 7);  // strip "Factory"
             m_storage->metadataTable().insert("process_datasource", fmt::format("pid={} source={}", GetPid(), sourceName));
-        }
-        if (getenv("RPDT_CLOCKSYNC_IP") != nullptr) {
-            DataSource* (*func) (void) = (DataSource* (*)()) dlsym(dl, "ChronoSyncDataSourceFactory");
-            if (func) {
-                m_sources.push_back(func());
-                //fprintf(stderr, "Using: ClockSyncDataSourceFactory\n");
-            }
         }
     }
 

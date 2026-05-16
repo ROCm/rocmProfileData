@@ -9,14 +9,17 @@
 #include <condition_variable>
 #include <mutex>
 
-// Forward declaration
+namespace rpdtracer {
+
+// Forward declarations
 class ChronoSyncDataSourcePrivate;
+class DbResource;
 
 class ChronoSyncDataSource : public DataSource
 {
 public:
     ChronoSyncDataSource();
-    ~ChronoSyncDataSource();  // REMOVED 'override' - base class destructor is not virtual
+    ~ChronoSyncDataSource();
 
     void init() override;
     void startTracing() override;
@@ -26,19 +29,18 @@ public:
 
     void work();
 
-    // Public synchronization primitives accessed by the worker
     std::mutex m_mutex;
     std::condition_variable m_wait;
-    bool m_workExecuted;  // MOVED to public for friend class access
+    bool m_workExecuted;
 
 private:
-    bool tryAcquireGlobalLock();
-    void releaseGlobalLock();
-
     ChronoSyncDataSourcePrivate* m_private;
+    DbResource* m_resource;
     int m_messageCount;
 
     friend class ChronoSyncDataSourcePrivate;
 };
+
+}    // namespace rpdtracer
 
 #endif // CHRONOSYNCDATASOURCE_H

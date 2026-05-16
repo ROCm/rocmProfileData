@@ -1,109 +1,28 @@
 #include "Firefly.h"
 
+#include <algorithm>
+#include <chrono>
+#include <thread>
+
+namespace rpdtracer {
 namespace firefly {
-
-// -----------------------------------------------------------------------------
-// Global State Definition
-// -----------------------------------------------------------------------------
-SvcState g_svcState;
-
-// -----------------------------------------------------------------------------
-// SharedMemoryRegion Implementation
-// -----------------------------------------------------------------------------
-bool SharedMemoryRegion::initialize(std::size_t measurementCapacity) {
-    m_ownerPid = getpid();
-    m_measurementBytes = measurementCapacity * sizeof(Measurement);
-    m_totalBytes = m_measurementBytes + sizeof(int) + sizeof(sem_t);
-
-    m_shmId = shmget(IPC_PRIVATE, m_totalBytes, IPC_CREAT | SHM_PERMISSIONS);
-    if (m_shmId < 0) {
-        std::fprintf(stderr, "ChronoSync: [SharedMemoryRegion::initialize] CRITICAL - shmget failed (errno: %s)\n", std::strerror(errno));
-        return false;
-    }
-
-    m_address = shmat(m_shmId, nullptr, 0);
-    if (m_address == reinterpret_cast<void*>(-1)) {
-        std::fprintf(stderr, "ChronoSync: [SharedMemoryRegion::initialize] CRITICAL - shmat failed (errno: %s)\n", std::strerror(errno));
-        m_address = nullptr;
-        shmctl(m_shmId, IPC_RMID, nullptr);
-        m_shmId = -1;
-        return false;
-    }
-
-    std::memset(m_address, 0, m_totalBytes);
-    *measurementCount() = 0;
-
-    if (sem_init(semaphore(), SEMAPHORE_SHARED_PROCESS, 1) == -1) {
-        std::fprintf(stderr, "ChronoSync: [SharedMemoryRegion::initialize] CRITICAL - sem_init failed (errno: %s)\n", std::strerror(errno));
-        shmdt(m_address);
-        shmctl(m_shmId, IPC_RMID, nullptr);
-        m_address = nullptr;
-        m_shmId = -1;
-        return false;
-    }
-
-    return true;
-}
-
-Measurement* SharedMemoryRegion::measurements() const {
-    return static_cast<Measurement*>(m_address);
-}
-
-int* SharedMemoryRegion::measurementCount() const {
-    return reinterpret_cast<int*>(static_cast<char*>(m_address) + m_measurementBytes);
-}
-
-sem_t* SharedMemoryRegion::semaphore() const {
-    return reinterpret_cast<sem_t*>(reinterpret_cast<char*>(m_address) + m_measurementBytes + sizeof(int));
-}
-
-int SharedMemoryRegion::id() const {
-    return m_shmId;
-}
-
-void SharedMemoryRegion::detachWithoutDestroy() const {
-    if (m_address != nullptr) {
-        shmdt(m_address);
-    }
-}
-
-SharedMemoryRegion::~SharedMemoryRegion() {
-    if (m_address == nullptr || m_ownerPid != getpid()) {
-        if (m_address != nullptr) {
-            shmdt(m_address);
-        }
-        return;
-    }
-
-    if (sem_destroy(semaphore()) == -1) {
-        std::fprintf(stderr, "ChronoSync: [SharedMemoryRegion::~SharedMemoryRegion] WARNING - sem_destroy failed (errno: %s)\n", std::strerror(errno));
-    }
-
-    if (shmdt(m_address) == -1) {
-        std::fprintf(stderr, "ChronoSync: [SharedMemoryRegion::~SharedMemoryRegion] WARNING - shmdt failed (errno: %s)\n", std::strerror(errno));
-    }
-
-    if (shmctl(m_shmId, IPC_RMID, nullptr) == -1) {
-        std::fprintf(stderr, "ChronoSync: [SharedMemoryRegion::~SharedMemoryRegion] WARNING - shmctl failed (errno: %s)\n", std::strerror(errno));
-    }
-}
 
 // -----------------------------------------------------------------------------
 // Measurement Helpers
 // -----------------------------------------------------------------------------
 MeasurementAnalysis read_latest_measurements(const char* role,
                                              std::size_t windowSize,
-                                             const Measurement* sharedMeasurements,
-                                             int sharedCount) {
+                                             const Measurement* measurements,
+                                             int count) {
     MeasurementAnalysis analysis;
-    if (role == nullptr || sharedMeasurements == nullptr || sharedCount <= 0) {
+    if (role == nullptr || measurements == nullptr || count <= 0) {
         return analysis;
     }
 
-    analysis.samples.reserve(static_cast<std::size_t>(sharedCount));
-    for (int index = 0; index < sharedCount; ++index) {
-        if (std::strncmp(sharedMeasurements[index].node, role, sizeof(sharedMeasurements[index].node)) == 0) {
-            analysis.samples.push_back(sharedMeasurements[index]);
+    analysis.samples.reserve(static_cast<std::size_t>(count));
+    for (int index = 0; index < count; ++index) {
+        if (std::strncmp(measurements[index].node, role, sizeof(measurements[index].node)) == 0) {
+            analysis.samples.push_back(measurements[index]);
         }
     }
 
@@ -149,15 +68,15 @@ MeasurementAnalysis read_latest_measurements(const char* role,
     }
 
     const double slope = (sampleCount * sumXY - sumX * sumY) / denominator;
-    
+
     analysis.averageOffset = sumY / sampleCount;
     analysis.driftRate = slope;
 
-    fprintf(stderr,
+    std::fprintf(stderr,
                  "ChronoSync: [read_latest_measurements] INFO - Role %s, Avg Offset: %lld ns, Drift: %.9e ns/ns\n",
                  role,
-                 static_cast<int64_t>(analysis.averageOffset),
-                 static_cast<double>(analysis.driftRate));
+                 static_cast<long long>(analysis.averageOffset),
+                 analysis.driftRate);
 
     return analysis;
 }
@@ -165,7 +84,7 @@ MeasurementAnalysis read_latest_measurements(const char* role,
 // -----------------------------------------------------------------------------
 // Networking Utilities
 // -----------------------------------------------------------------------------
-void enable_sw_timestamps(int sockFd) {
+bool enable_sw_timestamps(int sockFd) {
     const int timestampOptions = SOF_TIMESTAMPING_TX_SOFTWARE |
                                  SOF_TIMESTAMPING_RX_SOFTWARE |
                                  SOF_TIMESTAMPING_SOFTWARE |
@@ -173,20 +92,21 @@ void enable_sw_timestamps(int sockFd) {
 
     if (setsockopt(sockFd, SOL_SOCKET, SO_TIMESTAMPING, &timestampOptions, sizeof(timestampOptions)) < 0) {
         std::fprintf(stderr, "ChronoSync: [enable_sw_timestamps] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
-        std::exit(EXIT_FAILURE);
+        return false;
     }
+    return true;
 }
 
-void send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int probeId) {
+bool send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int probeId) {
     if (peerAddress == nullptr || sendTime == nullptr) {
         std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - Invalid arguments\n");
-        std::exit(EXIT_FAILURE);
+        return false;
     }
 
     char messageBuffer[NETWORK_BUFFER_SIZE] = {};
     if (std::snprintf(messageBuffer, sizeof(messageBuffer), "Probe %d", probeId) < 0) {
         std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - snprintf failed\n");
-        std::exit(EXIT_FAILURE);
+        return false;
     }
 
     if (sendto(sockFd,
@@ -196,7 +116,7 @@ void send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int
                reinterpret_cast<sockaddr*>(peerAddress),
                sizeof(*peerAddress)) < 0) {
         std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - sendto failed (errno: %s)\n", std::strerror(errno));
-        std::exit(EXIT_FAILURE);
+        return false;
     }
 
     timespec timeSpec{};
@@ -206,6 +126,7 @@ void send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int
         std::fprintf(stderr, "ChronoSync: [send_probe] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
         *sendTime = 0;
     }
+    return true;
 }
 
 void receive_probe(int sockFd, timestamp_t* receiveTime, int expectedProbeId) {
@@ -232,7 +153,6 @@ void receive_probe(int sockFd, timestamp_t* receiveTime, int expectedProbeId) {
 
     const ssize_t receivedBytes = recvmsg(sockFd, &messageHeader, 0);
     if (receivedBytes < 0) {
-        std::fprintf(stderr, "ChronoSync: [receive_probe] WARNING - recvmsg failed (errno: %s)\n", std::strerror(errno));
         *receiveTime = 0;
         return;
     }
@@ -274,13 +194,13 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
         tcpSocketFd = socket(AF_INET, SOCK_STREAM, 0);
         if (tcpSocketFd < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         if (inet_aton(peerIp, &tcpAddress.sin_addr) == 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - Invalid peer IP\n");
             close(tcpSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         bool connected = false;
@@ -298,14 +218,14 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
         if (!connected) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - Unable to connect after retries\n");
             close(tcpSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         constexpr char HANDSHAKE_READY[] = "READY";
         if (send(tcpSocketFd, HANDSHAKE_READY, sizeof(HANDSHAKE_READY), 0) < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - send failed (errno: %s)\n", std::strerror(errno));
             close(tcpSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         char ackBuffer[NETWORK_BUFFER_SIZE] = {};
@@ -319,27 +239,27 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
         int listenSocketFd = socket(AF_INET, SOCK_STREAM, 0);
         if (listenSocketFd < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         int reuseAddress = 1;
         if (setsockopt(listenSocketFd, SOL_SOCKET, SO_REUSEADDR, &reuseAddress, sizeof(reuseAddress)) < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
             close(listenSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         tcpAddress.sin_addr.s_addr = INADDR_ANY;
         if (bind(listenSocketFd, reinterpret_cast<sockaddr*>(&tcpAddress), sizeof(tcpAddress)) < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - bind failed (errno: %s)\n", std::strerror(errno));
             close(listenSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         if (listen(listenSocketFd, 1) < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - listen failed (errno: %s)\n", std::strerror(errno));
             close(listenSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         sockaddr_in clientAddress{};
@@ -349,7 +269,7 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
 
         if (tcpSocketFd < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - accept failed (errno: %s)\n", std::strerror(errno));
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
 
         char handshakeBuffer[NETWORK_BUFFER_SIZE] = {};
@@ -362,7 +282,7 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
         if (send(tcpSocketFd, HANDSHAKE_ACK, sizeof(HANDSHAKE_ACK), 0) < 0) {
             std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - send failed (errno: %s)\n", std::strerror(errno));
             close(tcpSocketFd);
-            std::exit(EXIT_FAILURE);
+            return -1;
         }
     }
 
@@ -397,36 +317,29 @@ void svc_update_ns(SvcState* state, int64_t offsetNs, double drift) {
 // -----------------------------------------------------------------------------
 // Firefly
 // -----------------------------------------------------------------------------
-void firefly_run(const char* role,
-                 Measurement* sharedMeasurements,
-                 int* sharedCount,
-                 sem_t* semaphoreHandle) {
-    if (role == nullptr || sharedMeasurements == nullptr || sharedCount == nullptr || semaphoreHandle == nullptr) {
+void firefly_run(const char* role, MeasurementBuffer& buffer) {
+    if (role == nullptr) {
         std::fprintf(stderr, "ChronoSync: [firefly_run] CRITICAL - Invalid arguments\n");
         return;
     }
 
     int localCount = 0;
-    if (sem_wait(semaphoreHandle) == -1) {
-        std::fprintf(stderr, "ChronoSync: [firefly_run] WARNING - sem_wait failed (errno: %s)\n", std::strerror(errno));
-        return;
-    }
-    localCount = *sharedCount;
-    if (sem_post(semaphoreHandle) == -1) {
-        std::fprintf(stderr, "ChronoSync: [firefly_run] WARNING - sem_post failed (errno: %s)\n", std::strerror(errno));
+    {
+        std::lock_guard<std::mutex> lock(buffer.mutex);
+        localCount = buffer.count;
     }
 
-    std::fprintf(stderr, "ChronoSync: [firefly_run] INFO - Role %s, shared count: %d\n", role, localCount);
+    std::fprintf(stderr, "ChronoSync: [firefly_run] INFO - Role %s, count: %d\n", role, localCount);
 
     const MeasurementAnalysis analysis = read_latest_measurements(role,
                                                                   REGRESSION_WINDOW_SIZE,
-                                                                  sharedMeasurements,
+                                                                  buffer.measurements.data(),
                                                                   localCount);
 
     std::fprintf(stderr,
                  "ChronoSync: [firefly_run] INFO - Role %s, Avg Offset: %lld ns, Drift: %.9e ns/ns\n",
                  role,
-                 static_cast<int64_t>(analysis.averageOffset),
+                 static_cast<long long>(analysis.averageOffset),
                  analysis.driftRate);
 
     if (!analysis.samples.empty()) {
@@ -435,46 +348,53 @@ void firefly_run(const char* role,
             std::fprintf(fileHandle,
                          "Role: %s, Average Offset: %lld ns, Drift Rate: %.9e ns/ns\n",
                          role,
-                         static_cast<int64_t>(analysis.averageOffset),
+                         static_cast<long long>(analysis.averageOffset),
                          analysis.driftRate);
             std::fclose(fileHandle);
-        } else {
-            std::fprintf(stderr,
-                         "ChronoSync: [firefly_run] WARNING - fopen failed (errno: %s)\n",
-                         std::strerror(errno));
         }
     }
 
-    svc_update_ns(&g_svcState, static_cast<int64_t>(analysis.averageOffset * CONSENSUS_ALPHA), analysis.driftRate * CONSENSUS_ALPHA);
+    // Real clock drift is < 100 ppm; anything larger indicates bad data
+    double drift = analysis.driftRate;
+    if (std::fabs(drift) > 500e-6) {
+        std::fprintf(stderr, "ChronoSync: [firefly_run] WARNING - Drift %.9e exceeds 500 ppm, clamping to 0\n", drift);
+        drift = 0.0;
+    }
+
+    svc_update_ns(&firefly::g_svcState, static_cast<int64_t>(analysis.averageOffset * CONSENSUS_ALPHA), drift * CONSENSUS_ALPHA);
     std::fprintf(stderr,
                  "ChronoSync: [firefly_run] INFO - Updated svc offset=%lld drift=%.9e\n",
-                 g_svcState.offset,
-                 g_svcState.drift);
-
-    sync_clock(g_svcState.offset, g_svcState.drift);
+                 static_cast<long long>(firefly::g_svcState.offset),
+                 firefly::g_svcState.drift);
 }
 
 // -----------------------------------------------------------------------------
 // UDP Node
 // -----------------------------------------------------------------------------
+static void record_measurement(MeasurementBuffer& buffer, const Measurement& measurement) {
+    std::lock_guard<std::mutex> lock(buffer.mutex);
+    if (buffer.count < static_cast<int>(buffer.measurements.size())) {
+        buffer.measurements[buffer.count] = measurement;
+        ++buffer.count;
+    }
+}
+
 void run_node(const char* role,
               const char* ipA,
               const char* ipB,
               int udpPort,
-              Measurement* sharedMeasurements,
-              int* sharedCount,
-              sem_t* semaphoreHandle) {
-    if (role == nullptr || ipA == nullptr || ipB == nullptr || sharedMeasurements == nullptr ||
-        sharedCount == nullptr || semaphoreHandle == nullptr) {
+              MeasurementBuffer& buffer,
+              bool& done) {
+    if (role == nullptr || ipA == nullptr || ipB == nullptr) {
         std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - Invalid arguments\n");
-        std::exit(EXIT_FAILURE);
+        return;
     }
 
     const bool isNodeA = (std::strcmp(role, "A") == 0);
     int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd < 0) {
         std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
-        std::exit(EXIT_FAILURE);
+        return;
     }
 
     timeval timeoutValue{};
@@ -483,10 +403,13 @@ void run_node(const char* role,
     if (setsockopt(socketFd, SOL_SOCKET, SO_RCVTIMEO, &timeoutValue, sizeof(timeoutValue)) < 0) {
         std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
         close(socketFd);
-        std::exit(EXIT_FAILURE);
+        return;
     }
 
-    enable_sw_timestamps(socketFd);
+    if (!enable_sw_timestamps(socketFd)) {
+        close(socketFd);
+        return;
+    }
 
     sockaddr_in localAddress{};
     sockaddr_in peerAddress{};
@@ -501,23 +424,27 @@ void run_node(const char* role,
     if (inet_aton(localIp, &localAddress.sin_addr) == 0 || inet_aton(peerIp, &peerAddress.sin_addr) == 0) {
         std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - Invalid IP address\n");
         close(socketFd);
-        std::exit(EXIT_FAILURE);
+        return;
     }
 
     if (bind(socketFd, reinterpret_cast<sockaddr*>(&localAddress), sizeof(localAddress)) < 0) {
         std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - bind failed (errno: %s)\n", std::strerror(errno));
         close(socketFd);
-        std::exit(EXIT_FAILURE);
+        return;
     }
 
     int tcpSocketFd = tcp_handshake(role, peerIp, udpPort);
+    if (tcpSocketFd < 0) {
+        close(socketFd);
+        return;
+    }
     close(tcpSocketFd);
 
     char messageBuffer[NETWORK_BUFFER_SIZE];
     int skippedIterations = 0;
     int probeIndex = 0;
 
-    while (true) {
+    while (done == false) {
         ++probeIndex;
         timestamp_t sendTimeA = 0;
         timestamp_t recvTimeA = 0;
@@ -525,7 +452,10 @@ void run_node(const char* role,
         timestamp_t recvTimeB = 0;
 
         if (isNodeA) {
-            send_probe(socketFd, &peerAddress, &sendTimeA, probeIndex);
+            if (!send_probe(socketFd, &peerAddress, &sendTimeA, probeIndex)) {
+                ++skippedIterations;
+                continue;
+            }
             receive_probe(socketFd, &recvTimeA, probeIndex);
             if (recvTimeA == 0) {
                 ++skippedIterations;
@@ -535,13 +465,11 @@ void run_node(const char* role,
             if (std::snprintf(messageBuffer, sizeof(messageBuffer), "%lld %lld",
                               static_cast<long long>(sendTimeA),
                               static_cast<long long>(recvTimeA)) < 0) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - snprintf failed\n");
                 continue;
             }
 
             if (sendto(socketFd, messageBuffer, std::strlen(messageBuffer), 0,
                        reinterpret_cast<sockaddr*>(&peerAddress), sizeof(peerAddress)) < 0) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - sendto failed (errno: %s)\n", std::strerror(errno));
                 ++skippedIterations;
                 continue;
             }
@@ -555,7 +483,6 @@ void run_node(const char* role,
                                                    reinterpret_cast<sockaddr*>(&senderAddress),
                                                    &senderLength);
             if (receivedBytes < 0) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - recvfrom failed (errno: %s)\n", std::strerror(errno));
                 ++skippedIterations;
                 continue;
             }
@@ -573,31 +500,19 @@ void run_node(const char* role,
 
             timespec now{};
             clock_gettime(CLOCK_MONOTONIC, &now);
-            Measurement measurement{
-                .timestampNs = timespec_to_ns(now),
-                .sendTimeA = sendTimeA,
-                .recvTimeA = recvTimeA,
-                .sendTimeB = sendTimeB,
-                .recvTimeB = recvTimeB,
-                .roundTripTime = roundTripTime,
-                .offset = offset,
-                .udpPort = udpPort,
-                .node = {'A', '\0'}
-            };
+            Measurement measurement{};
+            measurement.timestampNs = timespec_to_ns(now);
+            measurement.sendTimeA = sendTimeA;
+            measurement.recvTimeA = recvTimeA;
+            measurement.sendTimeB = sendTimeB;
+            measurement.recvTimeB = recvTimeB;
+            measurement.roundTripTime = roundTripTime;
+            measurement.offset = offset;
+            measurement.udpPort = udpPort;
+            measurement.node[0] = 'A';
+            measurement.node[1] = '\0';
 
-            if (sem_wait(semaphoreHandle) == -1) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - sem_wait failed (errno: %s)\n", std::strerror(errno));
-                continue;
-            }
-
-            if (*sharedCount < static_cast<int>(MAX_MEASUREMENT_COUNT)) {
-                sharedMeasurements[*sharedCount] = measurement;
-                ++(*sharedCount);
-            }
-
-            if (sem_post(semaphoreHandle) == -1) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - sem_post failed (errno: %s)\n", std::strerror(errno));
-            }
+            record_measurement(buffer, measurement);
         } else {
             receive_probe(socketFd, &recvTimeB, probeIndex);
             if (recvTimeB == 0) {
@@ -605,7 +520,10 @@ void run_node(const char* role,
                 continue;
             }
 
-            send_probe(socketFd, &peerAddress, &sendTimeB, probeIndex);
+            if (!send_probe(socketFd, &peerAddress, &sendTimeB, probeIndex)) {
+                ++skippedIterations;
+                continue;
+            }
 
             sockaddr_in senderAddress{};
             socklen_t senderLength = sizeof(senderAddress);
@@ -616,7 +534,6 @@ void run_node(const char* role,
                                                    reinterpret_cast<sockaddr*>(&senderAddress),
                                                    &senderLength);
             if (receivedBytes < 0) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - recvfrom failed (errno: %s)\n", std::strerror(errno));
                 ++skippedIterations;
                 continue;
             }
@@ -642,7 +559,6 @@ void run_node(const char* role,
                        0,
                        reinterpret_cast<sockaddr*>(&peerAddress),
                        sizeof(peerAddress)) < 0) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - sendto failed (errno: %s)\n", std::strerror(errno));
                 ++skippedIterations;
                 continue;
             }
@@ -652,31 +568,19 @@ void run_node(const char* role,
 
             timespec now{};
             clock_gettime(CLOCK_MONOTONIC, &now);
-            Measurement measurement{
-                .timestampNs = timespec_to_ns(now),
-                .sendTimeA = sendTimeA,
-                .recvTimeA = recvTimeA,
-                .sendTimeB = sendTimeB,
-                .recvTimeB = recvTimeB,
-                .roundTripTime = roundTripTime,
-                .offset = offset,
-                .udpPort = udpPort,
-                .node = {'B', '\0'}
-            };
+            Measurement measurement{};
+            measurement.timestampNs = timespec_to_ns(now);
+            measurement.sendTimeA = sendTimeA;
+            measurement.recvTimeA = recvTimeA;
+            measurement.sendTimeB = sendTimeB;
+            measurement.recvTimeB = recvTimeB;
+            measurement.roundTripTime = roundTripTime;
+            measurement.offset = offset;
+            measurement.udpPort = udpPort;
+            measurement.node[0] = 'B';
+            measurement.node[1] = '\0';
 
-            if (sem_wait(semaphoreHandle) == -1) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - sem_wait failed (errno: %s)\n", std::strerror(errno));
-                continue;
-            }
-
-            if (*sharedCount < static_cast<int>(MAX_MEASUREMENT_COUNT)) {
-                sharedMeasurements[*sharedCount] = measurement;
-                ++(*sharedCount);
-            }
-
-            if (sem_post(semaphoreHandle) == -1) {
-                std::fprintf(stderr, "ChronoSync: [run_node] WARNING - sem_post failed (errno: %s)\n", std::strerror(errno));
-            }
+            record_measurement(buffer, measurement);
         }
 
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -687,4 +591,4 @@ void run_node(const char* role,
 }
 
 } // namespace firefly
-
+} // namespace rpdtracer

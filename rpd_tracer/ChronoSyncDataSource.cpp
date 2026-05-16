@@ -3,31 +3,15 @@
  **************************************************************************/
 #include "ChronoSyncDataSource.h"
 
-#include <arpa/inet.h>
 #include <cerrno>
-#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fcntl.h>
-#include <linux/net_tstamp.h>
-#include <netinet/in.h>
-#include <semaphore.h>
-#include <sys/file.h>
-#include <sys/shm.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <cmath>
-#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -35,14 +19,24 @@
 #include <vector>
 
 #include <fmt/format.h>
-#include "rocm_smi/rocm_smi.h"
 
+#include "DbResource.h"
 #include "Logger.h"
 #include "Utility.h"
 #include "Firefly.h"
 
-constexpr char LOCK_FILE_PATH[] = "/tmp/chronosync_singleton.lock";
-static int g_lockFd = -1;
+using rpdtracer::DataSource;
+using rpdtracer::ChronoSyncDataSource;
+
+// Create a factory for the Logger to locate and use
+extern "C" {
+DataSource* ChronoSyncDataSourceFactory() {
+    return new ChronoSyncDataSource();
+}
+}
+
+namespace rpdtracer {
+
 // -----------------------------------------------------------------------------
 // ChronoSyncDataSourcePrivate
 // -----------------------------------------------------------------------------
@@ -93,14 +87,9 @@ public:
 // -----------------------------------------------------------------------------
 // ChronoSyncDataSource Implementation
 // -----------------------------------------------------------------------------
-extern "C" {
-DataSource* ChronoSyncDataSourceFactory() {
-    return new ChronoSyncDataSource();
-}
-}
-
 ChronoSyncDataSource::ChronoSyncDataSource()
     : m_private(nullptr),
+      m_resource(nullptr),
       m_workExecuted(false),
       m_messageCount(0) {}
 
@@ -108,63 +97,31 @@ ChronoSyncDataSource::~ChronoSyncDataSource() {
     end();
     delete m_private;
     m_private = nullptr;
-}
-
-bool ChronoSyncDataSource::tryAcquireGlobalLock() {
-    g_lockFd = open(LOCK_FILE_PATH, O_CREAT | O_RDWR, 0666);
-    if (g_lockFd == -1) {
-        std::fprintf(stderr, "ChronoSync: [tryAcquireGlobalLock] CRITICAL - open failed (errno: %s)\n", std::strerror(errno));
-        return false;
-    }
-
-    if (flock(g_lockFd, LOCK_EX | LOCK_NB) == -1) {
-        if (errno == EWOULDBLOCK) {
-            std::fprintf(stderr, "ChronoSync: [tryAcquireGlobalLock] WARNING - Singleton already running\n");
-        } else {
-            std::fprintf(stderr, "ChronoSync: [tryAcquireGlobalLock] CRITICAL - flock failed (errno: %s)\n", std::strerror(errno));
-        }
-        close(g_lockFd);
-        g_lockFd = -1;
-        return false;
-    }
-
-    std::fprintf(stderr, "ChronoSync: [tryAcquireGlobalLock] INFO - Lock acquired (PID: %d)\n", getpid());
-    return true;
-}
-
-void ChronoSyncDataSource::releaseGlobalLock() {
-    if (g_lockFd != -1) {
-        flock(g_lockFd, LOCK_UN);
-        close(g_lockFd);
-        unlink(LOCK_FILE_PATH);
-        g_lockFd = -1;
-        std::fprintf(stderr, "ChronoSync: [releaseGlobalLock] INFO - Lock released (PID: %d)\n", getpid());
-    }
+    delete m_resource;
+    m_resource = nullptr;
 }
 
 void ChronoSyncDataSource::init() {
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Called (PID: %d)\n", getpid());
-
-    if (!tryAcquireGlobalLock()) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Another instance active\n");
-        return;
-    }
 
     if (m_private != nullptr) {
         std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Already initialized\n");
         return;
     }
 
+    m_resource = new DbResource(Logger::singleton().filename(), std::string("chronosync_active"));
+    if (!m_resource->tryLock()) {
+        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Another instance active\n");
+        return;
+    }
+
+    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Lock acquired (PID: %d)\n", getpid());
+
     m_private = new ChronoSyncDataSourcePrivate(this);
     m_private->m_workerRunning = true;
     m_private->m_worker = new std::thread(&ChronoSyncDataSourcePrivate::work, m_private);
 
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Worker thread created\n");
-    std::fprintf(stderr,
-                 "ChronoSync: [ChronoSyncDataSource::init] DEBUG - Sync clock offset: %ld drift: %ld last_host_ts: %ld\n",
-                 chrono_sync::offset.load(),
-                 chrono_sync::drift.load(),
-                 chrono_sync::last_host_timestamp.load());
 }
 
 void ChronoSyncDataSource::startTracing() {
@@ -206,10 +163,8 @@ void ChronoSyncDataSource::flush() {
 void ChronoSyncDataSource::end() {
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Called (PID: %d)\n", getpid());
 
-    if (m_private == nullptr) {
-        releaseGlobalLock();
+    if (m_private == nullptr)
         return;
-    }
 
     if (m_private->m_worker != nullptr) {
         m_private->m_done.store(true, std::memory_order_relaxed);
@@ -219,7 +174,9 @@ void ChronoSyncDataSource::end() {
         m_private->m_worker = nullptr;
     }
 
-    releaseGlobalLock();
+    if (m_resource != nullptr)
+        m_resource->unlock();
+
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Cleanup complete\n");
 }
 
@@ -310,81 +267,39 @@ void ChronoSyncDataSource::work() {
     m_private->m_rank = hostRank;
     m_private->m_neighbors = neighbors;
 
-    firefly::SharedMemoryRegion sharedRegion;
-    if (!sharedRegion.initialize(firefly::MAX_MEASUREMENT_COUNT)) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] CRITICAL - Shared memory init failed\n");
-        return;
-    }
+    firefly::MeasurementBuffer buffer(firefly::MAX_MEASUREMENT_COUNT);
+    bool done = false;
 
-    std::vector<pid_t> childPids;
+    std::vector<std::thread> workers;
     for (const auto& neighbor : neighbors) {
-        pid_t forkResult = fork();
-        if (forkResult == 0) {
-            if (hostRank < neighbor.second) {
-                // print my host rank
-                printf("My host rank is %d\n", hostRank);
-                printf("Neighbor host rank is %d\n", neighbor.second);
-                firefly::run_node("A",
-                         hostIp.c_str(),
-                         neighbor.first.c_str(),
-                         firefly::UDP_PORT_DEFAULT + hostRank + neighbor.second, // TODO FOR ALI may need to make it rank id based
-                         sharedRegion.measurements(),
-                         sharedRegion.measurementCount(),
-                         sharedRegion.semaphore());
-            } else {
-                printf("My host rank is %d\n", hostRank);
-                printf("Neighbor host rank is %d\n", neighbor.second);
-                firefly::run_node("B",
-                         neighbor.first.c_str(),
-                         hostIp.c_str(),
-                         firefly::UDP_PORT_DEFAULT + hostRank + neighbor.second, // TODO FOR ALI may need to make it rank id based
-                         sharedRegion.measurements(),
-                         sharedRegion.measurementCount(),
-                         sharedRegion.semaphore());
-            }
-            std::exit(EXIT_SUCCESS);
-        } else if (forkResult > 0) {
-            childPids.push_back(forkResult);
-        } else {
-            std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] CRITICAL - fork failed (errno: %s)\n", std::strerror(errno));
-        }
+        const char* role = (hostRank < neighbor.second) ? "A" : "B";
+        const char* nodeIpA = (hostRank < neighbor.second) ? hostIp.c_str() : neighbor.first.c_str();
+        const char* nodeIpB = (hostRank < neighbor.second) ? neighbor.first.c_str() : hostIp.c_str();
+        int udpPort = firefly::UDP_PORT_DEFAULT + hostRank + neighbor.second;
+
+        std::string ipACopy(nodeIpA);
+        std::string ipBCopy(nodeIpB);
+        std::string roleCopy(role);
+
+        workers.emplace_back([ipACopy, ipBCopy, roleCopy, udpPort, &buffer, &done]() {
+            firefly::run_node(roleCopy.c_str(), ipACopy.c_str(), ipBCopy.c_str(),
+                              udpPort, buffer, done);
+        });
     }
 
     while (!m_private->m_done.load(std::memory_order_relaxed)) {
         if (!neighbors.empty()) {
             const char* role = (hostRank < neighbors.front().second) ? "A" : "B";
-            firefly::firefly_run(role,
-                        sharedRegion.measurements(),
-                        sharedRegion.measurementCount(),
-                        sharedRegion.semaphore());
+            firefly::firefly_run(role, buffer);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(firefly::FIRE_FLY_SLEEP_MSEC));
     }
 
-    for (pid_t pidValue : childPids) {
-        kill(pidValue, SIGTERM);
-        waitpid(pidValue, nullptr, 0);
-    }
-
-    // std::fprintf(stderr,
-    //              "ChronoSync: [ChronoSyncDataSource::work] INFO - Collected %d measurements\n",
-    //              *sharedRegion.measurementCount());
-
-    // for (int index = 0; index < *sharedRegion.measurementCount(); ++index) {
-    //     const firefly::Measurement& measurement = sharedRegion.measurements()[index];
-    //     std::fprintf(stderr,
-    //                  "Measurement %d: Node %s, Timestamp: %lld, t_a: %lld, r_a: %lld, t_b: %lld, r_b: %lld, RTT: %lld, Offset: %lld, UDP Port: %d\n",
-    //                  index,
-    //                  measurement.node,
-    //                  static_cast<long long>(measurement.timestampNs),
-    //                  static_cast<long long>(measurement.sendTimeA),
-    //                  static_cast<long long>(measurement.recvTimeA),
-    //                  static_cast<long long>(measurement.sendTimeB),
-    //                  static_cast<long long>(measurement.recvTimeB),
-    //                  static_cast<long long>(measurement.roundTripTime),
-    //                  measurement.offset,
-    //                  measurement.udpPort);
-    // }
+    done = true;
+    for (auto& worker : workers)
+        worker.join();
 
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Synchronization complete\n");
 }
+
+}    // namespace rpdtracer
