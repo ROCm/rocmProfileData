@@ -16,9 +16,9 @@ using namespace rpdtracer::firefly;
 
 static void test_seq_zero_returns_zero()
 {
-    g_svcState.sequence.store(0, std::memory_order_relaxed);
-    g_svcState.offset = 0;
-    g_svcState.drift = 0.0;
+    g_pSvcState->sequence.store(0, std::memory_order_relaxed);
+    g_pSvcState->offset = 0;
+    g_pSvcState->drift = 0.0;
 
     int64_t result = svc_read_offset_ns(1000000000ULL);
     assert(result == 0);
@@ -27,7 +27,7 @@ static void test_seq_zero_returns_zero()
 
 static void test_read_back_written_values()
 {
-    svc_update_ns(&g_svcState, 5000, 0.0);
+    svc_update_ns(g_pSvcState, 5000, 0.0);
 
     int64_t result = svc_read_offset_ns(1000000000ULL);
     assert(result == 5000);
@@ -36,18 +36,15 @@ static void test_read_back_written_values()
 
 static void test_drift_correction()
 {
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-    timestamp_t ref_ns = timespec_to_ns(ts);
+    svc_update_ns(g_pSvcState, 1000, 0.001);
 
-    svc_update_ns(&g_svcState, 1000, 0.001);
-
+    // Read referenceTime that svc_update_ns just wrote
+    timestamp_t ref_ns = timespec_to_ns(g_pSvcState->referenceTime);
     timestamp_t now_ns = ref_ns + 1000000;
     int64_t result = svc_read_offset_ns(now_ns);
 
-    // offset + drift * elapsed ≈ 1000 + 0.001 * 1000000 = 2000
-    // Allow some tolerance for time between svc_update_ns and our ref_ns
-    assert(result > 1500 && result < 2500);
+    // offset + drift * elapsed = 1000 + 0.001 * 1000000 = 2000
+    assert(result > 1900 && result < 2100);
     fprintf(stderr, "  PASS: drift correction (result=%lld)\n", static_cast<long long>(result));
 }
 
@@ -61,9 +58,9 @@ static void test_concurrent_no_torn_reads()
     std::thread writer([&]() {
         for (int i = 0; i < 10000 && !done.load(std::memory_order_relaxed); ++i) {
             if (i % 2 == 0)
-                svc_update_ns(&g_svcState, 0, 0.0);
+                svc_update_ns(g_pSvcState, 0, 0.0);
             else
-                svc_update_ns(&g_svcState, 1000000, 0.0);
+                svc_update_ns(g_pSvcState, 1000000, 0.0);
             std::this_thread::sleep_for(std::chrono::microseconds(10));
         }
         done.store(true, std::memory_order_relaxed);

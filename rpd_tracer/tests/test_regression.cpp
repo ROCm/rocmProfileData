@@ -127,14 +127,14 @@ static void test_drift_clamp()
     buf.count = N;
 
     // Reset g_svcState
-    g_svcState.sequence.store(0, std::memory_order_relaxed);
-    g_svcState.offset = 0;
-    g_svcState.drift = 0.0;
+    g_pSvcState->sequence.store(0, std::memory_order_relaxed);
+    g_pSvcState->offset = 0;
+    g_pSvcState->drift = 0.0;
 
     firefly_run("A", buf);
 
     // Drift should have been clamped to 0
-    assert(std::fabs(g_svcState.drift) < 1e-15);
+    assert(std::fabs(g_pSvcState->drift) < 1e-15);
     fprintf(stderr, "  PASS: drift clamp (bad drift=%.2e clamped to 0)\n", bad_drift);
 }
 

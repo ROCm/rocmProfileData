@@ -101,6 +101,38 @@ ChronoSyncDataSource::~ChronoSyncDataSource() {
     m_resource = nullptr;
 }
 
+static int metadata_callback(void *data, int argc, char **argv, char **colName)
+{
+    std::string &value = *static_cast<std::string*>(data);
+    if (argc > 0 && argv[0])
+        value = argv[0];
+    return 0;
+}
+
+void ChronoSyncDataSource::storeMetadata(const std::string& tag, const std::string& value)
+{
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(Logger::singleton().filename().c_str(), &db) != SQLITE_OK)
+        return;
+    char *err = nullptr;
+    std::string sql = "INSERT OR REPLACE INTO rocpd_metadata(tag, value) VALUES ('" + tag + "', '" + value + "')";
+    sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err);
+    sqlite3_close(db);
+}
+
+std::string ChronoSyncDataSource::queryMetadata(const std::string& tag)
+{
+    std::string value;
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(Logger::singleton().filename().c_str(), &db) != SQLITE_OK)
+        return value;
+    char *err = nullptr;
+    std::string sql = "SELECT value FROM rocpd_metadata WHERE tag = '" + tag + "'";
+    sqlite3_exec(db, sql.c_str(), metadata_callback, &value, &err);
+    sqlite3_close(db);
+    return value;
+}
+
 void ChronoSyncDataSource::init() {
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Called (PID: %d)\n", getpid());
 
@@ -112,10 +144,17 @@ void ChronoSyncDataSource::init() {
     m_resource = new DbResource(Logger::singleton().filename(), std::string("chronosync_active"));
     if (!m_resource->tryLock()) {
         std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Another instance active\n");
+        // Try to attach to existing shared memory from the singleton
+        std::string existingShm = queryMetadata("clocksync_shm");
+        if (!existingShm.empty())
+            firefly::attach_clocksync_shm(existingShm);
         return;
     }
 
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Lock acquired (PID: %d)\n", getpid());
+
+    firefly::create_clocksync_shm(m_shmName);
+    storeMetadata("clocksync_shm", m_shmName);
 
     m_private = new ChronoSyncDataSourcePrivate(this);
     m_private->m_workerRunning = true;
@@ -176,6 +215,9 @@ void ChronoSyncDataSource::end() {
 
     if (m_resource != nullptr)
         m_resource->unlock();
+
+    if (!m_shmName.empty())
+        firefly::cleanup_clocksync_shm(m_shmName);
 
     std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Cleanup complete\n");
 }

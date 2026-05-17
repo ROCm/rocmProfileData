@@ -59,12 +59,16 @@ struct SvcState {
     double   drift{0.0};
 };
 
-extern SvcState g_svcState;
+extern SvcState* g_pSvcState;
+
+void create_clocksync_shm(std::string& shm_name_out);
+void attach_clocksync_shm(const std::string& shm_name);
+void cleanup_clocksync_shm(const std::string& shm_name);
 
 } // namespace firefly
 
 static inline int64_t svc_read_offset_ns(timestamp_t now_ns) {
-    unsigned seq = firefly::g_svcState.sequence.load(std::memory_order_acquire);
+    unsigned seq = firefly::g_pSvcState->sequence.load(std::memory_order_acquire);
     if (seq == 0)
         return 0;
 
@@ -72,14 +76,18 @@ static inline int64_t svc_read_offset_ns(timestamp_t now_ns) {
     double drift;
     timestamp_t ref_ns;
     do {
-        seq = firefly::g_svcState.sequence.load(std::memory_order_acquire);
-        offset = firefly::g_svcState.offset;
-        drift = firefly::g_svcState.drift;
-        ref_ns = timespec_to_ns(firefly::g_svcState.referenceTime);
-    } while ((seq & 1) || firefly::g_svcState.sequence.load(std::memory_order_acquire) != seq);
+        seq = firefly::g_pSvcState->sequence.load(std::memory_order_acquire);
+        offset = firefly::g_pSvcState->offset;
+        drift = firefly::g_pSvcState->drift;
+        ref_ns = timespec_to_ns(firefly::g_pSvcState->referenceTime);
+    } while ((seq & 1) || firefly::g_pSvcState->sequence.load(std::memory_order_acquire) != seq);
 
     int64_t elapsed = static_cast<int64_t>(now_ns - ref_ns);
     return offset + static_cast<int64_t>(drift * elapsed);
+}
+
+static inline timestamp_t adjust_external_ts(timestamp_t ts) {
+    return ts + svc_read_offset_ns(ts);
 }
 
 static inline timestamp_t clocktime_ns() {

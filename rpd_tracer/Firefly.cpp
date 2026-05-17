@@ -295,7 +295,7 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
 
 timespec hw_now() {
     timespec timeSpec{};
-    if (clock_gettime(CLOCK_MONOTONIC_RAW, &timeSpec) != 0) {
+    if (clock_gettime(CLOCK_MONOTONIC, &timeSpec) != 0) {
         std::fprintf(stderr, "ChronoSync: [hw_now] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
     }
     return timeSpec;
@@ -361,11 +361,11 @@ void firefly_run(const char* role, MeasurementBuffer& buffer) {
         drift = 0.0;
     }
 
-    svc_update_ns(&firefly::g_svcState, static_cast<int64_t>(analysis.averageOffset * CONSENSUS_ALPHA), drift * CONSENSUS_ALPHA);
+    svc_update_ns(firefly::g_pSvcState, static_cast<int64_t>(analysis.averageOffset * CONSENSUS_ALPHA), drift * CONSENSUS_ALPHA);
     std::fprintf(stderr,
                  "ChronoSync: [firefly_run] INFO - Updated svc offset=%lld drift=%.9e\n",
-                 static_cast<long long>(firefly::g_svcState.offset),
-                 firefly::g_svcState.drift);
+                 static_cast<long long>(firefly::g_pSvcState->offset),
+                 firefly::g_pSvcState->drift);
 }
 
 // -----------------------------------------------------------------------------
