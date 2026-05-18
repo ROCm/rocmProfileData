@@ -71,13 +71,6 @@ MeasurementAnalysis read_latest_measurements(const char* role,
 
     analysis.averageOffset = sumY / sampleCount;
     analysis.driftRate = slope;
-
-    std::fprintf(stderr,
-                 "ChronoSync: [read_latest_measurements] INFO - Role %s, Avg Offset: %lld ns, Drift: %.9e ns/ns\n",
-                 role,
-                 static_cast<long long>(analysis.averageOffset),
-                 analysis.driftRate);
-
     return analysis;
 }
 
@@ -329,30 +322,10 @@ void firefly_run(const char* role, MeasurementBuffer& buffer) {
         localCount = buffer.count;
     }
 
-    std::fprintf(stderr, "ChronoSync: [firefly_run] INFO - Role %s, count: %d\n", role, localCount);
-
     const MeasurementAnalysis analysis = read_latest_measurements(role,
                                                                   REGRESSION_WINDOW_SIZE,
                                                                   buffer.measurements.data(),
                                                                   localCount);
-
-    std::fprintf(stderr,
-                 "ChronoSync: [firefly_run] INFO - Role %s, Avg Offset: %lld ns, Drift: %.9e ns/ns\n",
-                 role,
-                 static_cast<long long>(analysis.averageOffset),
-                 analysis.driftRate);
-
-    if (!analysis.samples.empty()) {
-        FILE* fileHandle = std::fopen("final_sync_params.txt", "a");
-        if (fileHandle != nullptr) {
-            std::fprintf(fileHandle,
-                         "Role: %s, Average Offset: %lld ns, Drift Rate: %.9e ns/ns\n",
-                         role,
-                         static_cast<long long>(analysis.averageOffset),
-                         analysis.driftRate);
-            std::fclose(fileHandle);
-        }
-    }
 
     // Real clock drift is < 100 ppm; anything larger indicates bad data
     double drift = analysis.driftRate;
@@ -363,7 +336,9 @@ void firefly_run(const char* role, MeasurementBuffer& buffer) {
 
     svc_update_ns(firefly::g_pSvcState, static_cast<int64_t>(analysis.averageOffset * CONSENSUS_ALPHA), drift * CONSENSUS_ALPHA);
     std::fprintf(stderr,
-                 "ChronoSync: [firefly_run] INFO - Updated svc offset=%lld drift=%.9e\n",
+                 "ChronoSync: [firefly_run] INFO - Role %s, samples=%zu, offset=%lld, drift=%.9e\n",
+                 role,
+                 analysis.samples.size(),
                  static_cast<long long>(firefly::g_pSvcState->offset),
                  firefly::g_pSvcState->drift);
 }

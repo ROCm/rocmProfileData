@@ -335,8 +335,10 @@ void ChronoSyncDataSource::work() {
         });
     }
 
+    int lastCount = 0;
     while (!m_private->m_done.load(std::memory_order_relaxed)) {
-        if (!neighbors.empty()) {
+        if (!neighbors.empty() && buffer.count != lastCount) {
+            lastCount = buffer.count;
             const char* role = (hostRank < neighbors.front().second) ? "A" : "B";
             firefly::firefly_run(role, buffer);
         }
