@@ -101,6 +101,12 @@ ChronoSyncDataSource::~ChronoSyncDataSource() {
     m_resource = nullptr;
 }
 
+static std::string rpd_filename()
+{
+    const char *f = getenv("RPDT_FILENAME");
+    return (f != nullptr) ? f : "./trace.rpd";
+}
+
 static int metadata_callback(void *data, int argc, char **argv, char **colName)
 {
     std::string &value = *static_cast<std::string*>(data);
@@ -112,7 +118,7 @@ static int metadata_callback(void *data, int argc, char **argv, char **colName)
 void ChronoSyncDataSource::storeMetadata(const std::string& tag, const std::string& value)
 {
     sqlite3 *db = nullptr;
-    if (sqlite3_open(Logger::singleton().filename().c_str(), &db) != SQLITE_OK)
+    if (sqlite3_open(rpd_filename().c_str(), &db) != SQLITE_OK)
         return;
     char *err = nullptr;
     std::string sql = "INSERT OR REPLACE INTO rocpd_metadata(tag, value) VALUES ('" + tag + "', '" + value + "')";
@@ -124,7 +130,7 @@ std::string ChronoSyncDataSource::queryMetadata(const std::string& tag)
 {
     std::string value;
     sqlite3 *db = nullptr;
-    if (sqlite3_open(Logger::singleton().filename().c_str(), &db) != SQLITE_OK)
+    if (sqlite3_open(rpd_filename().c_str(), &db) != SQLITE_OK)
         return value;
     char *err = nullptr;
     std::string sql = "SELECT value FROM rocpd_metadata WHERE tag = '" + tag + "'";
@@ -141,7 +147,7 @@ void ChronoSyncDataSource::init() {
         return;
     }
 
-    m_resource = new DbResource(Logger::singleton().filename(), std::string("chronosync_active"));
+    m_resource = new DbResource(rpd_filename(), std::string("chronosync_active"));
     if (!m_resource->tryLock()) {
         std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Another instance active\n");
         // Try to attach to existing shared memory from the singleton
