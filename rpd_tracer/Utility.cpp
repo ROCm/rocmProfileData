@@ -37,12 +37,12 @@ void create_clocksync_shm(std::string& shm_name_out) {
 
     int fd = shm_open(name, O_CREAT | O_EXCL | O_RDWR, 0666);
     if (fd < 0) {
-        std::fprintf(stderr, "ChronoSync: shm_open create failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: shm_open create failed (errno: %s)\n", std::strerror(errno));
         return;
     }
 
     if (ftruncate(fd, sizeof(SvcState)) < 0) {
-        std::fprintf(stderr, "ChronoSync: ftruncate failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: ftruncate failed (errno: %s)\n", std::strerror(errno));
         close(fd);
         shm_unlink(name);
         return;
@@ -51,7 +51,7 @@ void create_clocksync_shm(std::string& shm_name_out) {
     void* addr = mmap(nullptr, sizeof(SvcState), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
     if (addr == MAP_FAILED) {
-        std::fprintf(stderr, "ChronoSync: mmap failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: mmap failed (errno: %s)\n", std::strerror(errno));
         shm_unlink(name);
         return;
     }
@@ -61,27 +61,27 @@ void create_clocksync_shm(std::string& shm_name_out) {
 
     s_shmAddr = addr;
     g_pSvcState = static_cast<SvcState*>(addr);
-    std::fprintf(stderr, "ChronoSync: created shm %s\n", name);
+//    std::fprintf(stderr, "ChronoSync: created shm %s\n", name);
 }
 
 void attach_clocksync_shm(const std::string& shm_name) {
     int fd = shm_open(shm_name.c_str(), O_RDWR, 0);
     if (fd < 0) {
-        std::fprintf(stderr, "ChronoSync: shm_open attach failed for %s (errno: %s)\n",
-                     shm_name.c_str(), std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: shm_open attach failed for %s (errno: %s)\n",
+//                     shm_name.c_str(), std::strerror(errno));
         return;
     }
 
     void* addr = mmap(nullptr, sizeof(SvcState), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
     if (addr == MAP_FAILED) {
-        std::fprintf(stderr, "ChronoSync: mmap attach failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: mmap attach failed (errno: %s)\n", std::strerror(errno));
         return;
     }
 
     s_shmAddr = addr;
     g_pSvcState = static_cast<SvcState*>(addr);
-    std::fprintf(stderr, "ChronoSync: attached shm %s\n", shm_name.c_str());
+//    std::fprintf(stderr, "ChronoSync: attached shm %s\n", shm_name.c_str());
 }
 
 void cleanup_clocksync_shm(const std::string& shm_name) {
@@ -94,7 +94,7 @@ void cleanup_clocksync_shm(const std::string& shm_name) {
     if (!shm_name.empty())
         shm_unlink(shm_name.c_str());
 
-    std::fprintf(stderr, "ChronoSync: cleaned up shm %s\n", shm_name.c_str());
+//    std::fprintf(stderr, "ChronoSync: cleaned up shm %s\n", shm_name.c_str());
 }
 
 } // namespace firefly

@@ -117,7 +117,7 @@ bool enable_sw_timestamps(int sockFd) {
                                  SOF_TIMESTAMPING_OPT_TSONLY;
 
     if (setsockopt(sockFd, SOL_SOCKET, SO_TIMESTAMPING, &timestampOptions, sizeof(timestampOptions)) < 0) {
-        std::fprintf(stderr, "ChronoSync: [enable_sw_timestamps] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [enable_sw_timestamps] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
         return false;
     }
     return true;
@@ -125,13 +125,13 @@ bool enable_sw_timestamps(int sockFd) {
 
 bool send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int probeId) {
     if (peerAddress == nullptr || sendTime == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - Invalid arguments\n");
+//        std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - Invalid arguments\n");
         return false;
     }
 
     char messageBuffer[NETWORK_BUFFER_SIZE] = {};
     if (std::snprintf(messageBuffer, sizeof(messageBuffer), "Probe %d", probeId) < 0) {
-        std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - snprintf failed\n");
+//        std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - snprintf failed\n");
         return false;
     }
 
@@ -141,7 +141,7 @@ bool send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int
                0,
                reinterpret_cast<sockaddr*>(peerAddress),
                sizeof(*peerAddress)) < 0) {
-        std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - sendto failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [send_probe] CRITICAL - sendto failed (errno: %s)\n", std::strerror(errno));
         return false;
     }
 
@@ -149,7 +149,7 @@ bool send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int
     if (clock_gettime(CLOCK_MONOTONIC, &timeSpec) == 0) {
         *sendTime = timespec_to_ns(timeSpec);
     } else {
-        std::fprintf(stderr, "ChronoSync: [send_probe] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [send_probe] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
         *sendTime = 0;
     }
     return true;
@@ -157,7 +157,7 @@ bool send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int
 
 void receive_probe(int sockFd, timestamp_t* receiveTime, int expectedProbeId) {
     if (receiveTime == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [receive_probe] CRITICAL - Invalid receiveTime pointer\n");
+//        std::fprintf(stderr, "ChronoSync: [receive_probe] CRITICAL - Invalid receiveTime pointer\n");
         return;
     }
 
@@ -199,17 +199,16 @@ void receive_probe(int sockFd, timestamp_t* receiveTime, int expectedProbeId) {
     if (clock_gettime(CLOCK_MONOTONIC, &timeSpec) == 0) {
         *receiveTime = timespec_to_ns(timeSpec);
     } else {
-        std::fprintf(stderr, "ChronoSync: [receive_probe] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [receive_probe] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
         *receiveTime = 0;
     }
 }
 
 int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
-    if (role == nullptr || peerIp == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - Invalid role or peerIp\n");
+    if (role == nullptr || peerIp == nullptr)
         return -1;
-    }
 
+    std::fprintf(stderr, "ChronoSync: connecting to %s (role %s, port %d)\n", peerIp, role, tcpPort);
     const bool isNodeA = (std::strcmp(role, "A") == 0);
     int tcpSocketFd = -1;
     sockaddr_in tcpAddress{};
@@ -219,12 +218,12 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
     if (isNodeA) {
         tcpSocketFd = socket(AF_INET, SOCK_STREAM, 0);
         if (tcpSocketFd < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
             return -1;
         }
 
         if (inet_aton(peerIp, &tcpAddress.sin_addr) == 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - Invalid peer IP\n");
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - Invalid peer IP\n");
             close(tcpSocketFd);
             return -1;
         }
@@ -235,21 +234,21 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
                 connected = true;
                 break;
             }
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] WARNING - connect attempt %d failed (errno: %s)\n",
-                         attempt + 1,
-                         std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] WARNING - connect attempt %d failed (errno: %s)\n",
+//                         attempt + 1,
+//                         std::strerror(errno));
             sleep(CONNECTION_RETRY_DELAY_SEC);
         }
 
         if (!connected) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - Unable to connect after retries\n");
+            std::fprintf(stderr, "ChronoSync: failed to connect to %s:%d after %d attempts\n", peerIp, tcpPort, CONNECTION_RETRY_LIMIT);
             close(tcpSocketFd);
             return -1;
         }
 
         constexpr char HANDSHAKE_READY[] = "READY";
         if (send(tcpSocketFd, HANDSHAKE_READY, sizeof(HANDSHAKE_READY), 0) < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - send failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - send failed (errno: %s)\n", std::strerror(errno));
             close(tcpSocketFd);
             return -1;
         }
@@ -257,33 +256,33 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
         char ackBuffer[NETWORK_BUFFER_SIZE] = {};
         const ssize_t received = recv(tcpSocketFd, ackBuffer, sizeof(ackBuffer) - 1, 0);
         if (received <= 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] WARNING - recv failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] WARNING - recv failed (errno: %s)\n", std::strerror(errno));
         } else {
             ackBuffer[received] = '\0';
         }
     } else {
         int listenSocketFd = socket(AF_INET, SOCK_STREAM, 0);
         if (listenSocketFd < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
             return -1;
         }
 
         int reuseAddress = 1;
         if (setsockopt(listenSocketFd, SOL_SOCKET, SO_REUSEADDR, &reuseAddress, sizeof(reuseAddress)) < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
             close(listenSocketFd);
             return -1;
         }
 
         tcpAddress.sin_addr.s_addr = INADDR_ANY;
         if (bind(listenSocketFd, reinterpret_cast<sockaddr*>(&tcpAddress), sizeof(tcpAddress)) < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - bind failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - bind failed (errno: %s)\n", std::strerror(errno));
             close(listenSocketFd);
             return -1;
         }
 
         if (listen(listenSocketFd, 1) < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - listen failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - listen failed (errno: %s)\n", std::strerror(errno));
             close(listenSocketFd);
             return -1;
         }
@@ -294,7 +293,7 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
         close(listenSocketFd);
 
         if (tcpSocketFd < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - accept failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - accept failed (errno: %s)\n", std::strerror(errno));
             return -1;
         }
 
@@ -306,12 +305,13 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
 
         constexpr char HANDSHAKE_ACK[] = "ACK";
         if (send(tcpSocketFd, HANDSHAKE_ACK, sizeof(HANDSHAKE_ACK), 0) < 0) {
-            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - send failed (errno: %s)\n", std::strerror(errno));
+//            std::fprintf(stderr, "ChronoSync: [tcp_handshake] CRITICAL - send failed (errno: %s)\n", std::strerror(errno));
             close(tcpSocketFd);
             return -1;
         }
     }
 
+    std::fprintf(stderr, "ChronoSync: connected to %s (role %s, port %d)\n", peerIp, role, tcpPort);
     return tcpSocketFd;
 }
 
@@ -322,14 +322,14 @@ int tcp_handshake(const char* role, const char* peerIp, int tcpPort) {
 timespec hw_now() {
     timespec timeSpec{};
     if (clock_gettime(CLOCK_MONOTONIC, &timeSpec) != 0) {
-        std::fprintf(stderr, "ChronoSync: [hw_now] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [hw_now] WARNING - clock_gettime failed (errno: %s)\n", std::strerror(errno));
     }
     return timeSpec;
 }
 
 void svc_update_ns(SvcState* state, int64_t offsetNs, double drift) {
     if (state == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [svc_update_ns] CRITICAL - Null svc state\n");
+//        std::fprintf(stderr, "ChronoSync: [svc_update_ns] CRITICAL - Null svc state\n");
         return;
     }
 
@@ -345,7 +345,7 @@ void svc_update_ns(SvcState* state, int64_t offsetNs, double drift) {
 // -----------------------------------------------------------------------------
 void firefly_run(const char* role, MeasurementBuffer& buffer) {
     if (role == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [firefly_run] CRITICAL - Invalid arguments\n");
+//        std::fprintf(stderr, "ChronoSync: [firefly_run] CRITICAL - Invalid arguments\n");
         return;
     }
 
@@ -363,17 +363,17 @@ void firefly_run(const char* role, MeasurementBuffer& buffer) {
     // Real clock drift is < 100 ppm; anything larger indicates bad data
     double drift = analysis.driftRate;
     if (std::fabs(drift) > 500e-6) {
-        std::fprintf(stderr, "ChronoSync: [firefly_run] WARNING - Drift %.9e exceeds 500 ppm, clamping to 0\n", drift);
+//        std::fprintf(stderr, "ChronoSync: [firefly_run] WARNING - Drift %.9e exceeds 500 ppm, clamping to 0\n", drift);
         drift = 0.0;
     }
 
     svc_update_ns(firefly::g_pSvcState, static_cast<int64_t>(analysis.averageOffset * CONSENSUS_ALPHA), drift * CONSENSUS_ALPHA);
-    std::fprintf(stderr,
-                 "ChronoSync: [firefly_run] INFO - Role %s, samples=%zu, offset=%lld, drift=%.9e\n",
-                 role,
-                 analysis.samples.size(),
-                 static_cast<long long>(firefly::g_pSvcState->offset),
-                 firefly::g_pSvcState->drift);
+//    std::fprintf(stderr,
+//                 "ChronoSync: [firefly_run] INFO - Role %s, samples=%zu, offset=%lld, drift=%.9e\n",
+//                 role,
+//                 analysis.samples.size(),
+//                 static_cast<long long>(firefly::g_pSvcState->offset),
+//                 firefly::g_pSvcState->drift);
 }
 
 // -----------------------------------------------------------------------------
@@ -394,14 +394,14 @@ void run_node(const char* role,
               MeasurementBuffer& buffer,
               bool& done) {
     if (role == nullptr || ipA == nullptr || ipB == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - Invalid arguments\n");
+//        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - Invalid arguments\n");
         return;
     }
 
     const bool isNodeA = (std::strcmp(role, "A") == 0);
     int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd < 0) {
-        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - socket failed (errno: %s)\n", std::strerror(errno));
         return;
     }
 
@@ -409,7 +409,7 @@ void run_node(const char* role,
     timeoutValue.tv_sec = SOCKET_TIMEOUT_MSEC / 1000;
     timeoutValue.tv_usec = (SOCKET_TIMEOUT_MSEC % 1000) * 1000;
     if (setsockopt(socketFd, SOL_SOCKET, SO_RCVTIMEO, &timeoutValue, sizeof(timeoutValue)) < 0) {
-        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - setsockopt failed (errno: %s)\n", std::strerror(errno));
         close(socketFd);
         return;
     }
@@ -430,13 +430,13 @@ void run_node(const char* role,
     const char* peerIp = isNodeA ? ipB : ipA;
 
     if (inet_aton(localIp, &localAddress.sin_addr) == 0 || inet_aton(peerIp, &peerAddress.sin_addr) == 0) {
-        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - Invalid IP address\n");
+//        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - Invalid IP address\n");
         close(socketFd);
         return;
     }
 
     if (bind(socketFd, reinterpret_cast<sockaddr*>(&localAddress), sizeof(localAddress)) < 0) {
-        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - bind failed (errno: %s)\n", std::strerror(errno));
+//        std::fprintf(stderr, "ChronoSync: [run_node] CRITICAL - bind failed (errno: %s)\n", std::strerror(errno));
         close(socketFd);
         return;
     }
@@ -595,7 +595,7 @@ void run_node(const char* role,
     }
 
     close(socketFd);
-    std::fprintf(stderr, "ChronoSync: [run_node] INFO - Node %s completed, skipped %d iterations\n", role, skippedIterations);
+//    std::fprintf(stderr, "ChronoSync: [run_node] INFO - Node %s completed, skipped %d iterations\n", role, skippedIterations);
 }
 
 } // namespace firefly

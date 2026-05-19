@@ -47,32 +47,32 @@ public:
 
     void work() {
         if (m_owner == nullptr) {
-            std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSourcePrivate::work] CRITICAL - Owner not set\n");
+//            std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSourcePrivate::work] CRITICAL - Owner not set\n");
             return;
         }
 
         std::unique_lock<std::mutex> lock(m_owner->m_mutex);
         while (!m_done.load(std::memory_order_relaxed)) {
             if (!m_owner->m_workExecuted) {
-                std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Executing work once\n");
+//                std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Executing work once\n");
                 m_workerRunning = true;
                 lock.unlock();
                 m_owner->work();
                 lock.lock();
                 m_owner->m_workExecuted = true;
                 m_workerRunning = false;
-                std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Work completed\n");
+//                std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Work completed\n");
             }
 
             m_workerRunning = false;
             if (!m_done.load(std::memory_order_relaxed)) {
-                std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Waiting for signal\n");
+//                std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Waiting for signal\n");
                 m_owner->m_wait.wait(lock);
             }
             m_workerRunning = true;
         }
 
-        std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Exiting\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSync Worker] INFO - Exiting\n");
     }
 
     ChronoSyncDataSource* m_owner{nullptr};
@@ -142,16 +142,16 @@ std::string ChronoSyncDataSource::queryMetadata(const std::string& tag)
 }
 
 void ChronoSyncDataSource::init() {
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Called (PID: %d)\n", getpid());
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Called (PID: %d)\n", getpid());
 
     if (m_private != nullptr) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Already initialized\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Already initialized\n");
         return;
     }
 
     m_resource = new DbResource(rpd_filename(), std::string("chronosync_active"));
     if (!m_resource->tryLock()) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Another instance active\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] WARNING - Another instance active\n");
         // Try to attach to existing shared memory from the singleton
         std::string existingShm = queryMetadata("clocksync_shm");
         if (!existingShm.empty())
@@ -159,7 +159,7 @@ void ChronoSyncDataSource::init() {
         return;
     }
 
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Lock acquired (PID: %d)\n", getpid());
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Lock acquired (PID: %d)\n", getpid());
 
     firefly::create_clocksync_shm(m_shmName);
     storeMetadata("clocksync_shm", m_shmName);
@@ -168,19 +168,19 @@ void ChronoSyncDataSource::init() {
     m_private->m_workerRunning = true;
     m_private->m_worker = new std::thread(&ChronoSyncDataSourcePrivate::work, m_private);
 
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Worker thread created\n");
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::init] INFO - Worker thread created\n");
 }
 
 void ChronoSyncDataSource::startTracing() {
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::startTracing] INFO - Called (PID: %d)\n", getpid());
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::startTracing] INFO - Called (PID: %d)\n", getpid());
 
     if (m_private == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::startTracing] WARNING - Not singleton instance\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::startTracing] WARNING - Not singleton instance\n");
         return;
     }
 
     if (m_workExecuted) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::startTracing] WARNING - Work already executed\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::startTracing] WARNING - Work already executed\n");
         return;
     }
 
@@ -189,9 +189,9 @@ void ChronoSyncDataSource::startTracing() {
 }
 
 void ChronoSyncDataSource::stopTracing() {
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::stopTracing] INFO - Called (PID: %d)\n", getpid());
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::stopTracing] INFO - Called (PID: %d)\n", getpid());
     if (m_private == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::stopTracing] WARNING - Not singleton instance\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::stopTracing] WARNING - Not singleton instance\n");
     }
 }
 
@@ -200,7 +200,7 @@ void ChronoSyncDataSource::flush() {
         return;
     }
 
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::flush] INFO - Called\n");
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::flush] INFO - Called\n");
     std::unique_lock<std::mutex> lock(m_mutex);
     while (m_private->m_workerRunning) {
         m_wait.wait(lock);
@@ -208,7 +208,7 @@ void ChronoSyncDataSource::flush() {
 }
 
 void ChronoSyncDataSource::end() {
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Called (PID: %d)\n", getpid());
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Called (PID: %d)\n", getpid());
 
     if (m_private == nullptr)
         return;
@@ -227,14 +227,14 @@ void ChronoSyncDataSource::end() {
     if (!m_shmName.empty())
         firefly::cleanup_clocksync_shm(m_shmName);
 
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Cleanup complete\n");
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::end] INFO - Cleanup complete\n");
 }
 
 // -----------------------------------------------------------------------------
 // Work Routine
 // -----------------------------------------------------------------------------
 void ChronoSyncDataSource::work() {
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Starting\n");
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Starting\n");
     ++m_messageCount;
 
     auto now = std::chrono::system_clock::now();
@@ -243,24 +243,24 @@ void ChronoSyncDataSource::work() {
     char timeBuffer[26];
     ctime_r(&nowSeconds, timeBuffer);
     timeBuffer[24] = '\0';
-    std::fprintf(stderr,
-                 "[%s.%03lld] ChronoSync Work #%d: Performing synchronization...\n",
-                 timeBuffer,
-                 static_cast<long long>(nowMilliseconds.count()),
-                 m_messageCount);
+//    std::fprintf(stderr,
+//                 "[%s.%03lld] ChronoSync Work #%d: Performing synchronization...\n",
+//                 timeBuffer,
+//                 static_cast<long long>(nowMilliseconds.count()),
+//                 m_messageCount);
 
     const char* configPath = std::getenv("RPDT_CLOCKSYNC_IP");
     if (configPath == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] WARNING - RPDT_CLOCKSYNC_IP not set\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] WARNING - RPDT_CLOCKSYNC_IP not set\n");
         return;
     }
 
     FILE* fileHandle = std::fopen(configPath, "r");
     if (fileHandle == nullptr) {
-        std::fprintf(stderr,
-                     "ChronoSync: [ChronoSyncDataSource::work] CRITICAL - Failed to open %s (errno: %s)\n",
-                     configPath,
-                     std::strerror(errno));
+//        std::fprintf(stderr,
+//                     "ChronoSync: [ChronoSyncDataSource::work] CRITICAL - Failed to open %s (errno: %s)\n",
+//                     configPath,
+//                     std::strerror(errno));
         return;
     }
 
@@ -303,13 +303,13 @@ void ChronoSyncDataSource::work() {
 
     std::fclose(fileHandle);
     // print parsed values
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Host IP: %s, Host Rank: %d\n", hostIp.c_str(), hostRank);
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Host IP: %s, Host Rank: %d\n", hostIp.c_str(), hostRank);
     for (const auto& neighbor : neighbors) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Neighbor IP: %s, Neighbor Rank: %d\n", neighbor.first.c_str(), neighbor.second);
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Neighbor IP: %s, Neighbor Rank: %d\n", neighbor.first.c_str(), neighbor.second);
     }
 
     if (m_private == nullptr) {
-        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] CRITICAL - Private data missing\n");
+//        std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] CRITICAL - Private data missing\n");
         return;
     }
 
@@ -351,7 +351,7 @@ void ChronoSyncDataSource::work() {
     for (auto& worker : workers)
         worker.join();
 
-    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Synchronization complete\n");
+//    std::fprintf(stderr, "ChronoSync: [ChronoSyncDataSource::work] INFO - Synchronization complete\n");
 }
 
 }    // namespace rpdtracer
