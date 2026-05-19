@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "Utility.h"
 #include "tableSchema.h"
 #include "utilitySchema.h"
 

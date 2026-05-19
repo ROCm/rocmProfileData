@@ -120,6 +120,7 @@ void ChronoSyncDataSource::storeMetadata(const std::string& tag, const std::stri
     sqlite3 *db = nullptr;
     if (sqlite3_open(rpd_filename().c_str(), &db) != SQLITE_OK)
         return;
+    sqlite3_busy_handler(db, &sqlite_busy_handler, NULL);
     char *err = nullptr;
     std::string sql = "INSERT OR REPLACE INTO rocpd_metadata(tag, value) VALUES ('" + tag + "', '" + value + "')";
     sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err);
@@ -132,6 +133,7 @@ std::string ChronoSyncDataSource::queryMetadata(const std::string& tag)
     sqlite3 *db = nullptr;
     if (sqlite3_open(rpd_filename().c_str(), &db) != SQLITE_OK)
         return value;
+    sqlite3_busy_handler(db, &sqlite_busy_handler, NULL);
     char *err = nullptr;
     std::string sql = "SELECT value FROM rocpd_metadata WHERE tag = '" + tag + "'";
     sqlite3_exec(db, sql.c_str(), metadata_callback, &value, &err);

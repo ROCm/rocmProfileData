@@ -126,6 +126,8 @@ static inline int rpdSqliteOpen(const char *basefile, sqlite3 **db)
     return sqlite3_open(basefile, db);
 }
 
+int sqlite_busy_handler(void *data, int count);
+
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
 
 class Logger;

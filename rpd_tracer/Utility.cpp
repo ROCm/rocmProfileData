@@ -11,6 +11,14 @@
 #include <fcntl.h>
 
 namespace rpdtracer {
+
+int sqlite_busy_handler(void *data, int count)
+{
+    count = (count < 9) ? count : 8;
+    usleep(1000 * (0x1 << count));
+    return 1;
+}
+
 namespace firefly {
 
 static SvcState s_localState;
