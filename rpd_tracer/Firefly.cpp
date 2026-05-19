@@ -44,8 +44,35 @@ MeasurementAnalysis read_latest_measurements(const char* role,
         return analysis;
     }
 
+    // Median filter: reject outlier probes before regression
+    {
+        std::vector<int64_t> offsets;
+        offsets.reserve(analysis.samples.size());
+        for (const auto& s : analysis.samples)
+            offsets.push_back(s.offset);
+        std::sort(offsets.begin(), offsets.end());
+
+        const size_t n = offsets.size();
+        const int64_t q1 = offsets[n / 4];
+        const int64_t q3 = offsets[3 * n / 4];
+        const int64_t iqr = q3 - q1;
+        const int64_t lo = q1 - 3 * iqr;
+        const int64_t hi = q3 + 3 * iqr;
+
+        analysis.samples.erase(
+            std::remove_if(analysis.samples.begin(), analysis.samples.end(),
+                [lo, hi](const Measurement& m) { return m.offset < lo || m.offset > hi; }),
+            analysis.samples.end());
+
+        if (analysis.samples.size() < 2U) {
+            analysis.averageOffset = analysis.samples.empty() ? 0 : analysis.samples.front().offset;
+            analysis.driftRate = 0.0;
+            return analysis;
+        }
+    }
+
     double sumX = 0.0;
-    int64_t sumY = 0.0;
+    int64_t sumY = 0;
     double sumXY = 0.0;
     double sumX2 = 0.0;
     const double referenceTime = static_cast<double>(analysis.samples.front().timestampNs);
@@ -69,7 +96,13 @@ MeasurementAnalysis read_latest_measurements(const char* role,
 
     const double slope = (sampleCount * sumXY - sumX * sumY) / denominator;
 
-    analysis.averageOffset = sumY / sampleCount;
+    // Use median offset instead of mean for robustness
+    std::vector<int64_t> filteredOffsets;
+    filteredOffsets.reserve(analysis.samples.size());
+    for (const auto& s : analysis.samples)
+        filteredOffsets.push_back(s.offset);
+    std::sort(filteredOffsets.begin(), filteredOffsets.end());
+    analysis.averageOffset = filteredOffsets[filteredOffsets.size() / 2];
     analysis.driftRate = slope;
     return analysis;
 }
@@ -558,7 +591,7 @@ void run_node(const char* role,
             record_measurement(buffer, measurement);
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     close(socketFd);

@@ -26,6 +26,9 @@ namespace firefly {
 using timestamp_t = uint64_t;
 
 // FIXME: use rlog properties in their own domain
+// FIXME: replace batch regression with a PID controller for smooth, continuous
+// clock correction. The PID naturally slews (no offset discontinuities) and
+// eliminates the need for windowed regression entirely.
 constexpr int TCP_PORT_DEFAULT = 12345;
 constexpr int UDP_PORT_DEFAULT = 12345;
 constexpr std::size_t NETWORK_BUFFER_SIZE = 1024U;
@@ -33,7 +36,7 @@ constexpr int SOCKET_TIMEOUT_MSEC = 200;
 constexpr int CONNECTION_RETRY_LIMIT = 30;
 constexpr int CONNECTION_RETRY_DELAY_SEC = 1;
 constexpr std::size_t MAX_MEASUREMENT_COUNT = 100000U;
-constexpr std::size_t REGRESSION_WINDOW_SIZE = 1000U;
+constexpr std::size_t REGRESSION_WINDOW_SIZE = 200U;
 constexpr double CONSENSUS_ALPHA = 0.5;
 constexpr double GAIN_PHASE = 1.0;
 constexpr double GAIN_FREQ = 1.0;
