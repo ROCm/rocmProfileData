@@ -7,6 +7,7 @@
 
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 using rpdtracer::DataSource;
@@ -114,6 +115,7 @@ void CuptiDataSource::flush()
 
 void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain domain, CUpti_CallbackId cbid, const CUpti_CallbackData *cbInfo)
 {
+    static thread_local rpdtracer::UStringCache t_ustringCache;
     Logger &logger = Logger::singleton();
 
     // Cupti passes invalid/corrupted string pointers for the first callbacks on new threads.
@@ -153,7 +155,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         std::snprintf(buff, 4096, "ptr=%p | size=0x%x",
                             *params.devPtr,
                             (uint32_t)(params.size));
-                        row.args_id = logger.ustringTable().create(std::string(buff));
+                        row.args_id = t_ustringCache.lookup(std::string(buff), logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaFree_v3020:
@@ -161,7 +163,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                         auto &params = *(cudaFree_v3020_params_st *)(cbInfo->functionParams);
                         std::snprintf(buff, 4096, "ptr=%p",
                             params.devPtr);
-                        row.args_id = logger.ustringTable().create(std::string(buff));
+                        row.args_id = t_ustringCache.lookup(std::string(buff), logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
@@ -516,82 +518,82 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
                 case CUPTI_RUNTIME_TRACE_CBID_cudaStreamBeginCapture_v10000:
                     {
                         auto &params = *(cudaStreamBeginCapture_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("stream = {} | mode = {}", (void*)params.stream, params.mode)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaStreamBeginCapture_ptsz_v10000:
                     {
                         auto &params = *(cudaStreamBeginCapture_ptsz_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("stream = {} | mode = {}", (void*)params.stream, params.mode)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaStreamEndCapture_v10000:
                     {
                         auto &params = *(cudaStreamEndCapture_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("stream = {} | graph = {}", (void*)params.stream, (void*)*(params.pGraph))
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaStreamEndCapture_ptsz_v10000:
                     {
                         auto &params = *(cudaStreamEndCapture_ptsz_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("stream = {} | graph = {}", (void*)params.stream, (void*)*(params.pGraph))
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
 #if CUDART_VERSION >= 10000 && CUDART_VERSION < 12000
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiate_v10000:
                     {
                         auto &params = *(cudaGraphInstantiate_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
 #endif
 #if CUDART_VERSION >= 12000
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiate_v12000:
                     {
                         auto &params = *(cudaGraphInstantiate_v12000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiateWithParams_ptsz_v12000:
                     {
                         auto &params = *(cudaGraphInstantiateWithParams_ptsz_v12000_params_st*)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
 #endif
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphInstantiateWithFlags_v11040:
                     {
                         auto &params = *(cudaGraphInstantiateWithFlags_v11040_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("graphExec = {} | graph = {}", (void *)*(params.pGraphExec), (void *)params.graph)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphLaunch_v10000:
                     {
                         auto &params = *(cudaGraphLaunch_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("graphExec = {} | stream = {}", (void *)params.graphExec, (void *)params.stream)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 case CUPTI_RUNTIME_TRACE_CBID_cudaGraphLaunch_ptsz_v10000:
                     {
                         auto &params = *(cudaGraphLaunch_ptsz_v10000_params_st *)(cbInfo->functionParams);
-                        row.args_id = logger.ustringTable().create(
+                        row.args_id = t_ustringCache.lookup(
                             fmt::format("graphExec = {} | stream = {}", (void *)params.graphExec, (void *)params.stream)
-                        );
+                        , logger.ustringTable(), logger.storageGeneration());
                     }
                     break;
                 default:

@@ -29,6 +29,7 @@
 #include <sqlite3.h>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 #include "rlog/Hub.h"
@@ -121,15 +122,22 @@ void RlogDataSource::flush()
 {
 }
 
+void RlogDataSource::reset()
+{
+}
+
 void RlogDataSource::end()
 {
     stopTracing();
 }
 
 
+static thread_local rpdtracer::UStringCache t_ustringCache;
+
 void RlogDataSource::mark(const char *domain, const char *category, const char *apiname, const char *args)
 {
     rpdtracer::Logger &logger = rpdtracer::Logger::singleton();
+    uint64_t gen = logger.storageGeneration();
 
     ApiTable::row row;
     row.pid = GetPid();
@@ -139,8 +147,8 @@ void RlogDataSource::mark(const char *domain, const char *category, const char *
     row.domain_id = logger.stringTable().getOrCreate(std::string(domain));
     row.category_id = logger.stringTable().getOrCreate(std::string(category));
     row.apiName_id = logger.stringTable().getOrCreate(std::string(apiname));
-    row.args_id = logger.ustringTable().create(args);
-    row.api_id = rpdtracer::Logger::singleton().nextAnnotationId();
+    row.args_id = t_ustringCache.lookup(args, logger.ustringTable(), gen);
+    row.api_id = logger.nextAnnotationId();
 
     logger.apiTable().insert(row);
 }
@@ -150,6 +158,7 @@ void RlogDataSource::rangePush(const char *domain, const char *category, const c
     registerThreadStack();
 
     rpdtracer::Logger &logger = rpdtracer::Logger::singleton();
+    uint64_t gen = logger.storageGeneration();
 
     ApiTable::row row;
     row.pid = GetPid();
@@ -159,7 +168,7 @@ void RlogDataSource::rangePush(const char *domain, const char *category, const c
     row.domain_id = logger.stringTable().getOrCreate(std::string(domain));
     row.category_id = logger.stringTable().getOrCreate(std::string(category));
     row.apiName_id = logger.stringTable().getOrCreate(std::string(apiname));
-    row.args_id = logger.ustringTable().create(args);
+    row.args_id = t_ustringCache.lookup(args, logger.ustringTable(), gen);
     row.api_id = 0;
 
     t_rlogStack.push_front(row);

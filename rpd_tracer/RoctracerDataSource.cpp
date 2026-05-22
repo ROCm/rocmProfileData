@@ -11,6 +11,7 @@
 #include <fmt/format.h>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 using rpdtracer::DataSource;
@@ -87,6 +88,7 @@ void RoctracerDataSource::api_callback(
     const void* callback_data,
     void* arg)
 {
+    static thread_local rpdtracer::UStringCache t_ustringCache;
     Logger &logger = Logger::singleton();
 
     if (domain == ACTIVITY_DOMAIN_HIP_API) {
@@ -119,12 +121,12 @@ void RoctracerDataSource::api_callback(
                     std::snprintf(buff, 4096, "ptr=%p | size=0x%x",
                         *data->args.hipMalloc.ptr,
                         (uint32_t)(data->args.hipMalloc.size));
-                    row.args_id = logger.ustringTable().create(std::string(buff));
+                    row.args_id = t_ustringCache.lookup(std::string(buff), logger.ustringTable(), logger.storageGeneration());
                     break;
                 case HIP_API_ID_hipFree:
                     std::snprintf(buff, 4096, "ptr=%p",
                         data->args.hipFree.ptr);
-                    row.args_id = logger.ustringTable().create(std::string(buff));
+                    row.args_id = t_ustringCache.lookup(std::string(buff), logger.ustringTable(), logger.storageGeneration());
                     break;
 
                 case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice:
@@ -698,29 +700,29 @@ void RoctracerDataSource::api_callback(
                     }
                     break;
                 case HIP_API_ID_hipStreamBeginCapture:
-                    row.args_id = logger.ustringTable().create(
-                        fmt::format("stream = {} | mode = {}", (void*)data->args.hipStreamBeginCapture.stream, static_cast<int>(data->args.hipStreamBeginCapture.mode))
-                    );
+                    row.args_id = t_ustringCache.lookup(
+                        fmt::format("stream = {} | mode = {}", (void*)data->args.hipStreamBeginCapture.stream, static_cast<int>(data->args.hipStreamBeginCapture.mode)),
+                        logger.ustringTable(), logger.storageGeneration());
                     break;
                 case HIP_API_ID_hipStreamEndCapture:
-                    row.args_id = logger.ustringTable().create(
-                        fmt::format("stream = {} | graph = {}", (void*)data->args.hipStreamEndCapture.stream, (void*)*(data->args.hipStreamEndCapture.pGraph))
-                    );
+                    row.args_id = t_ustringCache.lookup(
+                        fmt::format("stream = {} | graph = {}", (void*)data->args.hipStreamEndCapture.stream, (void*)*(data->args.hipStreamEndCapture.pGraph)),
+                        logger.ustringTable(), logger.storageGeneration());
                     break;
                 case HIP_API_ID_hipGraphInstantiate:
-                    row.args_id = logger.ustringTable().create(
-                        fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiate.pGraphExec), (void *)data->args.hipGraphInstantiate.graph)
-                    );
+                    row.args_id = t_ustringCache.lookup(
+                        fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiate.pGraphExec), (void *)data->args.hipGraphInstantiate.graph),
+                        logger.ustringTable(), logger.storageGeneration());
                     break;
                 case HIP_API_ID_hipGraphInstantiateWithFlags:
-                    row.args_id = logger.ustringTable().create(
-                        fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiateWithFlags.pGraphExec), (void *)data->args.hipGraphInstantiateWithFlags.graph)
-                    );
+                    row.args_id = t_ustringCache.lookup(
+                        fmt::format("graphExec = {} | graph = {}", (void *)*(data->args.hipGraphInstantiateWithFlags.pGraphExec), (void *)data->args.hipGraphInstantiateWithFlags.graph),
+                        logger.ustringTable(), logger.storageGeneration());
                     break;
                 case HIP_API_ID_hipGraphLaunch:
-                    row.args_id = logger.ustringTable().create(
-                        fmt::format("graphExec = {} | stream = {}", (void *)data->args.hipGraphLaunch.graphExec, (void *)data->args.hipGraphLaunch.stream)
-                    );
+                    row.args_id = t_ustringCache.lookup(
+                        fmt::format("graphExec = {} | stream = {}", (void *)data->args.hipGraphLaunch.graphExec, (void *)data->args.hipGraphLaunch.stream),
+                        logger.ustringTable(), logger.storageGeneration());
                     break;
                 default:
                     break;
@@ -793,6 +795,7 @@ return;
 
 void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* end, void* arg)
 {
+    static thread_local rpdtracer::UStringCache t_ustringCache;
     const roctracer_record_t* record = (const roctracer_record_t*)(begin);
     const roctracer_record_t* end_record = (const roctracer_record_t*)(end);
     const timestamp_t cb_begin_time = clocktime_ns();

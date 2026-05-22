@@ -10,6 +10,7 @@
 #include <sqlite3.h>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 using rpdtracer::DataSource;
@@ -66,6 +67,7 @@ NvtxDataSource::~NvtxDataSource()
 
 // Per-thread nvtx range stack
 static thread_local std::deque<ApiTable::row> t_nvtxStack;
+static thread_local rpdtracer::UStringCache t_ustringCache;
 
 // Track all thread stacks for shutdown drain
 static std::mutex s_stacksMutex;
@@ -117,7 +119,7 @@ void nvtxMarkA(const char *message)
     row.domain_id = d->domainId;
     row.category_id = d->markCategoryId;
     row.apiName_id = d->apiNameId;
-    row.args_id = logger.ustringTable().create(message);
+    row.args_id = t_ustringCache.lookup(message, logger.ustringTable(), logger.storageGeneration());
     row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
@@ -142,7 +144,7 @@ int nvtxRangePushA(const char *message)
     row.domain_id = d->domainId;
     row.category_id = d->rangeCategoryId;
     row.apiName_id = d->apiNameId;
-    row.args_id = logger.ustringTable().create(message);
+    row.args_id = t_ustringCache.lookup(message, logger.ustringTable(), logger.storageGeneration());
     row.api_id = 0;
 
     t_nvtxStack.push_front(row);

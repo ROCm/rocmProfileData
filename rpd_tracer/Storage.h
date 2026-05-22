@@ -36,6 +36,10 @@ public:
     sqlite3_int64 overheadCategoryId();
 
     sqlite3_int64 nextAnnotationId() { return m_annotationIdCounter.fetch_add(1, std::memory_order_relaxed); }
+    // Each Storage instance gets a unique generation number. Thread-local
+    // caches (e.g. UStringCache) compare against this to detect storage
+    // swaps and invalidate stale cached IDs.
+    uint64_t generation() const { return m_generation.load(std::memory_order_relaxed); }
 
 private:
     std::string m_filename;
@@ -53,6 +57,7 @@ private:
     sqlite3_int64 m_overheadCategoryId {0};
     bool m_overheadIdsCached {false};
     std::atomic<sqlite3_int64> m_annotationIdCounter{sqlite3_int64(1) << 31};
+    std::atomic<uint64_t> m_generation{0};
     bool m_finalized {false};
 };
 

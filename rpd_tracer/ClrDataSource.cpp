@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 namespace rpdtracer {
@@ -127,13 +128,18 @@ void ClrDataSource::processRecord(const hipApiRecordExt* r)
     row.args_id = EMPTY_STRING_ID;
     row.api_id = m_correlationId.fetch_add(1);
 
-    if (r->has_gpu_activity && r->gpu.op == HIP_OP_DISPATCH_EXT) {
-        std::string args = formatKernelArgs(r->gpu.kernel_args, r->gpu.kernel_args_size);
-        if (!args.empty())
-            row.args_id = logger.ustringTable().create(args);
-    } else if (!r->has_gpu_activity && r->size > 0) {
-        row.args_id = logger.ustringTable().create(
-            fmt::format("{{\"size\":{},\"dst\":\"{}\",\"src\":\"{}\"}}", r->size, r->memory1, r->memory2));
+    {
+        static thread_local rpdtracer::UStringCache t_ustringCache;
+        uint64_t gen = logger.storageGeneration();
+        if (r->has_gpu_activity && r->gpu.op == HIP_OP_DISPATCH_EXT) {
+            std::string args = formatKernelArgs(r->gpu.kernel_args, r->gpu.kernel_args_size);
+            if (!args.empty())
+                row.args_id = t_ustringCache.lookup(args, logger.ustringTable(), gen);
+        } else if (!r->has_gpu_activity && r->size > 0) {
+            row.args_id = t_ustringCache.lookup(
+                fmt::format("{{\"size\":{},\"dst\":\"{}\",\"src\":\"{}\"}}", r->size, r->memory1, r->memory2),
+                logger.ustringTable(), gen);
+        }
     }
 
     logger.apiTable().insert(row);

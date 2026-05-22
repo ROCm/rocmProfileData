@@ -39,6 +39,7 @@ public:
     void startTracing() override;
     void stopTracing() override;
     void flush() override;
+    void reset() override;
 
     // rlog::Logger()
     void mark(const char *domain, const char *category, const char *apiname, const char *args) override;

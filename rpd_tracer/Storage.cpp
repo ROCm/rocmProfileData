@@ -3,6 +3,7 @@
  **************************************************************************/
 #include "Storage.h"
 
+#include <atomic>
 #include <stdio.h>
 #include <fmt/format.h>
 
@@ -11,8 +12,11 @@
 
 using rpdtracer::Storage;
 
+static std::atomic<uint64_t> s_generationCounter{0};
+
 Storage::Storage(const char *filename, bool directWrite)
 : m_filename(filename)
+, m_generation(s_generationCounter.fetch_add(1, std::memory_order_relaxed))
 {
     ensureSchema(filename);
 

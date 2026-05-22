@@ -19,6 +19,7 @@
 #include <nlohmann/json.hpp>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 using rpdtracer::DataSource;
@@ -680,8 +681,10 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.domain_id = instance.d->domainId;
                 row.category_id = EMPTY_STRING_ID;
                 row.apiName_id = name_id;
-                if (instance.d->logArgs)
-                    row.args_id = logger.ustringTable().create(json.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+                if (instance.d->logArgs) {
+                    static thread_local rpdtracer::UStringCache t_ustringCache;
+                    row.args_id = t_ustringCache.lookup(json.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), logger.ustringTable(), logger.storageGeneration());
+                }
                 else
                     row.args_id = EMPTY_STRING_ID;
                 row.api_id = hipapi.correlation_id.internal;
