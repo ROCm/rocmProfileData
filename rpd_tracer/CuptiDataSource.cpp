@@ -19,8 +19,25 @@ extern "C" {
     DataSource *CuptiDataSourceFactory() { return new CuptiDataSource(); }
 }  // extern "C"
 
+static CuptiDataSource *s_instance = nullptr;
+
+void CuptiDataSource::cacheIds()
+{
+    if (m_idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    m_domainId = logger.stringTable().getOrCreate("cuda");
+    m_idsCached = true;
+}
+
+void CuptiDataSource::reset()
+{
+    m_idsCached = false;
+}
+
 void CuptiDataSource::init()
 {
+    s_instance = this;
 
     // Pick some apis to ignore
     m_apiList.setInvertMode(true);  // Omit the specified api
@@ -114,7 +131,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             char buff[4096];
             ApiTable::row row;
 
-            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("cuda");
+            s_instance->cacheIds();
 
             const char *name = "";
             cuptiGetCallbackName(domain, cbid, &name);
@@ -123,7 +140,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
-            row.domain_id = domain_id;
+            row.domain_id = s_instance->m_domainId;
             row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
@@ -593,7 +610,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             char buff[4096];
             ApiTable::row row;
 
-            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("cuda");
+            s_instance->cacheIds();
 
             const char *name = "";
             cuptiGetCallbackName(domain, cbid, &name);
@@ -602,7 +619,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
-            row.domain_id = domain_id;
+            row.domain_id = s_instance->m_domainId;
             row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;

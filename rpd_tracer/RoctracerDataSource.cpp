@@ -79,6 +79,7 @@ namespace {
     int mapDeviceId(int id) { return id - deviceOffset; };
 } // namespace
 
+static RoctracerDataSource *s_instance = nullptr;
 
 void RoctracerDataSource::api_callback(
     uint32_t domain,
@@ -99,7 +100,7 @@ void RoctracerDataSource::api_callback(
             char buff[4096];
             ApiTable::row row;
 
-            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
+            s_instance->cacheIds();
 
             const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
             sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
@@ -107,7 +108,7 @@ void RoctracerDataSource::api_callback(
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
-            row.domain_id = domain_id;
+            row.domain_id = s_instance->m_domainId;
             row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
@@ -842,7 +843,22 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
 
 
 
+void RoctracerDataSource::cacheIds()
+{
+    if (m_idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    m_domainId = logger.stringTable().getOrCreate("hip");
+    m_idsCached = true;
+}
+
+void RoctracerDataSource::reset()
+{
+    m_idsCached = false;
+}
+
 void RoctracerDataSource::init() {
+    s_instance = this;
     createDeviceMap();
 
     // Pick some apis to ignore

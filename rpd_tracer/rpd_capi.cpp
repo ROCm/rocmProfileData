@@ -56,6 +56,11 @@ void rpd_rangePop()
     Logger::singleton().rpd_rangePop();
 }
 
+void rpd_resetStorage()
+{
+    Logger::singleton().resetStorage();
+}
+
 }  // extern "C"
 
 
