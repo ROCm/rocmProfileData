@@ -24,7 +24,9 @@ struct UStringCache
     uint64_t generation = UINT64_MAX;
     uint64_t hits = 0;
     uint64_t misses = 0;
+#if 0
     ~UStringCache() { if (hits + misses > 0) fprintf(stderr, "UStringCache: %lu hits, %lu misses (%.1f%% hit rate)\n", hits, misses, 100.0 * hits / (hits + misses)); }
+#endif
 
     sqlite3_int64 lookup(const std::string &str, UStringTable &table, uint64_t currentGen)
     {
