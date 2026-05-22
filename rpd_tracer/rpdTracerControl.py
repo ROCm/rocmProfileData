@@ -11,6 +11,7 @@ import os
 import sys
 import sqlite3
 from rocpd.schema import RocpdSchema
+from rlog import RlogClient
 
 def isChildProcess() -> bool:
     version = platform.python_version_tuple()
@@ -22,6 +23,7 @@ def isChildProcess() -> bool:
 class rpdTracerControl:
     __filename = "trace.rpd"
     __rpd = None    # the dll/
+    __rlog = None
     __initFile = True
     __active = True
 
@@ -30,6 +32,7 @@ class rpdTracerControl:
         if cls.__rpd == None and cls.__active == True:
             os.environ["RPDT_AUTOSTART"] = "0"
             cls.__rpd = CDLL(find_library("rpd_tracer"))
+            cls.__rlog = RlogClient()
 
     @classmethod
     def initializeFile(cls):
@@ -104,16 +107,23 @@ class rpdTracerControl:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
+    def rangePush(self, domain: str, apiName: str, args: str, category: str = ""):
+        if rpdTracerControl.__rlog:
+            rpdTracerControl.__rlog.range_push(apiName, args, domain=domain, category=category)
+
+    def rangePop(self):
+        if rpdTracerControl.__rlog:
+            rpdTracerControl.__rlog.range_pop()
+
     # python stack tracing
-    # FIXME: needs rlog Python bindings to replace rpd_rangePush/rpd_rangePop
 
     def __trace_callback(self, frame, event, arg):
-        if frame.f_code.co_name.startswith("__"):
+        if frame.f_code.co_name.startswith("__") or frame.f_code.co_name == "rangePush" or frame.f_code.co_name == "rangePop":
             return None
-        #if event == 'call':
-        #    rlog.rangePush("python", frame.f_code.co_name, f"{frame.f_code.co_filename}:{frame.f_code.co_firstlineno}")
-        #if event == 'return':
-        #    rlog.rangePop()
+        if event == 'call':
+            self.rangePush("python", frame.f_code.co_name, f"{frame.f_code.co_filename}:{frame.f_code.co_firstlineno}", category=frame.f_globals.get('__name__', ''))
+        if event == 'return':
+            self.rangePop()
 
     def setPythonTrace(self, doTrace: bool):
         if doTrace:
