@@ -49,7 +49,6 @@ namespace rpdtracer {
 class RlogDataSourcePrivate
 {
 public:
-    std::atomic<sqlite3_int64> idCounter{sqlite3_int64(1) << 35};
 };
 
 }    // namespace rpdtracer
@@ -112,7 +111,7 @@ void RlogDataSource::stopTracing()
             ApiTable::row row = stack.front();
             stack.pop_front();
             row.end = now;
-            row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+            row.api_id = rpdtracer::Logger::singleton().nextAnnotationId();
             logger.apiTable().insert(row);
         }
     }
@@ -141,7 +140,7 @@ void RlogDataSource::mark(const char *domain, const char *category, const char *
     row.category_id = logger.stringTable().getOrCreate(std::string(category));
     row.apiName_id = logger.stringTable().getOrCreate(std::string(apiname));
     row.args_id = logger.ustringTable().create(args);
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = rpdtracer::Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
 }
@@ -177,7 +176,7 @@ void RlogDataSource::rangePop()
     t_rlogStack.pop_front();
 
     row.end = clocktime_ns();
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = rpdtracer::Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
 }

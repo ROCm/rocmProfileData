@@ -104,24 +104,16 @@ class rpdTracerControl:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
-    def rangePush(self, domain: str, apiName: str, args: str):
-        if rpdTracerControl.__rpd:
-            rpdTracerControl.__rpd.rpd_rangePush(bytes(domain, encoding='utf-8'), bytes(apiName, encoding='utf-8'), bytes(args, encoding='utf-8'))
-
-    def rangePop(self):
-        if rpdTracerControl.__rpd:
-            rpdTracerControl.__rpd.rpd_rangePop()
-
-
     # python stack tracing
+    # FIXME: needs rlog Python bindings to replace rpd_rangePush/rpd_rangePop
 
     def __trace_callback(self, frame, event, arg):
-        if frame.f_code.co_name.startswith("__") or frame.f_code.co_name == "rangePush" or frame.f_code.co_name == "rangePop":
+        if frame.f_code.co_name.startswith("__"):
             return None
-        if event == 'call':
-            self.rangePush("python", frame.f_code.co_name, f"{frame.f_code.co_filename}:{frame.f_code.co_firstlineno}");
-        if event == 'return':
-            self.rangePop()
+        #if event == 'call':
+        #    rlog.rangePush("python", frame.f_code.co_name, f"{frame.f_code.co_filename}:{frame.f_code.co_firstlineno}")
+        #if event == 'return':
+        #    rlog.rangePop()
 
     def setPythonTrace(self, doTrace: bool):
         if doTrace:

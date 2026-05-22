@@ -20,8 +20,6 @@ void rpdstop();
 void rpdflush();
 void rpd_resetStorage();
 sqlite3 *rpd_getConnection();
-void rpd_rangePush(const char *domain, const char *apiName, const char *args);
-void rpd_rangePop();
 ```
 
 ## Configuration Properties

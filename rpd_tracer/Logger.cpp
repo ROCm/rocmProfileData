@@ -100,43 +100,6 @@ void Logger::rpdflush()
     createOverheadRecord(cb_begin_time, cb_end_time, "rpdflush", "");
 }
 
-void Logger::rpd_rangePush(const char *domain, const char *apiName, const char* args)
-{
-    {
-        std::unique_lock<std::mutex> lock(m_activeMutex);
-        if (m_activeCount == 0)
-            return;
-    }
-    ApiTable::row row;
-    row.pid = GetPid();
-    row.tid = GetTid();
-    row.start = clocktime_ns();
-    row.end = row.start;
-    row.domain_id = m_storage->stringTable().getOrCreate(domain);
-    row.category_id = EMPTY_STRING_ID;
-    row.apiName_id = m_storage->stringTable().getOrCreate(apiName);
-    row.args_id = m_storage->ustringTable().create(args);
-    row.api_id = 0;
-    m_storage->apiTable().pushRoctx(row);
-}
-
-void Logger::rpd_rangePop()
-{
-    {
-        std::unique_lock<std::mutex> lock(m_activeMutex);
-        if (m_activeCount == 0)
-            return;
-    }
-    ApiTable::row row;
-    row.pid = GetPid();
-    row.tid = GetTid();
-    row.start = clocktime_ns();
-    row.end = row.start;
-    row.apiName_id = EMPTY_STRING_ID;
-    row.args_id = EMPTY_STRING_ID;
-    row.api_id = 0;
-    m_storage->apiTable().popRoctx(row);
-}
 
 
 
@@ -259,10 +222,8 @@ void Logger::createOverheadRecord(uint64_t start, uint64_t end, const std::strin
     row.category_id = m_storage->overheadCategoryId();
     row.apiName_id = m_storage->stringTable().getOrCreate(name);
     row.args_id = m_storage->ustringTable().create(args);
-    row.api_id = 0;
+    row.api_id = m_storage->nextAnnotationId();
 
-    //fprintf(stderr, "overhead: %s (%s) - %f usec\n", name.c_str(), args.c_str(), (end-start) / 1000.0);
-
-    m_storage->apiTable().insertRoctx(row);
+    m_storage->apiTable().insert(row);
 }
 

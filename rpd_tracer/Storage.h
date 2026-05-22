@@ -3,6 +3,7 @@
  **************************************************************************/
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <sqlite3.h>
 #include "Table.h"
@@ -34,6 +35,8 @@ public:
     sqlite3_int64 overheadDomainId();
     sqlite3_int64 overheadCategoryId();
 
+    sqlite3_int64 nextAnnotationId() { return m_annotationIdCounter.fetch_add(1, std::memory_order_relaxed); }
+
 private:
     std::string m_filename;
     MetadataTable *m_metadataTable {nullptr};
@@ -49,6 +52,7 @@ private:
     sqlite3_int64 m_overheadDomainId {0};
     sqlite3_int64 m_overheadCategoryId {0};
     bool m_overheadIdsCached {false};
+    std::atomic<sqlite3_int64> m_annotationIdCounter{sqlite3_int64(1) << 31};
     bool m_finalized {false};
 };
 

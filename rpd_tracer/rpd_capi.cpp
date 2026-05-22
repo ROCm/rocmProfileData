@@ -46,16 +46,6 @@ void rpdflush()
     Logger::singleton().rpdflush();
 }
 
-void rpd_rangePush(const char *domain, const char *apiName, const char* args)
-{
-    Logger::singleton().rpd_rangePush(domain, apiName, args);
-}
-
-void rpd_rangePop()
-{
-    Logger::singleton().rpd_rangePop();
-}
-
 void rpd_resetStorage()
 {
     Logger::singleton().resetStorage();
