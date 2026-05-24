@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "Utility.h"
 #include "tableSchema.h"
 #include "utilitySchema.h"
 
@@ -16,6 +17,8 @@ void ensureSchema(const char *basefile)
 {
     sqlite3 *db = nullptr;
     int ret = sqlite3_open(basefile, &db);
+    if (ret == SQLITE_OK)
+        sqlite3_busy_handler(db, &sqlite_busy_handler, NULL);
     if (ret != SQLITE_OK) {
         fprintf(stderr, "rpd_tracer: cannot open database %s: %s\n", basefile, sqlite3_errmsg(db));
         return;

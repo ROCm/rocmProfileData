@@ -43,6 +43,7 @@ void RocmSmiDataSource::init()
     m_done = false;
     m_period = 1000;
 
+    // FIXME: Logger::singleton() deadlocks here — called during init() while singleton is constructing
     m_resource = new DbResource(Logger::singleton().filename(), std::string("smi_logger_active"));
     m_worker = new std::thread(&RocmSmiDataSource::work, this);
 }

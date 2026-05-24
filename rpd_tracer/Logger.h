@@ -37,6 +37,10 @@ const sqlite_int64 EMPTY_STRING_ID = 1;
 class Logger
 {
 public:
+    // FIXME: calling init() from the constructor deadlocks any data source that
+    // calls Logger::singleton() during its own init(), because the static init
+    // guard is still held. Fix: empty constructor, move init() into singleton()
+    // after the static, use m_initialized flag to make init() idempotent.
     Logger() { init(); }
     static Logger& singleton();
 

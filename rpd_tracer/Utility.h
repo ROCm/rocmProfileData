@@ -9,6 +9,8 @@
 #include <string>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include <time.h>
 #include <sqlite3.h>
 
 namespace rpdtracer {
@@ -39,11 +41,57 @@ static timestamp_t timespec_to_ns(const timespec& time) {
     return ((timestamp_t)time.tv_sec * 1000000000) + time.tv_nsec;
   }
 
-static timestamp_t clocktime_ns() {
+// Seqlock-protected clock sync state, written by ChronoSync's Firefly algorithm.
+// Inlined here so the seq==0 fast path (no sync active) costs only a single
+// load+branch on the ~80 clocktime_ns() call sites in the tracing hot path.
+namespace firefly {
+
+struct SvcState {
+    std::atomic<unsigned int> sequence{0};
+    timespec referenceTime{};
+    int64_t  offset{0};
+    double   drift{0.0};
+};
+
+extern SvcState* g_pSvcState;
+
+void create_clocksync_shm(std::string& shm_name_out);
+void attach_clocksync_shm(const std::string& shm_name);
+void cleanup_clocksync_shm(const std::string& shm_name);
+
+} // namespace firefly
+
+static inline int64_t svc_read_offset_ns(timestamp_t now_ns) {
+    unsigned seq = firefly::g_pSvcState->sequence.load(std::memory_order_acquire);
+    if (seq == 0)
+        return 0;
+
+    int64_t offset;
+    double drift;
+    timestamp_t ref_ns;
+    do {
+        seq = firefly::g_pSvcState->sequence.load(std::memory_order_acquire);
+        offset = firefly::g_pSvcState->offset;
+        drift = firefly::g_pSvcState->drift;
+        ref_ns = timespec_to_ns(firefly::g_pSvcState->referenceTime);
+    } while ((seq & 1) || firefly::g_pSvcState->sequence.load(std::memory_order_acquire) != seq);
+
+    int64_t elapsed = static_cast<int64_t>(now_ns - ref_ns);
+    return offset + static_cast<int64_t>(drift * elapsed);
+}
+
+static inline timestamp_t adjust_external_ts(timestamp_t ts) {
+    return ts + svc_read_offset_ns(ts);
+}
+
+static inline timestamp_t clocktime_ns() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
+    timestamp_t now_ns = ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
+    return now_ns + svc_read_offset_ns(now_ns);
 }
+
+int sqlite_busy_handler(void *data, int count);
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
 

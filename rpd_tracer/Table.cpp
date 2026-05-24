@@ -7,12 +7,6 @@
 
 using rpdtracer::Table;
 
-int busy_handler(void *data, int count)
-{
-    count = (count < 9) ? count : 8;
-    usleep(1000 * (0x1 << count));
-    return 1;
-}
 
 static int wal_check_callback(void *data, int ncols, char **values, char **names)
 {
@@ -25,7 +19,7 @@ Table::Table(const char *basefile)
 : m_connection(NULL)
 {
     sqlite3_open(basefile, &m_connection);
-    sqlite3_busy_handler(m_connection, &busy_handler, NULL);
+    sqlite3_busy_handler(m_connection, &sqlite_busy_handler, NULL);
 
     bool walEnabled = false;
     sqlite3_exec(m_connection, "PRAGMA journal_mode=WAL", wal_check_callback, &walEnabled, NULL);

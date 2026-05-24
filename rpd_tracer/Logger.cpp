@@ -249,6 +249,10 @@ void Logger::init()
         "RocmSmiDataSourceFactory"
         };
 
+    // FIXME: use rlog property
+    if (getenv("RPDT_CLOCKSYNC_IP") != nullptr)
+        factories.push_back("ChronoSyncDataSourceFactory");
+
     for (auto it = factories.begin(); it != factories.end(); ++it) {
         DataSource* (*func) (void) = (DataSource* (*)()) dlsym(RTLD_DEFAULT, (*it).c_str());
         if (func) {

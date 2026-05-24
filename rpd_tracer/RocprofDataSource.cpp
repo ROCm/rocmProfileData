@@ -503,8 +503,8 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             row.queueId = info.queue_id.handle;
             row.sequenceId = info.dispatch_id;
             strncpy(row.completionSignal, "", 18);
-            row.start = dispatch.start_timestamp;
-            row.end = dispatch.end_timestamp;
+            row.start = adjust_external_ts(dispatch.start_timestamp);
+            row.end = adjust_external_ts(dispatch.end_timestamp);
             row.description_id = logger.stringTable().getOrCreate(s->kernel_names.at(info.kernel_id));
             row.opType_id = name_id;
             row.api_id = record.correlation_id.internal;
@@ -543,8 +543,8 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             row.queueId = 0;
             row.sequenceId = 0;
             strncpy(row.completionSignal, "", 18);
-            row.start = copy.start_timestamp;
-            row.end = copy.end_timestamp;
+            row.start = adjust_external_ts(copy.start_timestamp);
+            row.end = adjust_external_ts(copy.end_timestamp);
             row.description_id = logger.stringTable().getOrCreate(crow.kindStr);
             row.opType_id = name_id;
             row.api_id = record.correlation_id.internal;
@@ -588,8 +588,8 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.gpuId = s->agents.at(dispatch.agent_id.handle).logical_node_type_id;
                 row.queueId = dispatch.queue_id.handle;
                 row.sequenceId = 0;
-                row.start = record->start_timestamp;
-                row.end = record->end_timestamp;
+                row.start = adjust_external_ts(record->start_timestamp);
+                row.end = adjust_external_ts(record->end_timestamp);
                 row.description_id = desc_id;
                 row.opType_id = name_id;
                 row.api_id = record->correlation_id.internal;
@@ -627,8 +627,8 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.gpuId = 0;
                 row.queueId = 0;	// FIXME, all wrong
                 row.sequenceId = 0;
-                row.start = copy.start_timestamp;
-                row.end = copy.end_timestamp;
+                row.start = adjust_external_ts(copy.start_timestamp);
+                row.end = adjust_external_ts(copy.end_timestamp);
                 row.description_id = desc_id;
                 row.opType_id = name_id;
                 row.api_id = copy.correlation_id.internal;
@@ -671,8 +671,8 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 ApiTable::row row;
                 row.pid = GetPid();
                 row.tid = hipapi.thread_id;
-                row.start = hipapi.start_timestamp;
-                row.end = hipapi.end_timestamp;
+                row.start = adjust_external_ts(hipapi.start_timestamp);
+                row.end = adjust_external_ts(hipapi.end_timestamp);
                 row.domain_id = domain_id;
                 row.category_id = EMPTY_STRING_ID;
                 row.apiName_id = name_id;

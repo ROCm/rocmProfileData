@@ -22,6 +22,7 @@
 #include "DbResource.h"
 
 #include <fmt/format.h>
+#include "Utility.h"
 
 using rpdtracer::DbResource;
 
@@ -47,6 +48,7 @@ DbResource::DbResource(const std::string &basefile, const std::string &resourceN
 : d(new DbResourcePrivate(this))
 {
     sqlite3_open(basefile.c_str(), &d->connection);
+    sqlite3_busy_handler(d->connection, &rpdtracer::sqlite_busy_handler, NULL);
     d->resourceName = resourceName;
 }
 

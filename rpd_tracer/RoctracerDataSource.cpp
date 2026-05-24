@@ -795,8 +795,8 @@ return;
             sqlite3_bind_int(apiInsert, index++, record->correlation_id);
             sqlite3_bind_int(apiInsert, index++, record->process_id);
             sqlite3_bind_int(apiInsert, index++, record->thread_id);
-            sqlite3_bind_int64(apiInsert, index++, record->begin_ns);
-            sqlite3_bind_int64(apiInsert, index++, record->end_ns);
+            sqlite3_bind_int64(apiInsert, index++, adjust_external_ts(record->begin_ns));
+            sqlite3_bind_int64(apiInsert, index++, adjust_external_ts(record->end_ns));
             sqlite3_bind_int64(apiInsert, index++, rowId);
             sqlite3_bind_int64(apiInsert, index++, EMPTY_STRING_ID);
 
@@ -829,16 +829,6 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
 
     int batchSize = 0;
 
-    // Roctracer uses CLOCK_MONOTONIC for timestamps, which matches our timestamps.
-    // However, the Roctracer developer thinks it is using CLOCK_MONOTONIC_RAW, which it isn't
-    // Go ahead and convert timestamps here just in case this gets "fixed" at some point
-    timestamp_t t0, t1, t00;
-    roctracer_get_timestamp(&t1);	// first call is really slow, throw it away
-    t0 = clocktime_ns();
-    roctracer_get_timestamp(&t1);
-    t00 = clocktime_ns();
-    const timestamp_t toffset = (t0 >> 1) + (t00 >> 1) - t1;
-
     Logger &logger = Logger::singleton();
 
     while (record < end_record) {
@@ -850,8 +840,8 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
             row.gpuId = mapDeviceId(record->device_id);
             row.queueId = record->queue_id;
             row.sequenceId = 0;
-            row.start = record->begin_ns + toffset;
-            row.end = record->end_ns + toffset;
+            row.start = adjust_external_ts(record->begin_ns);
+            row.end = adjust_external_ts(record->end_ns);
             row.description_id = ((record->kind == HIP_OP_DISPATCH_KIND_KERNEL_)
                                || (record->kind == HIP_OP_DISPATCH_KIND_TASK_))
                 ? logger.stringTable().getOrCreate(cxx_demangle(record->kernel_name))

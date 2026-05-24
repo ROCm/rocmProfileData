@@ -678,8 +678,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.gpuId = record->deviceId;
                             row.queueId = record->contextId;        // FIXME: this or stream
                             row.sequenceId = record->streamId;
-                            row.start = record->start + toffset;
-                            row.end = record->end + toffset;
+                            row.start = adjust_external_ts(record->start + toffset);
+                            row.end = adjust_external_ts(record->end + toffset);
                             row.description_id = EMPTY_STRING_ID;
                             row.opType_id = logger.stringTable().getOrCreate("Memcpy");
                             row.api_id = record->correlationId;
@@ -692,8 +692,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.gpuId = record->deviceId;
                             row.queueId = record->contextId;        // FIXME: this or stream
                             row.sequenceId = record->streamId;
-                            row.start = record->start + toffset;
-                            row.end = record->end + toffset;
+                            row.start = adjust_external_ts(record->start + toffset);
+                            row.end = adjust_external_ts(record->end + toffset);
                             row.description_id = EMPTY_STRING_ID;
                             row.opType_id = logger.stringTable().getOrCreate("Memset");
                             row.api_id = record->correlationId;
@@ -708,8 +708,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.gpuId = record->deviceId;
                             row.queueId = record->contextId;	// FIXME: this or stream
                             row.sequenceId = record->streamId;
-                            row.start = record->start + toffset;
-                            row.end = record->end + toffset;
+                            row.start = adjust_external_ts(record->start + toffset);
+                            row.end = adjust_external_ts(record->end + toffset);
                             row.description_id = logger.stringTable().getOrCreate(cxx_demangle(record->name));
                             row.opType_id = logger.stringTable().getOrCreate(name);
                             row.api_id = record->correlationId;
