@@ -1,6 +1,7 @@
 #ifndef FIREFLY_H
 #define FIREFLY_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -29,8 +30,7 @@ using timestamp_t = uint64_t;
 // FIXME: replace batch regression with a PID controller for smooth, continuous
 // clock correction. The PID naturally slews (no offset discontinuities) and
 // eliminates the need for windowed regression entirely.
-constexpr int TCP_PORT_DEFAULT = 12345;
-constexpr int UDP_PORT_DEFAULT = 12345;
+constexpr int CLOCKSYNC_PORT_DEFAULT = 29123;
 constexpr std::size_t NETWORK_BUFFER_SIZE = 1024U;
 constexpr int SOCKET_TIMEOUT_MSEC = 200;
 constexpr int CONNECTION_RETRY_LIMIT = 30;
@@ -41,6 +41,7 @@ constexpr double CONSENSUS_ALPHA = 0.5;
 constexpr double GAIN_PHASE = 1.0;
 constexpr double GAIN_FREQ = 1.0;
 constexpr int FIRE_FLY_SLEEP_MSEC = 100;
+constexpr int SYNC_TIMEOUT_SEC = 60;
 
 struct Measurement {
     timestamp_t timestampNs;
@@ -68,20 +69,13 @@ struct MeasurementBuffer {
     MeasurementBuffer(std::size_t capacity) : measurements(capacity) {}
 };
 
-bool enable_sw_timestamps(int sockFd);
+void run_probes(const char* role, const char* peerIp, int udpPort,
+                MeasurementBuffer& buffer, std::atomic<bool>& done);
 
-bool send_probe(int sockFd, sockaddr_in* peerAddress, timestamp_t* sendTime, int probeId);
+void run_server(int port, MeasurementBuffer& buffer, std::atomic<bool>& done);
 
-void receive_probe(int sockFd, timestamp_t* receiveTime, int expectedProbeId);
-
-int tcp_handshake(const char* role, const char* peerIp, int tcpPort);
-
-void run_node(const char* role,
-              const char* ipA,
-              const char* ipB,
-              int udpPort,
-              MeasurementBuffer& buffer,
-              bool& done);
+void run_client(const char* serverIp, int port,
+                MeasurementBuffer& buffer, std::atomic<bool>& done);
 
 void firefly_run(const char* role, MeasurementBuffer& buffer);
 
@@ -92,7 +86,8 @@ void svc_update_ns(SvcState* state, int64_t offsetNs, double drift);
 MeasurementAnalysis read_latest_measurements(const char* role,
                                              std::size_t windowSize,
                                              const Measurement* measurements,
-                                             int count);
+                                             int count,
+                                             std::size_t capacity);
 } // namespace firefly
 } // namespace rpdtracer
 

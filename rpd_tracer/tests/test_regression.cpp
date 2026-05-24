@@ -26,7 +26,7 @@ static void test_constant_offset()
     for (int i = 0; i < N; ++i)
         data[i] = make_timed(1000000000ULL + i * 1000000ULL, 5000, 'A');
 
-    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, N);
+    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, N, N);
     assert(a.samples.size() == static_cast<size_t>(N));
     assert(a.averageOffset == 5000);
     assert(std::fabs(a.driftRate) < 1e-12);
@@ -47,7 +47,7 @@ static void test_known_drift()
         data[i] = make_timed(ts, offset, 'A');
     }
 
-    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, N);
+    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, N, N);
     assert(a.samples.size() == static_cast<size_t>(N));
     double drift_error = std::fabs(a.driftRate - drift_per_ns);
     assert(drift_error < 1e-8);
@@ -63,12 +63,12 @@ static void test_role_filter()
     data[2] = make_timed(1000000002ULL, 300, 'A');
     data[3] = make_timed(1000000003ULL, 400, 'B');
 
-    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, 4);
+    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, 4, 4);
     assert(a.samples.size() == 2);
     assert(a.samples[0].offset == 100);
     assert(a.samples[1].offset == 300);
 
-    MeasurementAnalysis b = read_latest_measurements("B", 1000, data, 4);
+    MeasurementAnalysis b = read_latest_measurements("B", 1000, data, 4, 4);
     assert(b.samples.size() == 2);
     assert(b.samples[0].offset == 200);
     assert(b.samples[1].offset == 400);
@@ -78,7 +78,7 @@ static void test_role_filter()
 
 static void test_empty_input()
 {
-    MeasurementAnalysis a = read_latest_measurements("A", 1000, nullptr, 0);
+    MeasurementAnalysis a = read_latest_measurements("A", 1000, nullptr, 0, 0);
     assert(a.samples.empty());
     assert(a.averageOffset == 0);
     assert(a.driftRate == 0.0);
@@ -90,7 +90,7 @@ static void test_single_measurement()
     Measurement data[1];
     data[0] = make_timed(1000000000ULL, 42, 'A');
 
-    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, 1);
+    MeasurementAnalysis a = read_latest_measurements("A", 1000, data, 1, 1);
     assert(a.samples.size() == 1);
     assert(a.averageOffset == 42);
     assert(a.driftRate == 0.0);
@@ -104,7 +104,7 @@ static void test_window_truncation()
     for (int i = 0; i < N; ++i)
         data[i] = make_timed(1000000000ULL + i * 1000000ULL, i, 'A');
 
-    MeasurementAnalysis a = read_latest_measurements("A", 10, data, N);
+    MeasurementAnalysis a = read_latest_measurements("A", 10, data, N, N);
     assert(a.samples.size() == 10);
     assert(a.samples[0].offset == 90);
     assert(a.samples[9].offset == 99);
