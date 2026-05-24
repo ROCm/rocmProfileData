@@ -6,8 +6,6 @@
 
 #include "DataSource.h"
 
-#include <condition_variable>
-#include <mutex>
 #include <string>
 
 namespace rpdtracer {
@@ -30,10 +28,6 @@ public:
 
     void work();
 
-    std::mutex m_mutex;
-    std::condition_variable m_wait;
-    bool m_workExecuted;
-
 private:
     void storeMetadata(const std::string& tag, const std::string& value);
     std::string queryMetadata(const std::string& tag);
@@ -41,7 +35,6 @@ private:
     ChronoSyncDataSourcePrivate* m_private;
     DbResource* m_resource;
     std::string m_shmName;
-    int m_messageCount;
 
     friend class ChronoSyncDataSourcePrivate;
 };

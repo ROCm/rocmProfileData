@@ -12,8 +12,6 @@
 #include <unistd.h>
 
 #include <chrono>
-#include <condition_variable>
-#include <mutex>
 #include <string>
 #include <thread>
 
@@ -45,32 +43,13 @@ public:
         : m_owner(owner) {}
 
     void work() {
-        if (m_owner == nullptr)
-            return;
-
-        std::unique_lock<std::mutex> lock(m_owner->m_mutex);
-        while (!m_done.load(std::memory_order_relaxed)) {
-            if (!m_owner->m_workExecuted) {
-                m_workerRunning = true;
-                lock.unlock();
-                m_owner->work();
-                lock.lock();
-                m_owner->m_workExecuted = true;
-                m_workerRunning = false;
-            }
-
-            m_workerRunning = false;
-            if (!m_done.load(std::memory_order_relaxed)) {
-                m_owner->m_wait.wait(lock);
-            }
-            m_workerRunning = true;
-        }
+        if (m_owner != nullptr)
+            m_owner->work();
     }
 
     ChronoSyncDataSource* m_owner{nullptr};
     std::thread* m_worker{nullptr};
     std::atomic<bool> m_done{false};
-    bool m_workerRunning{false};
 };
 
 // -----------------------------------------------------------------------------
@@ -78,9 +57,7 @@ public:
 // -----------------------------------------------------------------------------
 ChronoSyncDataSource::ChronoSyncDataSource()
     : m_private(nullptr),
-      m_resource(nullptr),
-      m_workExecuted(false),
-      m_messageCount(0) {}
+      m_resource(nullptr) {}
 
 ChronoSyncDataSource::~ChronoSyncDataSource() {
     end();
@@ -171,32 +148,16 @@ void ChronoSyncDataSource::init() {
     storeMetadata("clocksync_shm", m_shmName);
 
     m_private = new ChronoSyncDataSourcePrivate(this);
-    m_private->m_workerRunning = true;
     m_private->m_worker = new std::thread(&ChronoSyncDataSourcePrivate::work, m_private);
 }
 
 void ChronoSyncDataSource::startTracing() {
-    if (m_private == nullptr)
-        return;
-
-    if (m_workExecuted)
-        return;
-
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_wait.notify_all();
 }
 
 void ChronoSyncDataSource::stopTracing() {
 }
 
 void ChronoSyncDataSource::flush() {
-    if (m_private == nullptr)
-        return;
-
-    std::unique_lock<std::mutex> lock(m_mutex);
-    while (m_private->m_workerRunning) {
-        m_wait.wait(lock);
-    }
 }
 
 void ChronoSyncDataSource::end() {
@@ -205,7 +166,6 @@ void ChronoSyncDataSource::end() {
 
     if (m_private->m_worker != nullptr) {
         m_private->m_done.store(true, std::memory_order_relaxed);
-        m_wait.notify_one();
         m_private->m_worker->join();
         delete m_private->m_worker;
         m_private->m_worker = nullptr;
