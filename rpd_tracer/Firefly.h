@@ -27,21 +27,21 @@ namespace firefly {
 using timestamp_t = uint64_t;
 
 // FIXME: use rlog properties in their own domain
-// FIXME: replace batch regression with a PID controller for smooth, continuous
-// clock correction. The PID naturally slews (no offset discontinuities) and
-// eliminates the need for windowed regression entirely.
 constexpr int CLOCKSYNC_PORT_DEFAULT = 29123;
 constexpr std::size_t NETWORK_BUFFER_SIZE = 1024U;
 constexpr int SOCKET_TIMEOUT_MSEC = 200;
 constexpr int CONNECTION_RETRY_LIMIT = 30;
 constexpr int CONNECTION_RETRY_DELAY_SEC = 1;
 constexpr std::size_t MAX_MEASUREMENT_COUNT = 100000U;
-constexpr std::size_t REGRESSION_WINDOW_SIZE = 200U;
-constexpr double CONSENSUS_ALPHA = 0.5;
-constexpr double GAIN_PHASE = 1.0;
-constexpr double GAIN_FREQ = 1.0;
+constexpr std::size_t MEDIAN_WINDOW_SIZE = 10U;
 constexpr int FIRE_FLY_SLEEP_MSEC = 100;
 constexpr int SYNC_TIMEOUT_SEC = 60;
+
+// PI controller gains for clock offset tracking.
+// Kp: phase gain — fraction of offset error corrected per update.
+// Ki: frequency gain — dimensionless, scaled by dt internally to learn drift rate.
+constexpr double KP = 0.1;
+constexpr double KI = 0.02;
 
 struct Measurement {
     timestamp_t timestampNs;
@@ -78,6 +78,8 @@ void run_client(const char* serverIp, int port,
                 MeasurementBuffer& buffer, std::atomic<bool>& done);
 
 void firefly_run(const char* role, MeasurementBuffer& buffer);
+
+void firefly_reset();
 
 timespec hw_now();
 

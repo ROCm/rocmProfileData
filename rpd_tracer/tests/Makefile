@@ -1,7 +1,7 @@
 CXX = /opt/rocm/llvm/bin/clang++
 CXXFLAGS = -std=c++11 -g -O2 -I.. -pthread
 
-TESTS = test_seqlock test_measurement test_regression
+TESTS = test_seqlock test_measurement test_regression test_convergence
 
 # Firefly.o and Utility.o built from parent directory
 PARENT_OBJS = ../Firefly.o ../Utility.o
@@ -26,6 +26,9 @@ test_measurement: test_measurement.cpp $(PARENT_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 test_regression: test_regression.cpp $(PARENT_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+test_convergence: test_convergence.cpp $(PARENT_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 $(PARENT_OBJS):

@@ -221,34 +221,85 @@ void svc_update_ns(SvcState* state, int64_t offsetNs, double drift) {
 }
 
 // -----------------------------------------------------------------------------
-// Firefly
+// PI Controller State
+// -----------------------------------------------------------------------------
+struct PidState {
+    double frequency{0.0};
+    bool initialized{false};
+};
+
+static PidState s_pid;
+
+void firefly_reset() {
+    s_pid = PidState{};
+}
+
+// -----------------------------------------------------------------------------
+// Firefly — PI-based clock offset tracking
 // -----------------------------------------------------------------------------
 void firefly_run(const char* role, MeasurementBuffer& buffer) {
     if (role == nullptr)
         return;
 
     int localCount = 0;
+    int64_t latest_offset = 0;
     {
         std::lock_guard<std::mutex> lock(buffer.mutex);
         localCount = buffer.count;
+        if (localCount <= 0)
+            return;
+        int idx = (localCount - 1) % static_cast<int>(buffer.measurements.size());
+        latest_offset = buffer.measurements[idx].offset;
     }
 
-    const MeasurementAnalysis analysis = read_latest_measurements(role,
-                                                                  REGRESSION_WINDOW_SIZE,
-                                                                  buffer.measurements.data(),
-                                                                  localCount,
-                                                                  buffer.measurements.size());
+    // IQR outlier check: reject the latest sample if it's an outlier
+    // relative to the recent window
+    if (localCount > static_cast<int>(MEDIAN_WINDOW_SIZE)) {
+        const MeasurementAnalysis analysis = read_latest_measurements(role,
+                                                                      MEDIAN_WINDOW_SIZE,
+                                                                      buffer.measurements.data(),
+                                                                      localCount,
+                                                                      buffer.measurements.size());
+        if (!analysis.samples.empty()) {
+            std::vector<int64_t> offsets;
+            offsets.reserve(analysis.samples.size());
+            for (const auto& s : analysis.samples)
+                offsets.push_back(s.offset);
+            std::sort(offsets.begin(), offsets.end());
+            size_t n = offsets.size();
+            int64_t q1 = offsets[n / 4];
+            int64_t q3 = offsets[3 * n / 4];
+            int64_t iqr = q3 - q1;
+            if (latest_offset < q1 - 3 * iqr || latest_offset > q3 + 3 * iqr)
+                return;
+        }
+    }
 
-    // Real clock drift is < 100 ppm; anything larger indicates bad data
-    double drift = analysis.driftRate;
-    if (std::fabs(drift) > 500e-6)
-        drift = 0.0;
+    int64_t measured_offset = latest_offset;
 
-    int64_t prevOffset = firefly::g_pSvcState->offset;
-    double prevDrift = firefly::g_pSvcState->drift;
-    int64_t newOffset = static_cast<int64_t>((1.0 - CONSENSUS_ALPHA) * prevOffset + CONSENSUS_ALPHA * analysis.averageOffset);
-    double newDrift = (1.0 - CONSENSUS_ALPHA) * prevDrift + CONSENSUS_ALPHA * drift;
-    svc_update_ns(firefly::g_pSvcState, newOffset, newDrift);
+    if (!s_pid.initialized) {
+        svc_update_ns(firefly::g_pSvcState, measured_offset, 0.0);
+        s_pid.initialized = true;
+        return;
+    }
+
+    double current_offset = static_cast<double>(g_pSvcState->offset);
+    double error = static_cast<double>(measured_offset) - current_offset;
+    double dt_ns = FIRE_FLY_SLEEP_MSEC * 1e6;
+
+    // I term: learn drift rate from persistent phase error
+    s_pid.frequency += KI * error / dt_ns;
+
+    // Anti-windup: clamp at 500 ppm
+    if (s_pid.frequency > 500e-6)
+        s_pid.frequency = 500e-6;
+    if (s_pid.frequency < -500e-6)
+        s_pid.frequency = -500e-6;
+
+    // P term: phase correction + frequency correction
+    double new_offset = current_offset + KP * error + s_pid.frequency * dt_ns;
+
+    svc_update_ns(firefly::g_pSvcState, static_cast<int64_t>(new_offset), s_pid.frequency);
 }
 
 // -----------------------------------------------------------------------------
