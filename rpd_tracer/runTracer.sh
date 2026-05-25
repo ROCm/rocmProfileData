@@ -21,15 +21,40 @@
 # THE SOFTWARE.
 ################################################################################
 OUTPUT_FILE=$(rlog-config get rpd_tracer:filename 2>/dev/null || echo "trace.rpd")
+RANK=""
+MASTER=""
+EXIT_DELAY=30
+LOAD_ONLY=0
 
-if [ "$1" = "-o" ] ; then
-  OUTPUT_FILE=$2
-  shift
-  shift
-fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o)          OUTPUT_FILE="$2"; shift 2 ;;
+    --rank)      RANK="$2"; shift 2 ;;
+    --master)    MASTER="$2"; shift 2 ;;
+    --exit-delay) EXIT_DELAY="$2"; shift 2 ;;
+    --load)      LOAD_ONLY=1; shift ;;
+    *)           break ;;
+  esac
+done
 
 rm -f ${OUTPUT_FILE}
-
 export RPDT_FILENAME=${OUTPUT_FILE}
 
-LD_PRELOAD=librpd_tracer.so "$@"
+if [ "$LOAD_ONLY" = "1" ]; then
+  export RPDT_AUTOSTART=0
+  export RPDT_DELAYINIT=1
+fi
+
+if [ -n "$RANK" ]; then
+  export RPDT_CLOCKSYNC_RANK=${RANK}
+  if [ -n "$MASTER" ]; then
+    export RPDT_CLOCKSYNC_MASTER=${MASTER}
+  fi
+  DELAY_ARG=""
+  if [ "$RANK" = "0" ]; then
+    DELAY_ARG="--exit-delay ${EXIT_DELAY}"
+  fi
+  rpdrun ${DELAY_ARG} "$@"
+else
+  LD_PRELOAD=librpd_tracer.so "$@"
+fi

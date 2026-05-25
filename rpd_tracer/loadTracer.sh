@@ -20,18 +20,5 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 ################################################################################
-OUTPUT_FILE=$(rlog-config get rpd_tracer:filename 2>/dev/null || echo "trace.rpd")
-
-if [ "$1" = "-o" ] ; then
-  OUTPUT_FILE=$2
-  shift
-  shift
-fi
-
-rm -f ${OUTPUT_FILE}
-
-export RPDT_FILENAME=${OUTPUT_FILE}
-export RPDT_AUTOSTART=0
-export RPDT_DELAYINIT=1
-
-LD_PRELOAD=librpd_tracer.so "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/runTracer.sh" --load "$@"

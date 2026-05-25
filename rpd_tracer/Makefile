@@ -75,7 +75,7 @@ PYTHON = python3
 PIP = pip3
 
 
-all: $(RPD_TRACER) $(RPD_EMBEDDED)
+all: $(RPD_TRACER) $(RPD_EMBEDDED) rpdrun
 
 .PHONY: all 
 
@@ -106,6 +106,9 @@ $(RPD_TRACER): $(RPD_OBJS) rpd_capi_tracer.o
 $(RPD_EMBEDDED): $(RPD_OBJS) rpd_capi_embedded.o
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -Wl,--version-script=marker_shim.ver -g
 
+rpdrun: rpdrun.c
+	$(CC) -o $@ $< -ldl
+
 %.o: %.cpp
 	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3 -MMD -MP
 
@@ -119,7 +122,7 @@ $(RPD_EMBEDDED): $(RPD_OBJS) rpd_capi_embedded.o
 #install: | $(PREFIX)/lib/lib$(RPD_MAIN)
 install: all
 	cp $(RPD_TRACER) $(RPD_EMBEDDED)  $(PREFIX)/lib/
-	cp $(RPD_SCRIPT) $(PREFIX)/bin/
+	cp $(RPD_SCRIPT) rpdrun $(PREFIX)/bin/
 	ldconfig
 	$(PIP) install .
 
@@ -129,4 +132,4 @@ uninstall:
 	rm $(PREFIX)/bin/$(RPD_SCRIPT)
 .PHONY: clean
 clean:
-	rm -f *.o *.so *.d tableSchema.h utilitySchema.h
+	rm -f *.o *.so *.d tableSchema.h utilitySchema.h rpdrun
