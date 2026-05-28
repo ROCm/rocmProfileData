@@ -3,6 +3,7 @@
 #include "Table.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
+#include "NetWriterBackend.h"
 
 #include <thread>
 #include <unordered_map>
@@ -87,6 +88,16 @@ WriterBackend* UStringTable::createWriterBackend(const char *basefile, bool dire
     return new UStringTableWriterBackend(basefile, directWrite);
 }
 
+static void serializeUStringTableRow(const void *row, ByteBuffer &buf) {
+    static_cast<const UStringTable::row*>(row)->serialize(buf);
+}
+
+WriterBackend* UStringTable::createNetWriterBackend(const char *host, int port, bool directWrite)
+{
+    return new NetWriterBackend("UStringTable", host, port, directWrite,
+        sizeof(UStringTable::row), serializeUStringTableRow);
+}
+
 
 class UStringTablePrivate
 {
@@ -104,7 +115,8 @@ public:
 
 UStringTable::UStringTable(const char *basefile, bool directWrite)
 : BufferedTable(basefile, UStringTablePrivate::BUFFERSIZE, UStringTablePrivate::BATCHSIZE,
-    createWriterBackend(basefile, directWrite))
+    isRemoteNode() ? createNetWriterBackend(getLogaggHost(), getLogaggPort(), directWrite)
+                   : createWriterBackend(basefile, directWrite))
 , d(new UStringTablePrivate(this))
 {
     // empty string is id=1 - insert it first, now

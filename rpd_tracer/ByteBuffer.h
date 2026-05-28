@@ -3,6 +3,7 @@
  **************************************************************************/
 #pragma once
 
+#include <cstdint>
 #include <cstring>
 #include <sqlite3.h>
 #include <string>

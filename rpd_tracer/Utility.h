@@ -130,6 +130,33 @@ int sqlite_busy_handler(void *data, int count);
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
 
+// Returns true if this process should send data over the network
+// (RPDT_LOGAGG_PORT is set and RPDT_NODE_ID > 0)
+static inline bool isRemoteNode()
+{
+    static int result = -1;
+    if (result < 0) {
+        const char *port = getenv("RPDT_LOGAGG_PORT");
+        const char *nodeId = getenv("RPDT_NODE_ID");
+        result = (port && nodeId && atoi(nodeId) > 0) ? 1 : 0;
+    }
+    return result == 1;
+}
+
+static inline const char* getLogaggHost()
+{
+    const char *host = getenv("RPDT_LOGAGG_HOST");
+    if (!host) host = getenv("MASTER_ADDR");
+    if (!host) host = "localhost";
+    return host;
+}
+
+static inline int getLogaggPort()
+{
+    const char *port = getenv("RPDT_LOGAGG_PORT");
+    return port ? atoi(port) : 29223;
+}
+
 class Logger;
 int unwind(Logger &logger, const char *api, const sqlite_int64 api_id);
 

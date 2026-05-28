@@ -3,6 +3,7 @@
 #include "Table.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
+#include "NetWriterBackend.h"
 
 #include <thread>
 #include <array>
@@ -86,6 +87,16 @@ WriterBackend* StackFrameTable::createWriterBackend(const char *basefile, bool d
     return new StackFrameTableWriterBackend(basefile, directWrite);
 }
 
+static void serializeStackFrameTableRow(const void *row, ByteBuffer &buf) {
+    static_cast<const StackFrameTable::row*>(row)->serialize(buf);
+}
+
+WriterBackend* StackFrameTable::createNetWriterBackend(const char *host, int port, bool directWrite)
+{
+    return new NetWriterBackend("StackFrameTable", host, port, directWrite,
+        sizeof(StackFrameTable::row), serializeStackFrameTableRow);
+}
+
 
 class StackFrameTablePrivate
 {
@@ -101,7 +112,8 @@ public:
 
 StackFrameTable::StackFrameTable(const char *basefile, bool directWrite)
 : BufferedTable(basefile, StackFrameTablePrivate::BUFFERSIZE, StackFrameTablePrivate::BATCHSIZE,
-    createWriterBackend(basefile, directWrite))
+    isRemoteNode() ? createNetWriterBackend(getLogaggHost(), getLogaggPort(), directWrite)
+                   : createWriterBackend(basefile, directWrite))
 , d(new StackFrameTablePrivate(this))
 {
 }

@@ -191,6 +191,13 @@ void Logger::init()
     if (getenv("RPDT_CLOCKSYNC_IP") != nullptr)
         factories.push_back("ChronoSyncDataSourceFactory");
 
+    // RemoteDataSource: TCP receiver for multi-node profiling (Node 0 only)
+    const char *logaggPort = getenv("RPDT_LOGAGG_PORT");
+    const char *nodeIdStr = getenv("RPDT_NODE_ID");
+    int nodeId = nodeIdStr ? atoi(nodeIdStr) : 0;
+    if (logaggPort != nullptr && nodeId == 0)
+        factories.push_back("RemoteDataSourceFactory");
+
     bool rocmSourceAdded = false;
     for (auto it = factories.begin(); it != factories.end(); ++it) {
         bool isRocmFactory = std::find(rocmFactories.begin(), rocmFactories.end(), *it) != rocmFactories.end();

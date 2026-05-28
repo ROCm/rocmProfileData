@@ -3,6 +3,7 @@
 #include "Table.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
+#include "NetWriterBackend.h"
 
 #include <thread>
 #include <map>
@@ -89,6 +90,16 @@ WriterBackend* MonitorTable::createWriterBackend(const char *basefile, bool dire
     return new MonitorTableWriterBackend(basefile, directWrite);
 }
 
+static void serializeMonitorTableRow(const void *row, ByteBuffer &buf) {
+    static_cast<const MonitorTable::row*>(row)->serialize(buf);
+}
+
+WriterBackend* MonitorTable::createNetWriterBackend(const char *host, int port, bool directWrite)
+{
+    return new NetWriterBackend("MonitorTable", host, port, directWrite,
+        sizeof(MonitorTable::row), serializeMonitorTableRow);
+}
+
 
 class MonitorTablePrivate
 {
@@ -118,7 +129,8 @@ public:
 
 MonitorTable::MonitorTable(const char *basefile, bool directWrite)
 : BufferedTable(basefile, MonitorTablePrivate::BUFFERSIZE, MonitorTablePrivate::BATCHSIZE,
-    createWriterBackend(basefile, directWrite))
+    isRemoteNode() ? createNetWriterBackend(getLogaggHost(), getLogaggPort(), directWrite)
+                   : createWriterBackend(basefile, directWrite))
 , d(new MonitorTablePrivate(this))
 {
 }

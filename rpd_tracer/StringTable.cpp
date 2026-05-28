@@ -3,6 +3,7 @@
 #include "Table.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
+#include "NetWriterBackend.h"
 
 #include <thread>
 #include <unordered_map>
@@ -86,6 +87,16 @@ WriterBackend* StringTable::createWriterBackend(const char *basefile, bool direc
     return new StringTableWriterBackend(basefile, directWrite);
 }
 
+static void serializeStringTableRow(const void *row, ByteBuffer &buf) {
+    static_cast<const StringTable::row*>(row)->serialize(buf);
+}
+
+WriterBackend* StringTable::createNetWriterBackend(const char *host, int port, bool directWrite)
+{
+    return new NetWriterBackend("StringTable", host, port, directWrite,
+        sizeof(StringTable::row), serializeStringTableRow);
+}
+
 
 class StringTablePrivate
 {
@@ -106,7 +117,8 @@ public:
 
 StringTable::StringTable(const char *basefile, bool directWrite)
 : BufferedTable(basefile, StringTablePrivate::BUFFERSIZE, StringTablePrivate::BATCHSIZE,
-    createWriterBackend(basefile, directWrite))
+    isRemoteNode() ? createNetWriterBackend(getLogaggHost(), getLogaggPort(), directWrite)
+                   : createWriterBackend(basefile, directWrite))
 , d(new StringTablePrivate(this))
 {
     d->cache.reserve(64 * 1024);  // Avoid/delay rehashing for typical runs

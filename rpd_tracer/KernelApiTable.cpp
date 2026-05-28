@@ -3,6 +3,7 @@
 #include "Table.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
+#include "NetWriterBackend.h"
 
 #include <thread>
 #include <array>
@@ -95,6 +96,16 @@ WriterBackend* KernelApiTable::createWriterBackend(const char *basefile, bool di
     return new KernelApiTableWriterBackend(basefile, directWrite);
 }
 
+static void serializeKernelApiTableRow(const void *row, ByteBuffer &buf) {
+    static_cast<const KernelApiTable::row*>(row)->serialize(buf);
+}
+
+WriterBackend* KernelApiTable::createNetWriterBackend(const char *host, int port, bool directWrite)
+{
+    return new NetWriterBackend("KernelApiTable", host, port, directWrite,
+        sizeof(KernelApiTable::row), serializeKernelApiTableRow);
+}
+
 
 class KernelApiTablePrivate
 {
@@ -110,7 +121,8 @@ public:
 
 KernelApiTable::KernelApiTable(const char *basefile, bool directWrite)
 : BufferedTable(basefile, KernelApiTablePrivate::BUFFERSIZE, KernelApiTablePrivate::BATCHSIZE,
-    createWriterBackend(basefile, directWrite))
+    isRemoteNode() ? createNetWriterBackend(getLogaggHost(), getLogaggPort(), directWrite)
+                   : createWriterBackend(basefile, directWrite))
 , d(new KernelApiTablePrivate(this))
 {
 }

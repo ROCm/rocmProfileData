@@ -3,6 +3,7 @@
 #include "Table.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
+#include "NetWriterBackend.h"
 
 #include <thread>
 #include <array>
@@ -104,6 +105,16 @@ WriterBackend* CopyApiTable::createWriterBackend(const char *basefile, bool dire
     return new CopyApiTableWriterBackend(basefile, directWrite);
 }
 
+static void serializeCopyApiTableRow(const void *row, ByteBuffer &buf) {
+    static_cast<const CopyApiTable::row*>(row)->serialize(buf);
+}
+
+WriterBackend* CopyApiTable::createNetWriterBackend(const char *host, int port, bool directWrite)
+{
+    return new NetWriterBackend("CopyApiTable", host, port, directWrite,
+        sizeof(CopyApiTable::row), serializeCopyApiTableRow);
+}
+
 
 class CopyApiTablePrivate
 {
@@ -119,7 +130,8 @@ public:
 
 CopyApiTable::CopyApiTable(const char *basefile, bool directWrite)
 : BufferedTable(basefile, CopyApiTablePrivate::BUFFERSIZE, CopyApiTablePrivate::BATCHSIZE,
-    createWriterBackend(basefile, directWrite))
+    isRemoteNode() ? createNetWriterBackend(getLogaggHost(), getLogaggPort(), directWrite)
+                   : createWriterBackend(basefile, directWrite))
 , d(new CopyApiTablePrivate(this))
 {
 }
