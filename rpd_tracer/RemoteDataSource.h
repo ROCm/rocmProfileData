@@ -25,6 +25,7 @@
 #pragma once
 
 #include "DataSource.h"
+#include "DbResource.h"
 #include "WriterBackend.h"
 #include "ByteBuffer.h"
 #include "TcpConnection.h"
@@ -57,11 +58,12 @@ private:
         sqlite3_int64 idOffset;
         int nodeId;
         int rowCount;
+        int startIndex;
     };
 
     using DeserializeAndWriteFn = void (*)(ByteBuffer &buf, int rowCount,
                                           sqlite3_int64 idOffset, int nodeId,
-                                          WriterBackend *backend);
+                                          int startIndex, WriterBackend *backend);
 
     struct WriterChannel {
         WriterBackend *backend{nullptr};
@@ -85,6 +87,7 @@ private:
     std::vector<TcpConnection*> m_recvConns;
     std::mutex m_connMutex;
 
+    DbResource *m_resource{nullptr};
     int m_port{0};
     std::string m_basefile;
     bool m_directWrite{false};

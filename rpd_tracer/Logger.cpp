@@ -187,8 +187,7 @@ void Logger::init()
         "RoctracerDataSourceFactory"
         };
 
-    // FIXME: use rlog property
-    if (getenv("RPDT_CLOCKSYNC_IP") != nullptr)
+    if (getenv("RPDT_CLOCKSYNC_RANK") != nullptr)
         factories.push_back("ChronoSyncDataSourceFactory");
 
     // RemoteDataSource: TCP receiver for multi-node profiling (Node 0 only)

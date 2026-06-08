@@ -146,6 +146,7 @@ void ChronoSyncDataSource::init() {
 
     firefly::create_clocksync_shm(m_shmName);
     storeMetadata("clocksync_shm", m_shmName);
+    storeMetadata("clocksync_delegate", fmt::format("pid={}", getpid()));
 
     m_private = new ChronoSyncDataSourcePrivate(this);
     m_private->m_worker = new std::thread(&ChronoSyncDataSourcePrivate::work, m_private);
@@ -218,6 +219,7 @@ void ChronoSyncDataSource::work() {
 
     if (rank == 0) {
         // Server: respond to probes from all clients. Offset stays 0.
+        firefly::svc_update_ns(firefly::g_pSvcState, 0, 0.0);
         std::thread serverThread([&]() {
             firefly::run_server(port, buffer, done);
         });

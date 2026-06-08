@@ -31,6 +31,7 @@ namespace rpdtracer {
  *   [idOffset: 8 bytes]      ID offset for foreign key adjustment
  *   [nodeId: 4 bytes]        Node identifier for stride-based adjustments
  *   [rowCount: 4 bytes]      Number of serialized rows in payload
+ *   [startIndex: 4 bytes]    Buffer start index (for primary key materialization)
  *   [payload: variable]      rowCount serialized rows (via row::serialize)
  *
  * A flush signal is a batch message with rowCount = 0 and no payload.

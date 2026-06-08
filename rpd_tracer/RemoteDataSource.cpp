@@ -5,6 +5,7 @@
 #include "Table.h"
 #include "Utility.h"
 
+#include <fmt/format.h>
 #include <cstring>
 #include <vector>
 #include <poll.h>
@@ -36,27 +37,27 @@ static int s_gpuStride = 1000;
 template<typename RowType>
 static void deserializeAndWrite(ByteBuffer &buf, int rowCount,
                                 sqlite3_int64 idOffset, int nodeId,
-                                WriterBackend *backend)
+                                int startIndex, WriterBackend *backend)
 {
     std::vector<RowType> rows(rowCount);
     for (int i = 0; i < rowCount; ++i)
         rows[i].deserialize(buf);
-    backend->setIdOffset(idOffset);
+    backend->setIdOffset(idOffset + startIndex);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 
 static void deserializeStringTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
-    deserializeAndWrite<StringTable::row>(buf, rowCount, idOffset, nodeId, backend);
+    deserializeAndWrite<StringTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
 }
 static void deserializeUStringTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
-    deserializeAndWrite<UStringTable::row>(buf, rowCount, idOffset, nodeId, backend);
+    deserializeAndWrite<UStringTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
 }
 static void deserializeApiTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
     // ApiTable has pid and tid that need node-based stride adjustment
     std::vector<ApiTable::row> rows(rowCount);
@@ -65,21 +66,21 @@ static void deserializeApiTable(ByteBuffer &buf, int rowCount,
         rows[i].pid += nodeId * s_pidStride;
         rows[i].tid += nodeId * s_pidStride;
     }
-    backend->setIdOffset(idOffset);
+    backend->setIdOffset(idOffset + startIndex);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 static void deserializeKernelApiTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
-    deserializeAndWrite<KernelApiTable::row>(buf, rowCount, idOffset, nodeId, backend);
+    deserializeAndWrite<KernelApiTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
 }
 static void deserializeCopyApiTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
-    deserializeAndWrite<CopyApiTable::row>(buf, rowCount, idOffset, nodeId, backend);
+    deserializeAndWrite<CopyApiTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
 }
 static void deserializeOpTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
     // OpTable has gpuId that needs node-based stride adjustment
     std::vector<OpTable::row> rows(rowCount);
@@ -87,18 +88,18 @@ static void deserializeOpTable(ByteBuffer &buf, int rowCount,
         rows[i].deserialize(buf);
         rows[i].gpuId += nodeId * s_gpuStride;
     }
-    backend->setIdOffset(idOffset);
+    backend->setIdOffset(idOffset + startIndex);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 static void deserializeMonitorTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
-    deserializeAndWrite<MonitorTable::row>(buf, rowCount, idOffset, nodeId, backend);
+    deserializeAndWrite<MonitorTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
 }
 static void deserializeStackFrameTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
 {
-    deserializeAndWrite<StackFrameTable::row>(buf, rowCount, idOffset, nodeId, backend);
+    deserializeAndWrite<StackFrameTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
 }
 
 
@@ -161,6 +162,22 @@ void RemoteDataSource::init()
 
     m_basefile = getConfig("RPDT_FILENAME", "filename", "./trace.rpd");
     m_directWrite = (atoi(getConfig("RPDT_DIRECTWRITE", "directwrite", "0")) != 0);
+
+    m_resource = new DbResource(m_basefile, std::string("remote_active"));
+    if (!m_resource->tryLock()) {
+        delete m_resource;
+        m_resource = nullptr;
+        return;
+    }
+
+    {
+        sqlite3 *mdb = nullptr;
+        if (rpdSqliteOpen(m_basefile.c_str(), &mdb) == SQLITE_OK) {
+            std::string sql = fmt::format("INSERT INTO rocpd_metadata(tag, value) VALUES ('remote_delegate', 'pid={}')", getpid());
+            sqlite3_exec(mdb, sql.c_str(), nullptr, nullptr, nullptr);
+            sqlite3_close(mdb);
+        }
+    }
 
     // Read stride values from metadata table (set during schema creation)
     sqlite3 *db;
@@ -264,6 +281,12 @@ void RemoteDataSource::end()
         }
     }
     fprintf(stderr, "[%d] end: all writers done\n", getpid());
+
+    if (m_resource != nullptr) {
+        m_resource->unlock();
+        delete m_resource;
+        m_resource = nullptr;
+    }
 }
 
 void RemoteDataSource::flush()
@@ -353,6 +376,10 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         if (!conn->recv(&rowCount, 4))
             break;
 
+        int startIndex;
+        if (!conn->recv(&startIndex, 4))
+            break;
+
         if (rowCount == 0) {
             // Flush signal: cascade to the writer's backend
             channel->backend->flush();
@@ -360,11 +387,12 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         }
 
         // Read payload
-        uint32_t payloadSize = messageSize - 4 - 8 - 4 - 4;
+        uint32_t payloadSize = messageSize - 4 - 8 - 4 - 4 - 4;
         BatchItem item;
         item.idOffset = idOffset;
         item.nodeId = nodeId;
         item.rowCount = rowCount;
+        item.startIndex = startIndex;
 
         // Read raw bytes into the BatchItem's buffer
         std::vector<char> payload(payloadSize);
@@ -380,7 +408,6 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         channel->cv.notify_one();
     }
 
-    // Connection lifetime managed by m_recvConns, closed in end()
 }
 
 /**************************************************************************
@@ -405,8 +432,13 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
             channel->queue.pop();
         }
 
+        const timestamp_t begin = clocktime_ns();
         channel->deserializeAndWrite(item.data, item.rowCount,
-                                     item.idOffset, item.nodeId, channel->backend);
+                                     item.idOffset, item.nodeId, item.startIndex, channel->backend);
+        const timestamp_t end = clocktime_ns();
+        char buff[256];
+        std::snprintf(buff, sizeof(buff), "node=%d count=%d", item.nodeId, item.rowCount);
+        createOverheadRecord(begin, end, "RemoteDataSource::write", buff);
     }
 
     // Drain remaining items
@@ -414,7 +446,7 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
     while (!channel->queue.empty()) {
         BatchItem &item = channel->queue.front();
         channel->deserializeAndWrite(item.data, item.rowCount,
-                                     item.idOffset, item.nodeId, channel->backend);
+                                     item.idOffset, item.nodeId, item.startIndex, channel->backend);
         channel->queue.pop();
     }
 

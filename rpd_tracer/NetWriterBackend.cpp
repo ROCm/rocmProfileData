@@ -83,15 +83,17 @@ void NetWriterBackend::writeBatch(void *rowData, int start, int end, int capacit
      *    [idOffset: 8]     ID offset for this batch
      *    [nodeId: 4]       node identifier for stride adjustments
      *    [rowCount: 4]     number of rows
+     *    [startIndex: 4]   buffer start index (for primary key materialization)
      *    [payload]         serialized row data
      */
     uint32_t payloadSize = static_cast<uint32_t>(m_buf.size());
-    uint32_t messageSize = 4 + 8 + 4 + 4 + payloadSize;
+    uint32_t messageSize = 4 + 8 + 4 + 4 + 4 + payloadSize;
 
     m_conn.send(&messageSize, 4);
     m_conn.send(&m_idOffset, 8);
     m_conn.send(&m_nodeId, 4);
     m_conn.send(&rowCount, 4);
+    m_conn.send(&start, 4);
     m_conn.send(m_buf.data(), payloadSize);
 }
 
@@ -101,13 +103,15 @@ void NetWriterBackend::flush()
         return;
 
     /*  Flush signal: batch message with rowCount = 0, no payload  */
-    uint32_t messageSize = 4 + 8 + 4 + 4;
+    uint32_t messageSize = 4 + 8 + 4 + 4 + 4;
     uint32_t rowCount = 0;
+    int startIndex = 0;
 
     m_conn.send(&messageSize, 4);
     m_conn.send(&m_idOffset, 8);
     m_conn.send(&m_nodeId, 4);
     m_conn.send(&rowCount, 4);
+    m_conn.send(&startIndex, 4);
 }
 
 }  // namespace rpdtracer
