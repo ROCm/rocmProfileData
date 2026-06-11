@@ -58,12 +58,11 @@ private:
         sqlite3_int64 idOffset;
         int nodeId;
         int rowCount;
-        int startIndex;
     };
 
     using DeserializeAndWriteFn = void (*)(ByteBuffer &buf, int rowCount,
                                           sqlite3_int64 idOffset, int nodeId,
-                                          int startIndex, WriterBackend *backend);
+                                          WriterBackend *backend);
 
     struct WriterChannel {
         WriterBackend *backend{nullptr};

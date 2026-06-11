@@ -47,30 +47,33 @@ static int s_pidStride = 10000000;
 static int s_gpuStride = 1000;
 static const sqlite3_int64 NODE_ID_STRIDE = sqlite3_int64(1) << 48;
 
+// All tables carry their own primary keys in row data (op_id, api_id,
+// string_id, etc.).  The offset is consistent across tables so foreign
+// key references match.
 template<typename RowType>
 static void deserializeAndWrite(ByteBuffer &buf, int rowCount,
                                 sqlite3_int64 idOffset, int nodeId,
-                                int startIndex, WriterBackend *backend)
+                                WriterBackend *backend)
 {
     std::vector<RowType> rows(rowCount);
     for (int i = 0; i < rowCount; ++i)
         rows[i].deserialize(buf);
-    backend->setIdOffset(idOffset + startIndex + nodeId * NODE_ID_STRIDE);
+    backend->setIdOffset(idOffset + nodeId * NODE_ID_STRIDE);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 
 static void deserializeStringTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
-    deserializeAndWrite<StringTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
+    deserializeAndWrite<StringTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
 static void deserializeUStringTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
-    deserializeAndWrite<UStringTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
+    deserializeAndWrite<UStringTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
 static void deserializeApiTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
     // ApiTable has pid and tid that need node-based stride adjustment
     std::vector<ApiTable::row> rows(rowCount);
@@ -79,21 +82,21 @@ static void deserializeApiTable(ByteBuffer &buf, int rowCount,
         rows[i].pid += nodeId * s_pidStride;
         rows[i].tid += nodeId * s_pidStride;
     }
-    backend->setIdOffset(idOffset + startIndex + nodeId * NODE_ID_STRIDE);
+    backend->setIdOffset(idOffset + nodeId * NODE_ID_STRIDE);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 static void deserializeKernelApiTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
-    deserializeAndWrite<KernelApiTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
+    deserializeAndWrite<KernelApiTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
 static void deserializeCopyApiTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
-    deserializeAndWrite<CopyApiTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
+    deserializeAndWrite<CopyApiTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
 static void deserializeOpTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
     // OpTable has gpuId that needs node-based stride adjustment
     std::vector<OpTable::row> rows(rowCount);
@@ -101,18 +104,18 @@ static void deserializeOpTable(ByteBuffer &buf, int rowCount,
         rows[i].deserialize(buf);
         rows[i].gpuId += nodeId * s_gpuStride;
     }
-    backend->setIdOffset(idOffset + startIndex + nodeId * NODE_ID_STRIDE);
+    backend->setIdOffset(idOffset + nodeId * NODE_ID_STRIDE);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 static void deserializeMonitorTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
-    deserializeAndWrite<MonitorTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
+    deserializeAndWrite<MonitorTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
 static void deserializeStackFrameTable(ByteBuffer &buf, int rowCount,
-    sqlite3_int64 idOffset, int nodeId, int startIndex, WriterBackend *backend)
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
 {
-    deserializeAndWrite<StackFrameTable::row>(buf, rowCount, idOffset, nodeId, startIndex, backend);
+    deserializeAndWrite<StackFrameTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
 
 
@@ -389,10 +392,6 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         if (!conn->recv(&rowCount, 4))
             break;
 
-        int startIndex;
-        if (!conn->recv(&startIndex, 4))
-            break;
-
         if (rowCount == 0) {
             // Enqueue flush as a zero-row batch; writer thread handles it in order
             BatchItem flushItem;
@@ -408,12 +407,11 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         }
 
         // Read payload
-        uint32_t payloadSize = messageSize - 4 - 8 - 4 - 4 - 4;
+        uint32_t payloadSize = messageSize - 4 - 8 - 4 - 4;
         BatchItem item;
         item.idOffset = idOffset;
         item.nodeId = nodeId;
         item.rowCount = rowCount;
-        item.startIndex = startIndex;
 
         // Read raw bytes into the BatchItem's buffer
         std::vector<char> payload(payloadSize);
@@ -427,6 +425,8 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
             channel->queue.push(std::move(item));
         }
         channel->cv.notify_one();
+        fprintf(stderr, "[%d] recv: enqueued batch rows=%d qsize=%zu\n",
+            getpid(), rowCount, channel->queue.size());
     }
 
 }
@@ -456,13 +456,16 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
         // rowCount == 0 is a flush signal enqueued by recvLoop
         if (item.rowCount == 0) {
             channel->backend->flush();
+            fprintf(stderr, "[%d] writer: flush (batches so far: running)\n", getpid());
             continue;
         }
 
         const timestamp_t begin = clocktime_ns();
         channel->deserializeAndWrite(item.data, item.rowCount,
-                                     item.idOffset, item.nodeId, item.startIndex, channel->backend);
+                                     item.idOffset, item.nodeId, channel->backend);
         const timestamp_t end = clocktime_ns();
+        fprintf(stderr, "[%d] writer: batch node=%d rows=%d\n",
+            getpid(), item.nodeId, item.rowCount);
         char buff[256];
         std::snprintf(buff, sizeof(buff), "node=%d count=%d", item.nodeId, item.rowCount);
         createOverheadRecord(begin, end, "RemoteDataSource::write", buff);
@@ -474,7 +477,7 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
         BatchItem &item = channel->queue.front();
         if (item.rowCount > 0)
             channel->deserializeAndWrite(item.data, item.rowCount,
-                                         item.idOffset, item.nodeId, item.startIndex, channel->backend);
+                                         item.idOffset, item.nodeId, channel->backend);
         else
             channel->backend->flush();
         channel->queue.pop();

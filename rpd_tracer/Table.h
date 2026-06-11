@@ -274,6 +274,7 @@ public:
         sqlite3_int64 description_id;
         sqlite3_int64 opType_id;
         sqlite3_int64 api_id;  // correlation id
+        sqlite3_int64 op_id;   // explicit primary key (buffer position)
         void serialize(ByteBuffer &buf) const;
         void deserialize(ByteBuffer &buf);
     };
