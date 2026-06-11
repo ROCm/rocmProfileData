@@ -130,15 +130,18 @@ int sqlite_busy_handler(void *data, int count);
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
 
-// Returns true if this process should send data over the network
-// (RPDT_LOGAGG_PORT is set and RPDT_NODE_ID > 0)
+// Returns true if this process should send data over the network.
+// Requires RPDT_LOGAGG_PORT set, RPDT_NODE_ID > 0, and NOT an agent.
+// These are per-job activation signals set by runTracer.sh/torchrun,
+// not rlog-config defaults.
 static inline bool isRemoteNode()
 {
     static int result = -1;
     if (result < 0) {
         const char *port = getenv("RPDT_LOGAGG_PORT");
         const char *nodeId = getenv("RPDT_NODE_ID");
-        result = (port && nodeId && atoi(nodeId) > 0) ? 1 : 0;
+        const char *agent = getenv("RPDT_AGENT");
+        result = (port && nodeId && atoi(nodeId) > 0 && !agent) ? 1 : 0;
     }
     return result == 1;
 }

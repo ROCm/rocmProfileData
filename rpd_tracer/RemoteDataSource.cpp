@@ -394,8 +394,16 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
             break;
 
         if (rowCount == 0) {
-            // Flush signal: cascade to the writer's backend
-            channel->backend->flush();
+            // Enqueue flush as a zero-row batch; writer thread handles it in order
+            BatchItem flushItem;
+            flushItem.idOffset = 0;
+            flushItem.nodeId = 0;
+            flushItem.rowCount = 0;
+            {
+                std::lock_guard<std::mutex> lock(channel->mutex);
+                channel->queue.push(std::move(flushItem));
+            }
+            channel->cv.notify_one();
             continue;
         }
 
@@ -445,6 +453,12 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
             channel->queue.pop();
         }
 
+        // rowCount == 0 is a flush signal enqueued by recvLoop
+        if (item.rowCount == 0) {
+            channel->backend->flush();
+            continue;
+        }
+
         const timestamp_t begin = clocktime_ns();
         channel->deserializeAndWrite(item.data, item.rowCount,
                                      item.idOffset, item.nodeId, item.startIndex, channel->backend);
@@ -458,8 +472,11 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
     std::lock_guard<std::mutex> lock(channel->mutex);
     while (!channel->queue.empty()) {
         BatchItem &item = channel->queue.front();
-        channel->deserializeAndWrite(item.data, item.rowCount,
-                                     item.idOffset, item.nodeId, item.startIndex, channel->backend);
+        if (item.rowCount > 0)
+            channel->deserializeAndWrite(item.data, item.rowCount,
+                                         item.idOffset, item.nodeId, item.startIndex, channel->backend);
+        else
+            channel->backend->flush();
         channel->queue.pop();
     }
 

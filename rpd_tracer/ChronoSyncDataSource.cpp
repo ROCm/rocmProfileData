@@ -69,8 +69,7 @@ ChronoSyncDataSource::~ChronoSyncDataSource() {
 
 static std::string rpd_filename()
 {
-    const char *f = getenv("RPDT_FILENAME");
-    return (f != nullptr) ? f : "./trace.rpd";
+    return getConfig("RPDT_FILENAME", "filename", "./trace.rpd");
 }
 
 static int metadata_callback(void *data, int argc, char **argv, char **colName)
