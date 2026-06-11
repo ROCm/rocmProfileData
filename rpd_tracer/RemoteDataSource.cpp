@@ -171,7 +171,6 @@ void RemoteDataSource::init()
 {
     const char *portStr = getenv("RPDT_LOGAGG_PORT");
     if (!portStr) {
-        fprintf(stderr, "[%d] RemoteDataSource: RPDT_LOGAGG_PORT not set, skipping\n", getpid());
         return;
     }
     m_port = atoi(portStr);
@@ -215,7 +214,7 @@ void RemoteDataSource::init()
 
     // Try to bind — only the delegate succeeds. Other processes bail here.
     if (!m_listener.listen(m_port)) {
-        fprintf(stderr, "[%d] RemoteDataSource: port %d in use (delegate already running)\n", getpid(), m_port);
+        rpdLog("RemoteDataSource: port %d in use (delegate already running)\n", m_port);
         return;
     }
 
@@ -236,17 +235,15 @@ void RemoteDataSource::init()
 
     m_running = true;
     m_acceptThread = new std::thread(&RemoteDataSource::acceptLoop, this);
-    fprintf(stderr, "[%d] RemoteDataSource: listening on port %d\n", getpid(), m_port);
+    rpdLog("RemoteDataSource: listening on port %d\n", m_port);
 }
 
 void RemoteDataSource::end()
 {
     if (!m_running)
         return;
-    fprintf(stderr, "[%d] RemoteDataSource::end() starting\n", getpid());
     m_running = false;
 
-    fprintf(stderr, "[%d] end: closing listener\n", getpid());
     m_listener.close();
     if (m_acceptThread) {
         if (m_acceptThread->joinable())
@@ -255,7 +252,6 @@ void RemoteDataSource::end()
         m_acceptThread = nullptr;
     }
 
-    fprintf(stderr, "[%d] end: accept thread joined, closing recv connections\n", getpid());
     // Close all recv connections to unblock recv threads
     {
         std::lock_guard<std::mutex> lock(m_connMutex);
@@ -263,7 +259,6 @@ void RemoteDataSource::end()
             c->close();
     }
 
-    fprintf(stderr, "[%d] end: joining %zu recv threads\n", getpid(), m_recvThreads.size());
     // Join recv threads (now unblocked by connection close)
     for (auto *t : m_recvThreads) {
         if (t->joinable())
@@ -273,7 +268,6 @@ void RemoteDataSource::end()
     m_recvThreads.clear();
     m_recvConns.clear();
 
-    fprintf(stderr, "[%d] end: recv threads done, signaling writers\n", getpid());
     // Signal writer threads to drain and exit
     for (auto &pair : m_channels) {
         WriterChannel *ch = pair.second;
@@ -283,20 +277,16 @@ void RemoteDataSource::end()
                 ch->done = true;
             }
             ch->cv.notify_one();
-            fprintf(stderr, "[%d] end: signaled '%s'\n", getpid(), pair.first.c_str());
         }
     }
     for (auto &pair : m_channels) {
         if (pair.second->worker) {
-            fprintf(stderr, "[%d] end: joining '%s'\n", getpid(), pair.first.c_str());
             if (pair.second->worker->joinable())
                 pair.second->worker->join();
             delete pair.second->worker;
             pair.second->worker = nullptr;
-            fprintf(stderr, "[%d] end: joined '%s'\n", getpid(), pair.first.c_str());
         }
     }
-    fprintf(stderr, "[%d] end: all writers done\n", getpid());
 
     if (m_resource != nullptr) {
         m_resource->unlock();
@@ -350,7 +340,7 @@ void RemoteDataSource::acceptLoop()
             continue;
         }
 
-        fprintf(stderr, "[%d] RemoteDataSource: accepted connection for '%s'\n", getpid(), tag);
+        rpdLog("RemoteDataSource: accepted connection for '%s'\n", tag);
 
         // Track connection and spawn a recv thread
         {
@@ -425,8 +415,6 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
             channel->queue.push(std::move(item));
         }
         channel->cv.notify_one();
-        fprintf(stderr, "[%d] recv: enqueued batch rows=%d qsize=%zu\n",
-            getpid(), rowCount, channel->queue.size());
     }
 
 }
@@ -456,7 +444,6 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
         // rowCount == 0 is a flush signal enqueued by recvLoop
         if (item.rowCount == 0) {
             channel->backend->flush();
-            fprintf(stderr, "[%d] writer: flush (batches so far: running)\n", getpid());
             continue;
         }
 
@@ -464,8 +451,6 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
         channel->deserializeAndWrite(item.data, item.rowCount,
                                      item.idOffset, item.nodeId, channel->backend);
         const timestamp_t end = clocktime_ns();
-        fprintf(stderr, "[%d] writer: batch node=%d rows=%d\n",
-            getpid(), item.nodeId, item.rowCount);
         char buff[256];
         std::snprintf(buff, sizeof(buff), "node=%d count=%d", item.nodeId, item.rowCount);
         createOverheadRecord(begin, end, "RemoteDataSource::write", buff);
