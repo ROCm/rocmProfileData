@@ -30,9 +30,22 @@ namespace rpdtracer {
  *  The napi/nop SQL views decode these via integer division:
  *    node = pid / pid_stride,  pid = pid % pid_stride
  *    node = gpuId / gpu_stride, gpuId = gpuId % gpu_stride
+ *
+ *  64-bit ID space layout (sqlite3_int64):
+ *
+ *    Bits 0-30:   per-process row IDs (api_id, op_id, string_id, etc.)
+ *    Bit 31:      annotation ID region (roctx/rlog markers start at 1<<31)
+ *    Bits 32-47:  sessionId (per-process offset = sessionId * (1<<32))
+ *    Bits 48-62:  nodeId   (per-node offset = nodeId * (1<<48))
+ *    Bit 63:      sign bit (unused)
+ *
+ *  This gives: up to ~2B row IDs per process, 65K sessions per node,
+ *  32K nodes.  Node offset is applied here at the receiver; process
+ *  offset arrives in the batch header from the sender.
  */
 static int s_pidStride = 10000000;
 static int s_gpuStride = 1000;
+static const sqlite3_int64 NODE_ID_STRIDE = sqlite3_int64(1) << 48;
 
 template<typename RowType>
 static void deserializeAndWrite(ByteBuffer &buf, int rowCount,
@@ -42,7 +55,7 @@ static void deserializeAndWrite(ByteBuffer &buf, int rowCount,
     std::vector<RowType> rows(rowCount);
     for (int i = 0; i < rowCount; ++i)
         rows[i].deserialize(buf);
-    backend->setIdOffset(idOffset + startIndex);
+    backend->setIdOffset(idOffset + startIndex + nodeId * NODE_ID_STRIDE);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 
@@ -66,7 +79,7 @@ static void deserializeApiTable(ByteBuffer &buf, int rowCount,
         rows[i].pid += nodeId * s_pidStride;
         rows[i].tid += nodeId * s_pidStride;
     }
-    backend->setIdOffset(idOffset + startIndex);
+    backend->setIdOffset(idOffset + startIndex + nodeId * NODE_ID_STRIDE);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 static void deserializeKernelApiTable(ByteBuffer &buf, int rowCount,
@@ -88,7 +101,7 @@ static void deserializeOpTable(ByteBuffer &buf, int rowCount,
         rows[i].deserialize(buf);
         rows[i].gpuId += nodeId * s_gpuStride;
     }
-    backend->setIdOffset(idOffset + startIndex);
+    backend->setIdOffset(idOffset + startIndex + nodeId * NODE_ID_STRIDE);
     backend->writeBatch(rows.data(), 0, rowCount - 1, rowCount);
 }
 static void deserializeMonitorTable(ByteBuffer &buf, int rowCount,
