@@ -30,7 +30,7 @@ struct LocalStringCache
     sqlite3_int64 lookup(const char *str, StringTable &table, uint64_t currentGen)
     {
         for (int i = 0; i < count; ++i) {
-            if (entries[i].ptr == str) {
+            if (entries[i].ptr == str && entries[i].content == str) {
                 if (entries[i].generation != currentGen) {
                     entries[i].id = table.getOrCreate(entries[i].content);
                     entries[i].generation = currentGen;
