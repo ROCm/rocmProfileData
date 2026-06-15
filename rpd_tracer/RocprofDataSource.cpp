@@ -289,6 +289,7 @@ public:
     sqlite3_int64 kernelExecId {0};
     sqlite3_int64 memcpyId {0};
     sqlite3_int64 domainId {0};
+    sqlite3_int64 scratchDomainId {0};
     void cacheIds();
 };
 
@@ -363,6 +364,7 @@ void RocprofDataSourcePrivate::cacheIds()
     kernelExecId = logger.stringTable().getOrCreate("KernelExecution");
     memcpyId = logger.stringTable().getOrCreate("Memcpy");
     domainId = logger.stringTable().getOrCreate("hip");
+    scratchDomainId = logger.stringTable().getOrCreate("scratch");
     idsCached = true;
 }
 
@@ -628,13 +630,19 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
             else if (header->kind == ROCPROFILER_BUFFER_TRACING_MEMORY_COPY) {
 
                 auto &copy = *(static_cast<rocprofiler_buffer_tracing_memory_copy_record_t*>(header->payload));
-                sqlite3_int64 name_id = t_stringCache.lookup(std::string(s->name_info[copy.kind][copy.operation]).c_str(), logger.stringTable(), logger.storageGeneration());
-                sqlite3_int64 desc_id = t_stringCache.lookup("", logger.stringTable(), logger.storageGeneration());
+                std::string op_name = std::string(s->name_info[copy.kind][copy.operation]);
+                sqlite3_int64 name_id = t_stringCache.lookup(op_name.c_str(), logger.stringTable(), logger.storageGeneration());
+                sqlite3_int64 desc_id = t_stringCache.lookup(op_name.c_str(), logger.stringTable(), logger.storageGeneration());
+
+                auto &dst_agent = s->agents.at(copy.dst_agent_id.handle);
+                auto &src_agent = s->agents.at(copy.src_agent_id.handle);
 
                 // Add the op entry
                 OpTable::row row;
-                row.gpuId = 0;
-                row.queueId = 0;	// FIXME, all wrong
+                row.gpuId = (dst_agent.type == ROCPROFILER_AGENT_TYPE_GPU)
+                    ? dst_agent.logical_node_type_id
+                    : src_agent.logical_node_type_id;
+                row.queueId = 0;
                 row.sequenceId = 0;
                 row.start = adjust_external_ts(copy.start_timestamp);
                 row.end = adjust_external_ts(copy.end_timestamp);
@@ -694,6 +702,32 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 
                 logger.apiTable().insert(row);
                 last_correlation = hipapi.correlation_id.internal;
+            }
+            else if (header->kind == ROCPROFILER_BUFFER_TRACING_SCRATCH_MEMORY) {
+                auto &scratch = *(static_cast<rocprofiler_buffer_tracing_scratch_memory_record_t*>(header->payload));
+                sqlite3_int64 name_id = t_stringCache.lookup(std::string(s->name_info[scratch.kind][scratch.operation]).c_str(), logger.stringTable(), logger.storageGeneration());
+
+                ApiTable::row row;
+                row.pid = GetPid();
+                row.tid = scratch.thread_id;
+                row.start = adjust_external_ts(scratch.start_timestamp);
+                row.end = adjust_external_ts(scratch.end_timestamp);
+                row.domain_id = instance.d->scratchDomainId;
+                row.category_id = EMPTY_STRING_ID;
+                row.apiName_id = name_id;
+                if (instance.d->logArgs) {
+                    static thread_local rpdtracer::UStringCache t_ustringCache;
+                    nlohmann::json json;
+                    json["size"] = scratch.allocation_size;
+                    json["gpu"] = s->agents.at(scratch.agent_id.handle).logical_node_type_id;
+                    json["queue"] = scratch.queue_id.handle;
+                    json["flags"] = static_cast<int>(scratch.flags);
+                    row.args_id = t_ustringCache.lookup(json.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), logger.ustringTable(), logger.storageGeneration());
+                }
+                else
+                    row.args_id = EMPTY_STRING_ID;
+                row.api_id = scratch.correlation_id.internal;
+                logger.apiTable().insert(row);
             }
         }
     }
@@ -926,6 +960,12 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
                                                      ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API_EXT,
                                                      apis.data(),
                                                      apis.size(),
+                                                     buffer);
+
+        rocprofiler_configure_buffer_tracing_service(context,
+                                                     ROCPROFILER_BUFFER_TRACING_SCRATCH_MEMORY,
+                                                     nullptr,
+                                                     0,
                                                      buffer);
 
         auto client_thread = rocprofiler_callback_thread_t{};
