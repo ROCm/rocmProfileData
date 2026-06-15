@@ -290,6 +290,9 @@ public:
     sqlite3_int64 memcpyId {0};
     sqlite3_int64 domainId {0};
     sqlite3_int64 scratchDomainId {0};
+    sqlite3_int64 kfdPageMigrateId {0};
+    sqlite3_int64 kfdPageFaultId {0};
+    sqlite3_int64 kfdQueueId {0};
     void cacheIds();
 };
 
@@ -365,6 +368,9 @@ void RocprofDataSourcePrivate::cacheIds()
     memcpyId = logger.stringTable().getOrCreate("Memcpy");
     domainId = logger.stringTable().getOrCreate("hip");
     scratchDomainId = logger.stringTable().getOrCreate("scratch");
+    kfdPageMigrateId = logger.stringTable().getOrCreate("kfd_page_migrate");
+    kfdPageFaultId = logger.stringTable().getOrCreate("kfd_page_fault");
+    kfdQueueId = logger.stringTable().getOrCreate("kfd_queue");
     idsCached = true;
 }
 
@@ -729,6 +735,74 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.api_id = scratch.correlation_id.internal;
                 logger.apiTable().insert(row);
             }
+            else if (header->kind == ROCPROFILER_BUFFER_TRACING_KFD_PAGE_MIGRATE) {
+                auto &record = *(static_cast<rocprofiler_buffer_tracing_kfd_page_migrate_record_t*>(header->payload));
+                auto op_name = std::string(s->name_info[record.kind][record.operation]);
+                constexpr auto prefix_len = sizeof("ROCPROFILER_KFD_PAGE_MIGRATE_") - 1;
+                if (op_name.size() > prefix_len) op_name = op_name.substr(prefix_len);
+                sqlite3_int64 desc_id = t_stringCache.lookup(op_name.c_str(), logger.stringTable(), logger.storageGeneration());
+
+                int gpuId = 0;
+                if (s->agents.count(record.dst_agent.handle) && s->agents.at(record.dst_agent.handle).type == ROCPROFILER_AGENT_TYPE_GPU)
+                    gpuId = s->agents.at(record.dst_agent.handle).logical_node_type_id;
+                else if (s->agents.count(record.src_agent.handle) && s->agents.at(record.src_agent.handle).type == ROCPROFILER_AGENT_TYPE_GPU)
+                    gpuId = s->agents.at(record.src_agent.handle).logical_node_type_id;
+
+                OpTable::row row;
+                row.gpuId = gpuId;
+                row.queueId = -1;
+                row.sequenceId = 0;
+                row.start = adjust_external_ts(record.start_timestamp);
+                row.end = adjust_external_ts(record.end_timestamp);
+                row.description_id = desc_id;
+                row.opType_id = instance.d->kfdPageMigrateId;
+                row.api_id = 0;
+                logger.opTable().insert(row);
+            }
+            else if (header->kind == ROCPROFILER_BUFFER_TRACING_KFD_PAGE_FAULT) {
+                auto &record = *(static_cast<rocprofiler_buffer_tracing_kfd_page_fault_record_t*>(header->payload));
+                auto op_name = std::string(s->name_info[record.kind][record.operation]);
+                constexpr auto prefix_len = sizeof("ROCPROFILER_KFD_PAGE_FAULT_") - 1;
+                if (op_name.size() > prefix_len) op_name = op_name.substr(prefix_len);
+                sqlite3_int64 desc_id = t_stringCache.lookup(op_name.c_str(), logger.stringTable(), logger.storageGeneration());
+
+                int gpuId = 0;
+                if (s->agents.count(record.agent_id.handle))
+                    gpuId = s->agents.at(record.agent_id.handle).logical_node_type_id;
+
+                OpTable::row row;
+                row.gpuId = gpuId;
+                row.queueId = -2;
+                row.sequenceId = 0;
+                row.start = adjust_external_ts(record.start_timestamp);
+                row.end = adjust_external_ts(record.end_timestamp);
+                row.description_id = desc_id;
+                row.opType_id = instance.d->kfdPageFaultId;
+                row.api_id = 0;
+                logger.opTable().insert(row);
+            }
+            else if (header->kind == ROCPROFILER_BUFFER_TRACING_KFD_QUEUE) {
+                auto &record = *(static_cast<rocprofiler_buffer_tracing_kfd_queue_record_t*>(header->payload));
+                auto op_name = std::string(s->name_info[record.kind][record.operation]);
+                constexpr auto prefix_len = sizeof("ROCPROFILER_KFD_QUEUE_") - 1;
+                if (op_name.size() > prefix_len) op_name = op_name.substr(prefix_len);
+                sqlite3_int64 desc_id = t_stringCache.lookup(op_name.c_str(), logger.stringTable(), logger.storageGeneration());
+
+                int gpuId = 0;
+                if (s->agents.count(record.agent_id.handle))
+                    gpuId = s->agents.at(record.agent_id.handle).logical_node_type_id;
+
+                OpTable::row row;
+                row.gpuId = gpuId;
+                row.queueId = -3;
+                row.sequenceId = 0;
+                row.start = adjust_external_ts(record.start_timestamp);
+                row.end = adjust_external_ts(record.end_timestamp);
+                row.description_id = desc_id;
+                row.opType_id = instance.d->kfdQueueId;
+                row.api_id = 0;
+                logger.opTable().insert(row);
+            }
         }
     }
     const timestamp_t cb_end_time = clocktime_ns();
@@ -967,6 +1041,24 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
                                                      nullptr,
                                                      0,
                                                      buffer);
+
+        rocprofiler_configure_buffer_tracing_service(context,
+                                                     ROCPROFILER_BUFFER_TRACING_KFD_PAGE_MIGRATE,
+                                                     nullptr,
+                                                     0,
+                                                     buffer);
+
+        rocprofiler_configure_buffer_tracing_service(context,
+                                                     ROCPROFILER_BUFFER_TRACING_KFD_PAGE_FAULT,
+                                                     nullptr,
+                                                     0,
+                                                     buffer);
+
+        rocprofiler_configure_buffer_tracing_service(context,
+                                                     ROCPROFILER_BUFFER_TRACING_KFD_QUEUE,
+                                                     nullptr,
+                                                     0,
+                                                      buffer);
 
         auto client_thread = rocprofiler_callback_thread_t{};
         rocprofiler_create_callback_thread(&client_thread);
