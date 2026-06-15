@@ -132,8 +132,6 @@ void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name,
 
 // Returns true if this process should send data over the network.
 // Requires RPDT_LOGAGG_PORT set, RPDT_NODE_ID > 0, and NOT an agent.
-// These are per-job activation signals set by runTracer.sh/torchrun,
-// not rlog-config defaults.
 static inline bool isRemoteNode()
 {
     static int result = -1;
@@ -149,7 +147,6 @@ static inline bool isRemoteNode()
 static inline const char* getLogaggHost()
 {
     const char *host = getenv("RPDT_LOGAGG_HOST");
-    if (!host) host = getenv("MASTER_ADDR");
     if (!host) host = "localhost";
     return host;
 }

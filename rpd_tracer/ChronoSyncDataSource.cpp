@@ -185,26 +185,12 @@ void ChronoSyncDataSource::work() {
     int rank = -1;
     std::string masterAddr;
 
-    // Config fallback chain:
-    // 1. torchrun env vars
-    const char* groupRank = std::getenv("GROUP_RANK");
-    const char* masterAddrEnv = std::getenv("MASTER_ADDR");
-    if (groupRank != nullptr && masterAddrEnv != nullptr) {
-        rank = std::atoi(groupRank);
-        masterAddr = masterAddrEnv;
-    }
-
-    // 2. standalone env vars
-    if (rank < 0) {
-        const char* rpdtRank = std::getenv("RPDT_CLOCKSYNC_RANK");
-        const char* rpdtMaster = std::getenv("RPDT_CLOCKSYNC_MASTER");
-        if (rpdtRank != nullptr)
-            rank = std::atoi(rpdtRank);
-        if (rpdtMaster != nullptr)
-            masterAddr = rpdtMaster;
-    }
-
-    // 3. no config — no clock sync
+    const char* rpdtRank = std::getenv("RPDT_CLOCKSYNC_RANK");
+    const char* rpdtMaster = std::getenv("RPDT_CLOCKSYNC_MASTER");
+    if (rpdtRank != nullptr)
+        rank = std::atoi(rpdtRank);
+    if (rpdtMaster != nullptr)
+        masterAddr = rpdtMaster;
     if (rank < 0)
         return;
 
