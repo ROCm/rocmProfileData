@@ -1,9 +1,9 @@
 import os
 import dash
 from dash import html
-import dash_ag_grid as dag
 
 from rpd_dash.util import db
+from rpd_dash.util.html_table import make_table
 
 dash.register_page(__name__, path="/file-info", name="File Info")
 
@@ -58,14 +58,13 @@ def layout():
 
         if not meta_df.empty:
             sections.append(html.H3("Metadata"))
-            sections.append(dag.AgGrid(
-                rowData=meta_df.to_dict("records"),
-                columnDefs=[
-                    {"field": "tag", "headerName": "Tag", "flex": 1},
-                    {"field": "value", "headerName": "Value", "flex": 3},
+            sections.append(make_table(
+                columns=[
+                    {"field": "tag", "header": "Tag"},
+                    {"field": "value", "header": "Value"},
                 ],
-                defaultColDef={"sortable": True, "resizable": True},
-                style={"height": f"{min(600, max(200, len(meta_df) * 42 + 50))}px"},
+                rows=meta_df.to_dict("records"),
+                col_styles={"value": {"fontFamily": "monospace"}},
             ))
 
         return html.Div(sections)

@@ -139,6 +139,7 @@ def layout():
                 rowData=fwd_df.to_dict("records"),
                 columnDefs=col_defs,
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "400px"},
             ))
 
@@ -148,6 +149,7 @@ def layout():
                 rowData=bwd_df.to_dict("records"),
                 columnDefs=col_defs,
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "400px"},
             ))
 
@@ -175,6 +177,7 @@ def layout():
                         {"field": "avg_cpu_us", "headerName": "Avg CPU (us)", "flex": 1, "valueFormatter": fmt_dec},
                     ],
                     defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                    dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                     style={"height": "500px"},
                 ))
 

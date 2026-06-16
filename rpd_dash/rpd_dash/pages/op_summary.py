@@ -34,6 +34,7 @@ def layout():
                     {"field": "total_execs", "headerName": "Total Executions", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "600px"},
             ),
         ])

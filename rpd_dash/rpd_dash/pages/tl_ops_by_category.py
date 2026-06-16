@@ -88,6 +88,7 @@ def layout():
                      "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "450px"},
             ),
             html.H3("All Ops", style={"marginTop": "25px"}),
@@ -101,7 +102,7 @@ def layout():
                     {"field": "cpu_time_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                dashGridOptions={
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32, 
                     "groupDefaultExpanded": 0,
                     "autoGroupColumnDef": {"headerName": "Category", "minWidth": 250},
                 },

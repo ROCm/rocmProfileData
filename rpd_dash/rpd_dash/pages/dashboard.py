@@ -1,9 +1,9 @@
 import dash
 from dash import html, dcc, callback, Input, Output
-import dash_ag_grid as dag
 import plotly.express as px
 
 from rpd_dash.util import db
+from rpd_dash.util.html_table import make_table
 
 dash.register_page(__name__, path="/", name="Dashboard")
 
@@ -51,16 +51,15 @@ def layout():
         if not busy_df.empty:
             busy_table = html.Div([
                 html.H3("GPU Utilization"),
-                dag.AgGrid(
-                    rowData=busy_df.to_dict("records"),
-                    columnDefs=[
-                        {"field": "gpuId", "headerName": "GPU"},
-                        {"field": "GpuTime_us", "headerName": "GPU Time (us)", "valueFormatter": {"function": "d3.format(',')(params.value)"}},
-                        {"field": "WallTime_us", "headerName": "Wall Time (us)", "valueFormatter": {"function": "d3.format(',')(params.value)"}},
-                        {"field": "BusyPct", "headerName": "Busy %", "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
+                make_table(
+                    columns=[
+                        {"field": "gpuId", "header": "GPU"},
+                        {"field": "GpuTime_us", "header": "GPU Time (us)", "format": lambda v: f"{int(v):,}"},
+                        {"field": "WallTime_us", "header": "Wall Time (us)", "format": lambda v: f"{int(v):,}"},
+                        {"field": "BusyPct", "header": "Busy %", "format": lambda v: f"{v:.1f}"},
                     ],
-                    defaultColDef={"sortable": True, "resizable": True},
-                    style={"height": "300px"},
+                    rows=busy_df.to_dict("records"),
+                    col_styles={"GpuTime_us": {"textAlign": "right"}, "WallTime_us": {"textAlign": "right"}, "BusyPct": {"textAlign": "right"}},
                 ),
             ])
 
@@ -75,28 +74,23 @@ def layout():
             )
             if not domain_df.empty:
                 sections.append(html.H3("Trace Domains", style={"marginTop": "25px"}))
-                sections.append(dag.AgGrid(
-                    rowData=domain_df.to_dict("records"),
-                    columnDefs=[
-                        {"field": "domain", "headerName": "Domain", "flex": 2},
-                        {"field": "calls", "headerName": "Calls", "flex": 1,
-                         "valueFormatter": {"function": "d3.format(',')(params.value)"}},
+                sections.append(make_table(
+                    columns=[
+                        {"field": "domain", "header": "Domain"},
+                        {"field": "calls", "header": "Calls", "format": lambda v: f"{int(v):,}"},
                     ],
-                    defaultColDef={"sortable": True, "resizable": True},
-                    style={"height": "200px"},
+                    rows=domain_df.to_dict("records"),
+                    col_styles={"calls": {"textAlign": "right"}},
                 ))
             if not datasources.empty:
                 import re
                 sources = datasources["value"].apply(lambda v: re.sub(r".*source=", "", v))
                 unique_sources = sorted(sources.unique())
-                ds_df = [{"source": s} for s in unique_sources]
+                ds_rows = [{"source": s} for s in unique_sources]
                 sections.append(html.H3("Data Sources", style={"marginTop": "15px"}))
-                sections.append(dag.AgGrid(
-                    rowData=ds_df,
-                    columnDefs=[
-                        {"field": "source", "headerName": "Source", "flex": 1},
-                    ],
-                    style={"height": f"{max(120, len(ds_df) * 42 + 50)}px"},
+                sections.append(make_table(
+                    columns=[{"field": "source", "header": "Source"}],
+                    rows=ds_rows,
                 ))
 
         return html.Div(sections)

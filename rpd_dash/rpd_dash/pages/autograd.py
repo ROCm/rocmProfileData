@@ -32,7 +32,7 @@ def layout():
                     {"field": "total_gpu", "headerName": "Total GPU (us)", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                dashGridOptions={
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32, 
                     "groupDefaultExpanded": 0,
                     "autoGroupColumnDef": {
                         "headerName": "Autograd Operator",

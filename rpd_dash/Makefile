@@ -4,7 +4,7 @@ PACKAGE = rpd-viewer
 
 install:
 	@echo "Building rpd_dash"
-	pip install --user .
+	pip install .
 
 develop:
 	@echo "Building $(PACKAGE)"

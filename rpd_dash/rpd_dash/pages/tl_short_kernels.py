@@ -103,6 +103,7 @@ def update_content(threshold):
                      "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "500px"},
             ),
         ])

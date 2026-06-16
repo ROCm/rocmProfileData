@@ -95,6 +95,7 @@ def layout():
                      "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "400px"},
             ),
             html.H3("All Kernels", style={"marginTop": "25px"}),
@@ -109,7 +110,7 @@ def layout():
                      "valueFormatter": {"function": "d3.format('.2f')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                dashGridOptions={
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32, 
                     "groupDefaultExpanded": 0,
                     "autoGroupColumnDef": {"headerName": "Category", "minWidth": 250},
                 },

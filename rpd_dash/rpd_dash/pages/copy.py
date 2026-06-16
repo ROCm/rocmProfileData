@@ -68,6 +68,7 @@ def layout():
                     {"field": "avg_duration_us", "headerName": "Avg (us)", "flex": 1, "valueFormatter": fmt_num},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "250px"},
             ),
             html.H3("Individual Copies (top 1000 by size)", style={"marginTop": "30px"}),
@@ -85,6 +86,7 @@ def layout():
                     {"field": "bandwidth_gbs", "headerName": "BW (GB/s)", "flex": 1, "valueFormatter": {"function": "d3.format('.2f')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "500px"},
             ),
         ])

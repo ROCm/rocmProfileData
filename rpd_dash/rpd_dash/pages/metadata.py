@@ -1,8 +1,8 @@
 import dash
 from dash import html
-import dash_ag_grid as dag
 
 from rpd_dash.util import db
+from rpd_dash.util.html_table import make_table
 
 dash.register_page(__name__, path="/metadata", name="Metadata")
 
@@ -19,14 +19,13 @@ def layout():
 
         return html.Div([
             html.H2("Metadata"),
-            dag.AgGrid(
-                rowData=df.to_dict("records"),
-                columnDefs=[
-                    {"field": "tag", "headerName": "Tag", "flex": 1},
-                    {"field": "value", "headerName": "Value", "flex": 3},
+            make_table(
+                columns=[
+                    {"field": "tag", "header": "Tag"},
+                    {"field": "value", "header": "Value"},
                 ],
-                defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                style={"height": "600px"},
+                rows=df.to_dict("records"),
+                col_styles={"value": {"fontFamily": "monospace"}},
             ),
         ])
     except Exception as e:

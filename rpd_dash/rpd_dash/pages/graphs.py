@@ -48,7 +48,7 @@ def layout():
                     {"field": "duration_us", "headerName": "Duration (us)", "valueFormatter": {"function": "d3.format(',')(params.value)"}},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                dashGridOptions={"rowSelection": {"mode": "singleRow"}},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32, "rowSelection": {"mode": "singleRow"}},
                 style={"height": "300px"},
             ),
             html.Div(
@@ -88,6 +88,7 @@ def show_detail(k_clicks, l_clicks, selected):
                 rowData=df.to_dict("records"),
                 columnDefs=[{"field": c} for c in df.columns],
                 defaultColDef={"sortable": True, "resizable": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "400px"},
             ),
         ])
@@ -102,6 +103,7 @@ def show_detail(k_clicks, l_clicks, selected):
                 rowData=df.to_dict("records"),
                 columnDefs=[{"field": c} for c in df.columns],
                 defaultColDef={"sortable": True, "resizable": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "400px"},
             ),
         ])

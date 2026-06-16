@@ -164,6 +164,7 @@ def _make_table(rows):
              "valueFormatter": {"function": "d3.format('.2f')(params.value)"}},
         ],
         defaultColDef={"sortable": True, "resizable": True},
+        dashGridOptions={"rowHeight": 28, "headerHeight": 32},
         style={"height": "350px"},
     )
 

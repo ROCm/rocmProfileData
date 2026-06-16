@@ -51,6 +51,7 @@ def layout():
                     {"field": "total_cpu_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
                 ],
                 defaultColDef={"sortable": True, "resizable": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "200px"},
             ))
 
@@ -66,6 +67,7 @@ def layout():
                     {"field": "total_cpu_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "600px"},
             ))
         else:
@@ -81,6 +83,7 @@ def layout():
                     {"field": "total_calls", "headerName": "Total Calls", "flex": 1, "valueFormatter": fmt_num},
                 ],
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "600px"},
             ))
 

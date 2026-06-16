@@ -26,9 +26,10 @@ def _find_rocpd_util():
             return
     try:
         import rocpd
-        p = os.path.join(os.path.dirname(rocpd.__file__), "..", "rocpd", "util")
-        if os.path.isdir(p):
-            sys.path.insert(0, os.path.abspath(p))
+        if getattr(rocpd, "__file__", None) is not None:
+            p = os.path.join(os.path.dirname(rocpd.__file__), "..", "rocpd", "util")
+            if os.path.isdir(p):
+                sys.path.insert(0, os.path.abspath(p))
     except ImportError:
         pass
 
@@ -73,6 +74,8 @@ def _create_app():
         ("Graphs", "/graphs"),
         ("Autograd", "/autograd"),
         ("Metadata", "/metadata"),
+        ("Counters", "/counters"),
+        ("SQL Query", "/query"),
     ]
 
     TL_LINKS = [
@@ -156,7 +159,8 @@ def _create_app():
                 sidebar,
                 html.Div(
                     dash.page_container,
-                    style={"marginLeft": "260px", "padding": "20px", "flex": "1"},
+                    style={"marginLeft": "260px", "padding": "20px", "flex": "1",
+                           "minWidth": "0", "overflow": "hidden"},
                 ),
             ],
             style={"display": "flex" if db.rpd_path else "none"},
