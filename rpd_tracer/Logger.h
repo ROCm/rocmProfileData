@@ -36,6 +36,7 @@ public:
     ApiTable &apiTable() { return m_storage->apiTable(); }
     MonitorTable &monitorTable() { return m_storage->monitorTable(); }
     StackFrameTable &stackFrameTable() { return m_storage->stackFrameTable(); }
+    CounterTable &counterTable() { return m_storage->counterTable(); }
 
     // External control to stop/stop logging
     void rpdstart();

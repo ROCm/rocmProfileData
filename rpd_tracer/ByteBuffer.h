@@ -23,6 +23,9 @@ public:
         char c = v ? 1 : 0;
         append(&c, 1);
     }
+    void writeDouble(double v) {
+        append(&v, sizeof(v));
+    }
     void writeString(const std::string &s) {
         uint32_t len = static_cast<uint32_t>(s.size());
         append(&len, sizeof(len));
@@ -36,6 +39,11 @@ public:
     }
     sqlite3_int64 readInt64() {
         sqlite3_int64 v;
+        read(&v, sizeof(v));
+        return v;
+    }
+    double readDouble() {
+        double v;
         read(&v, sizeof(v));
         return v;
     }

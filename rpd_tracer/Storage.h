@@ -25,6 +25,7 @@ public:
     ApiTable &apiTable() { return *m_apiTable; }
     MonitorTable &monitorTable() { return *m_monitorTable; }
     StackFrameTable &stackFrameTable() { return *m_stackFrameTable; }
+    CounterTable &counterTable() { return *m_counterTable; }
 
     void flush();
     void finalize();
@@ -52,6 +53,7 @@ private:
     ApiTable *m_apiTable {nullptr};
     MonitorTable *m_monitorTable {nullptr};
     StackFrameTable *m_stackFrameTable {nullptr};
+    CounterTable *m_counterTable {nullptr};
 
     sqlite3_int64 m_overheadDomainId {0};
     sqlite3_int64 m_overheadCategoryId {0};

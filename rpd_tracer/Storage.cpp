@@ -29,6 +29,7 @@ Storage::Storage(const char *filename, bool directWrite)
     m_apiTable = new ApiTable(filename, directWrite);
     m_monitorTable = new MonitorTable(filename, directWrite);
     m_stackFrameTable = new StackFrameTable(filename, directWrite);
+    m_counterTable = new CounterTable(filename, directWrite);
 
     m_metadataTable->insert("session", fmt::format("id={} pid={}", m_metadataTable->sessionId(), GetPid()));
 
@@ -41,6 +42,7 @@ Storage::Storage(const char *filename, bool directWrite)
     m_opTable->setIdOffset(offset);
     m_apiTable->setIdOffset(offset);
     m_stackFrameTable->setIdOffset(offset);
+    m_counterTable->setIdOffset(offset);
 }
 
 Storage::~Storage()
@@ -55,6 +57,7 @@ Storage::~Storage()
     delete m_apiTable;
     delete m_monitorTable;
     delete m_stackFrameTable;
+    delete m_counterTable;
 }
 
 void Storage::flush()
@@ -67,6 +70,7 @@ void Storage::flush()
     m_apiTable->flush();
     m_monitorTable->flush();
     m_stackFrameTable->flush();
+    m_counterTable->flush();
 
     sqlite3_exec(m_stringTable->connection(), "PRAGMA wal_checkpoint(TRUNCATE)", NULL, NULL, NULL);
 }
@@ -83,6 +87,7 @@ void Storage::finalize()
     m_copyApiTable->finalize();
     m_monitorTable->finalize();
     m_stackFrameTable->finalize();
+    m_counterTable->finalize();
     m_apiTable->finalize();
     m_ustringTable->finalize();
     m_stringTable->finalize();

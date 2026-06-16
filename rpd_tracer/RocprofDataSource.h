@@ -7,6 +7,7 @@
 #include <string>
 
 #include <rocprofiler-sdk/registration.h>
+#include <rocprofiler-sdk/dispatch_counting_service.h>
 
 #include "DataSource.h"
 #include "ApiIdList.h"
@@ -38,6 +39,8 @@ public:
 
       static void api_callback(rocprofiler_callback_tracing_record_t record, rocprofiler_user_data_t* user_data, void* callback_data);
       static void buffer_callback(rocprofiler_context_id_t context, rocprofiler_buffer_id_t buffer_id, rocprofiler_record_header_t** headers, size_t num_headers, void* user_data, uint64_t drop_count);
+      static void counter_buffer_callback(rocprofiler_context_id_t context, rocprofiler_buffer_id_t buffer_id, rocprofiler_record_header_t** headers, size_t num_headers, void* user_data, uint64_t drop_count);
+      static void counter_dispatch_callback(rocprofiler_dispatch_counting_service_data_t dispatch_data, rocprofiler_counter_config_id_t* config, rocprofiler_user_data_t* user_data, void* callback_data);
       static void code_object_callback(rocprofiler_callback_tracing_record_t record, rocprofiler_user_data_t* user_data, void* callback_data);
 
 };
