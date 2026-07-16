@@ -89,11 +89,20 @@ static void ourAtexitHandler(void*);
 static void rpdTracerInit() __attribute__((constructor));
 static void rpdTracerFinalize() __attribute__((destructor));
 
+namespace {
+    using real_cxa_atexit_t = int(*)(void(*)(void*), void*, void*);
+    using real_atexit_t = int(*)(void(*)());
+    real_cxa_atexit_t real_cxa_atexit = nullptr;
+    real_atexit_t real_atexit_fn = nullptr;
+    bool s_inInterceptor = false;
+}
+
 static void rpdTracerInit()
 {
     Logger::rpdInit();
 
-    static auto real_cxa_atexit = (int(*)(void(*)(void*), void*, void*))dlsym(RTLD_NEXT, "__cxa_atexit");
+    real_cxa_atexit = (real_cxa_atexit_t)dlsym(RTLD_NEXT, "__cxa_atexit");
+    real_atexit_fn = (real_atexit_t)dlsym(RTLD_NEXT, "atexit");
     real_cxa_atexit(ourAtexitHandler, nullptr, nullptr);
 }
 
@@ -102,45 +111,30 @@ static void rpdTracerFinalize()
     Logger::rpdFinalize();
 }
 
-// atexit/cxa_atexit interception — call rpdFinalize before any registered handler
-
-namespace {
-    struct AtexitEntry {
-        void (*func)(void*);
-        void* arg;
-    };
-    std::vector<AtexitEntry> s_atexitList;
-    std::mutex s_atexitMutex;
-
-    void c_atexit_trampoline(void* fn) {
-        reinterpret_cast<void(*)()>(fn)();
-    }
-}
-
 static void ourAtexitHandler(void*)
 {
     Logger::rpdFinalize();
-    std::unique_lock<std::mutex> lock(s_atexitMutex);
-    while (!s_atexitList.empty()) {
-        auto entry = s_atexitList.back();
-        s_atexitList.pop_back();
-        lock.unlock();
-        entry.func(entry.arg);
-        lock.lock();
-    }
 }
 
 extern "C" int atexit(void (*fn)())
 {
-    std::lock_guard<std::mutex> lock(s_atexitMutex);
-    s_atexitList.push_back({c_atexit_trampoline, reinterpret_cast<void*>(fn)});
+    if (real_atexit_fn == nullptr || s_inInterceptor)
+        return 0;
+    s_inInterceptor = true;
+    real_atexit_fn(fn);
+    real_cxa_atexit(ourAtexitHandler, nullptr, nullptr);
+    s_inInterceptor = false;
     return 0;
 }
 
-extern "C" int __cxa_atexit(void (*func)(void*), void* arg, void* /*dso_handle*/)
+extern "C" int __cxa_atexit(void (*func)(void*), void* arg, void* dso_handle)
 {
-    std::lock_guard<std::mutex> lock(s_atexitMutex);
-    s_atexitList.push_back({func, arg});
+    if (real_cxa_atexit == nullptr || s_inInterceptor)
+        return 0;
+    s_inInterceptor = true;
+    real_cxa_atexit(func, arg, dso_handle);
+    real_cxa_atexit(ourAtexitHandler, nullptr, nullptr);
+    s_inInterceptor = false;
     return 0;
 }
 
