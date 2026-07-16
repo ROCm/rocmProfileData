@@ -151,7 +151,7 @@ OpTable::~OpTable()
 }
 
 
-void OpTable::insert(const OpTable::row &row)
+sqlite3_int64 OpTable::insert(const OpTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     while (m_head - m_tail >= OpTablePrivate::BUFFERSIZE) {
@@ -166,6 +166,7 @@ void OpTable::insert(const OpTable::row &row)
     if (workerRunning() == false && (m_head - m_tail) >= OpTablePrivate::BATCHSIZE) {
         m_wait.notify_one();
     }
+    return m_head;
 }
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)

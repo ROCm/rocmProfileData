@@ -52,7 +52,7 @@ namespace
 {
     RocprofDataSourceShared *s {nullptr};
     using kernel_symbol_data_t = rocprofiler_callback_tracing_code_object_kernel_symbol_register_data_t;
-    using kernel_symbol_map_t = std::unordered_map<rocprofiler_kernel_id_t, kernel_symbol_data_t>;
+
     using kernel_name_map_t = std::unordered_map<rocprofiler_kernel_id_t, const char *>;
     using rocprofiler::sdk::buffer_name_info;
     using agent_info_map_t = std::unordered_map<uint64_t, rocprofiler_agent_v0_t>;
@@ -245,7 +245,6 @@ public:
 
     // Manage kernel names - #betterThanRoctracer
 
-    kernel_symbol_map_t kernel_info = {};
     kernel_name_map_t kernel_names = {};
 
     // Manage buffer name - #betterThanRoctracer
@@ -257,26 +256,34 @@ public:
 
     // ---- Counter collection state ----
     bool collectCounters {false};
-    rocprofiler_buffer_id_t counter_buffer = {0};
 
     // Counter sets: each set is a group of counter names collected together.
     // Dispatches round-robin through sets per kernel name.
     std::vector<std::set<std::string>> counterSets;
 
-    // Cached counter configs: [agent_handle][set_index] → config_id
-    // Built lazily on first dispatch per agent.
+    // Cached valid counter configs per agent: [agent_handle] → config_ids
+    // Built lazily on first dispatch per agent. Only contains configs that
+    // were successfully created (handle != 0).
     std::unordered_map<uint64_t, std::vector<rocprofiler_counter_config_id_t>> counterConfigs;
     std::mutex counterConfigMutex;
 
     // Counter name info: counter_id.handle → name string (from SDK)
     std::unordered_map<uint64_t, std::string> counterIdNames;
 
-    // Per-kernel dispatch count for RR set selection
-    std::unordered_map<rocprofiler_kernel_id_t, uint64_t> kernelDispatchCount;
+    // Per-kernel-name dispatch count for RR set selection.
+    // Keyed on name (not kernel_id) because the same kernel loaded from
+    // different code objects gets distinct kernel_ids.
+    std::unordered_map<std::string, uint64_t> kernelDispatchCount;
+
+    // kernel_id → kernel name for RR lookup.  Populated at code-object-load
+    // time so the dispatch callback never touches kernel_names (no lock).
+    std::unordered_map<uint64_t, std::string> kernelIdToName;
     std::mutex kernelDispatchMutex;
 
-    // dispatch_id → correlation_id mapping (populated from DISPATCH_HEADER records)
-    std::unordered_map<uint64_t, uint64_t> dispatchCorrelation;
+    // dispatch_id → op_id mapping for counter support
+    // Populated from kernel dispatch records in buffer_callback,
+    // consumed by counter_buffer_callback to link counters to ops.
+    std::unordered_map<uint64_t, sqlite3_int64> dispatchOpId;
 
     // Counters whose dimension instances should be averaged (not summed).
     // Utilization/percentage metrics — the smaller set.
@@ -341,9 +348,10 @@ void RocprofDataSourceShared::buildCounterConfigs(rocprofiler_agent_id_t agent_i
         }
     }
 
-    // Build a counter_config for each counter set
+    // Build a counter_config for each counter set, keeping only valid ones
     auto& configs = counterConfigs[agent_id.handle];
-    for (auto& counterSet : counterSets) {
+    for (size_t si = 0; si < counterSets.size(); ++si) {
+        auto& counterSet = counterSets[si];
         std::vector<rocprofiler_counter_id_t> ids;
         for (auto& name : counterSet) {
             auto it = nameToId.find(name);
@@ -351,15 +359,17 @@ void RocprofDataSourceShared::buildCounterConfigs(rocprofiler_agent_id_t agent_i
                 ids.push_back(it->second);
         }
         if (ids.empty()) {
-            configs.push_back({.handle = 0});
+            rpdtracer::rpdLog("rpd_tracer: counter set %ld has no supported counters for agent %lu, skipping\n",
+                   si, agent_id.handle);
             continue;
         }
         rocprofiler_counter_config_id_t config = {.handle = 0};
         auto status = rocprofiler_create_counter_config(
             agent_id, ids.data(), ids.size(), &config);
         if (status != ROCPROFILER_STATUS_SUCCESS) {
-            rpdtracer::rpdLog("rpd_tracer: counter config creation failed (status=%d) for agent %lu\n",
-                   status, agent_id.handle);
+            rpdtracer::rpdLog("rpd_tracer: counter config creation failed (status=%d) for agent %lu set %ld, skipping\n",
+                   status, agent_id.handle, si);
+            continue;
         }
         configs.push_back(config);
     }
@@ -460,8 +470,6 @@ void RocprofDataSource::stopTracing()
 void RocprofDataSource::flush()
 {
     rocprofiler_flush_buffer(s->client_buffers[d->id]);
-    if (s->collectCounters && s->counter_buffer.handle != 0)
-        rocprofiler_flush_buffer(s->counter_buffer);
 }
 
 void RocprofDataSourcePrivate::cacheIds()
@@ -696,6 +704,36 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
     int64_t last_correlation = -1;
     const timestamp_t cb_begin_time = clocktime_ns();
 
+    // Counter accumulator state (for interleaved counter records in shared buffer)
+    struct CounterAccum { double sum {0.0}; uint64_t count {0}; };
+    constexpr size_t CTR_ACCUM_BUCKETS = 16;
+    std::array<std::pair<uint64_t, CounterAccum>, CTR_ACCUM_BUCKETS> ctr_accum_slots{};
+    size_t ctr_accum_used = 0;
+    sqlite3_int64 ctr_op_id = 0;
+    bool have_ctr_dispatch = false;
+
+    auto flush_counters = [&]() {
+        if (!have_ctr_dispatch)
+            return;
+        for (size_t j = 0; j < ctr_accum_used; ++j) {
+            auto& [counter_handle, accum] = ctr_accum_slots[j];
+            auto name_it = s->counterIdNames.find(counter_handle);
+            if (name_it == s->counterIdNames.end())
+                continue;
+            const std::string& counterName = name_it->second;
+            bool shouldAverage = s->averagedCounters().count(counterName) > 0;
+            double value = shouldAverage ? (accum.sum / accum.count) : accum.sum;
+            sqlite3_int64 name_id = t_stringCache.lookup(counterName, logger.stringTable(), logger.storageGeneration());
+            CounterTable::row row;
+            row.op_id = ctr_op_id;
+            row.name_id = name_id;
+            row.value = value;
+            logger.counterTable().insert(row);
+        }
+        ctr_accum_used = 0;
+        have_ctr_dispatch = false;
+    };
+
     for (size_t i = 0; i < num_headers; ++i) {
         auto* header = headers[i];
 
@@ -716,7 +754,8 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.opType_id = instance.d->kernelExecId;
                 row.api_id = record->correlation_id.internal;
 
-                logger.opTable().insert(row);
+                sqlite3_int64 op_id = logger.opTable().insert(row);
+                s->dispatchOpId[dispatch.dispatch_id] = op_id;
 
                 // piece together a kernelapi entry
                 KernelApiTable::row krow;
@@ -909,7 +948,43 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 logger.opTable().insert(row);
             }
         }
+        else if (header->category == ROCPROFILER_BUFFER_CATEGORY_COUNTERS) {
+            if (header->kind == ROCPROFILER_COUNTER_RECORD_PROFILE_COUNTING_DISPATCH_HEADER) {
+                flush_counters();
+
+                auto* record = static_cast<rocprofiler_dispatch_counting_service_record_t*>(header->payload);
+                auto op_it = s->dispatchOpId.find(record->dispatch_info.dispatch_id);
+                if (op_it != s->dispatchOpId.end()) {
+                    ctr_op_id = op_it->second;
+                    have_ctr_dispatch = true;
+                    s->dispatchOpId.erase(op_it);
+                }
+            }
+            else if (header->kind == ROCPROFILER_COUNTER_RECORD_VALUE && have_ctr_dispatch) {
+                auto* record = static_cast<rocprofiler_counter_record_t*>(header->payload);
+                rocprofiler_counter_id_t counter_id = {.handle = 0};
+                rocprofiler_query_record_counter_id(record->id, &counter_id);
+
+                size_t slot = ctr_accum_used;
+                for (size_t j = 0; j < ctr_accum_used; ++j) {
+                    if (ctr_accum_slots[j].first == counter_id.handle) {
+                        slot = j;
+                        break;
+                    }
+                }
+                if (slot == ctr_accum_used && ctr_accum_used < CTR_ACCUM_BUCKETS) {
+                    ctr_accum_slots[ctr_accum_used] = {counter_id.handle, {0.0, 0}};
+                    ctr_accum_used++;
+                }
+                if (slot < CTR_ACCUM_BUCKETS) {
+                    ctr_accum_slots[slot].second.sum += record->counter_value;
+                    ctr_accum_slots[slot].second.count++;
+                }
+            }
+        }
     }
+    flush_counters();
+
     const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
     std::snprintf(buff, 4096, "count=%ld last=%ld", num_headers, last_correlation);
@@ -934,18 +1009,19 @@ void RocprofDataSource::counter_dispatch_callback(
         return;
 
     auto& configs = it->second;
-    size_t numSets = configs.size();
+    if (configs.empty())
+        return;
 
-    // RR: pick set based on per-kernel dispatch count
+    // RR: pick set based on per-kernel-name dispatch count
     uint64_t count;
     {
         std::lock_guard<std::mutex> lock(s->kernelDispatchMutex);
-        count = s->kernelDispatchCount[kernel_id]++;
+        auto rr_it = s->kernelIdToName.find(kernel_id);
+        if (rr_it == s->kernelIdToName.end())
+            return;
+        count = s->kernelDispatchCount[rr_it->second]++;
     }
-    size_t setIdx = count % numSets;
-
-    if (configs[setIdx].handle != 0)
-        *config = configs[setIdx];
+    *config = configs[count % configs.size()];
 }
 
 
@@ -964,53 +1040,29 @@ void RocprofDataSource::counter_buffer_callback(
 
     const timestamp_t cb_begin_time = clocktime_ns();
     size_t counter_records = 0;
+    size_t dispatch_count = 0;
 
-    // First pass: extract dispatch headers for dispatch_id → correlation_id mapping
-    for (size_t i = 0; i < num_headers; ++i) {
-        auto* header = headers[i];
-        if (header->category == ROCPROFILER_BUFFER_CATEGORY_COUNTERS &&
-            header->kind == ROCPROFILER_COUNTER_RECORD_PROFILE_COUNTING_DISPATCH_HEADER) {
-            auto* record = static_cast<rocprofiler_dispatch_counting_service_record_t*>(header->payload);
-            s->dispatchCorrelation[record->dispatch_info.dispatch_id] =
-                record->correlation_id.internal;
-        }
-    }
+    // Buffer layout: records arrive as DISPATCH_HEADER followed by its
+    // COUNTER_RECORD_VALUE entries, then the next DISPATCH_HEADER, etc.
+    // Process streaming: accumulate values for current dispatch, flush
+    // when a new header arrives or the buffer ends.
 
-    // Second pass: aggregate and insert counter values
-    // Group counter values by dispatch_id + counter_id, then aggregate
     struct CounterAccum {
         double sum {0.0};
         uint64_t count {0};
-        uint64_t counter_handle {0};
     };
-    // keyed by (dispatch_id, counter_id_handle)
-    std::unordered_map<uint64_t, std::unordered_map<uint64_t, CounterAccum>> dispatch_counters;
+    // Per-counter accumulator for the current dispatch (indexed by counter_id.handle)
+    constexpr size_t ACCUM_BUCKETS = 16;
+    std::array<std::pair<uint64_t, CounterAccum>, ACCUM_BUCKETS> accum_slots{};
+    size_t accum_used = 0;
+    sqlite3_int64 cur_op_id = 0;
+    bool have_dispatch = false;
 
-    for (size_t i = 0; i < num_headers; ++i) {
-        auto* header = headers[i];
-        if (header->category == ROCPROFILER_BUFFER_CATEGORY_COUNTERS &&
-            header->kind == ROCPROFILER_COUNTER_RECORD_VALUE) {
-            auto* record = static_cast<rocprofiler_counter_record_t*>(header->payload);
-            rocprofiler_counter_id_t counter_id = {.handle = 0};
-            rocprofiler_query_record_counter_id(record->id, &counter_id);
-
-            auto& accum = dispatch_counters[record->dispatch_id][counter_id.handle];
-            accum.sum += record->counter_value;
-            accum.count++;
-            accum.counter_handle = counter_id.handle;
-            counter_records++;
-        }
-    }
-
-    // Write aggregated values to CounterTable
-    for (auto& [dispatch_id, counters] : dispatch_counters) {
-        // Look up correlation_id → op_id
-        auto corr_it = s->dispatchCorrelation.find(dispatch_id);
-        if (corr_it == s->dispatchCorrelation.end())
-            continue;
-        uint64_t correlation_id = corr_it->second;
-
-        for (auto& [counter_handle, accum] : counters) {
+    auto flush_dispatch = [&]() {
+        if (!have_dispatch)
+            return;
+        for (size_t j = 0; j < accum_used; ++j) {
+            auto& [counter_handle, accum] = accum_slots[j];
             auto name_it = s->counterIdNames.find(counter_handle);
             if (name_it == s->counterIdNames.end())
                 continue;
@@ -1022,36 +1074,76 @@ void RocprofDataSource::counter_buffer_callback(
             sqlite3_int64 name_id = t_stringCache.lookup(counterName, logger.stringTable(), logger.storageGeneration());
 
             CounterTable::row row;
-            row.op_id = correlation_id;
+            row.op_id = cur_op_id;
             row.name_id = name_id;
             row.value = value;
             logger.counterTable().insert(row);
         }
+        accum_used = 0;
+        have_dispatch = false;
+    };
 
-        s->dispatchCorrelation.erase(dispatch_id);
+    for (size_t i = 0; i < num_headers; ++i) {
+        auto* header = headers[i];
+        if (header->category != ROCPROFILER_BUFFER_CATEGORY_COUNTERS)
+            continue;
+
+        if (header->kind == ROCPROFILER_COUNTER_RECORD_PROFILE_COUNTING_DISPATCH_HEADER) {
+            flush_dispatch();
+
+            auto* record = static_cast<rocprofiler_dispatch_counting_service_record_t*>(header->payload);
+            auto op_it = s->dispatchOpId.find(record->dispatch_info.dispatch_id);
+            if (op_it != s->dispatchOpId.end()) {
+                cur_op_id = op_it->second;
+                have_dispatch = true;
+                s->dispatchOpId.erase(op_it);
+                dispatch_count++;
+            }
+        }
+        else if (header->kind == ROCPROFILER_COUNTER_RECORD_VALUE && have_dispatch) {
+            auto* record = static_cast<rocprofiler_counter_record_t*>(header->payload);
+            rocprofiler_counter_id_t counter_id = {.handle = 0};
+            rocprofiler_query_record_counter_id(record->id, &counter_id);
+
+            size_t slot = accum_used;
+            for (size_t j = 0; j < accum_used; ++j) {
+                if (accum_slots[j].first == counter_id.handle) {
+                    slot = j;
+                    break;
+                }
+            }
+            if (slot == accum_used && accum_used < ACCUM_BUCKETS) {
+                accum_slots[accum_used] = {counter_id.handle, {0.0, 0}};
+                accum_used++;
+            }
+            if (slot < ACCUM_BUCKETS) {
+                accum_slots[slot].second.sum += record->counter_value;
+                accum_slots[slot].second.count++;
+            }
+            counter_records++;
+        }
     }
+    flush_dispatch();
 
     const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
-    std::snprintf(buff, 4096, "records=%ld dispatches=%ld", counter_records, dispatch_counters.size());
+    std::snprintf(buff, 4096, "records=%ld dispatches=%ld", counter_records, dispatch_count);
     logger.createOverheadRecord(cb_begin_time, cb_end_time, "RocprofDataSource::counter_buffer_callback", buff);
 }
 
 
 void RocprofDataSource::code_object_callback(rocprofiler_callback_tracing_record_t record, rocprofiler_user_data_t* user_data, void* callback_data)
 {
-    //fprintf(stderr, "code_object_callback\n");
     if(record.kind == ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT &&
        record.operation == ROCPROFILER_CODE_OBJECT_LOAD)
     {
         if(record.phase == ROCPROFILER_CALLBACK_PHASE_UNLOAD)
         {
-            // flush the buffer to ensure that any lookups for the client kernel names for the code
-            // object are completed
-// FIXME
-            //auto flush_status = rocprofiler_flush_buffer(client_buffer);
-            //if(flush_status != ROCPROFILER_STATUS_ERROR_BUFFER_BUSY)
-            //    ;
+            for (auto& buffer : s->client_buffers) {
+                auto status = rocprofiler_flush_buffer(buffer);
+                if (status != ROCPROFILER_STATUS_ERROR_BUFFER_BUSY)
+                    (void)status;
+            }
         }
     }
     else if(record.kind == ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT &&
@@ -1060,14 +1152,13 @@ void RocprofDataSource::code_object_callback(rocprofiler_callback_tracing_record
         auto* data = static_cast<kernel_symbol_data_t*>(record.payload);
         if (record.phase == ROCPROFILER_CALLBACK_PHASE_LOAD)
         {
-            s->kernel_info.emplace(data->kernel_id, *data);
-            s->kernel_names.emplace(data->kernel_id, cxx_demangle(data->kernel_name));
-        }
-        else if (record.phase == ROCPROFILER_CALLBACK_PHASE_UNLOAD)
-        {
-            // FIXME: clear these?  At minimum need kernel names at shutdown, async completion
-            //s->kernel_info.erase(data->kernel_id);
-            //s->kernel_names.erase(data->kernel_id);
+            const char *name = cxx_demangle(data->kernel_name);
+            s->kernel_names.emplace(data->kernel_id, name);
+
+            if (s->collectCounters) {
+                std::lock_guard<std::mutex> lock(s->kernelDispatchMutex);
+                s->kernelIdToName[data->kernel_id] = name;
+            }
         }
     }
 }
@@ -1322,26 +1413,11 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
             rpdtracer::rpdLog("rpd_tracer: counter collection enabled (%ld sets)\n", s->counterSets.size());
         }
         if (s->collectCounters) {
-            constexpr auto counter_buffer_size = 0x40000;
-            constexpr auto counter_watermark   = counter_buffer_size / 8;
-
-            rocprofiler_create_buffer(context,
-                                      counter_buffer_size,
-                                      counter_watermark,
-                                      ROCPROFILER_BUFFER_POLICY_LOSSLESS,
-                                      RocprofDataSource::counter_buffer_callback,
-                                      nullptr,
-                                      &s->counter_buffer);
-
             rocprofiler_configure_buffer_dispatch_counting_service(
                 context,
-                s->counter_buffer,
+                buffer,
                 RocprofDataSource::counter_dispatch_callback,
                 nullptr);
-
-            auto counter_thread = rocprofiler_callback_thread_t{};
-            rocprofiler_create_callback_thread(&counter_thread);
-            rocprofiler_assign_callback_thread(s->counter_buffer, counter_thread);
         }
 
         int isValid = 0;

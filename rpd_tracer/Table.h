@@ -279,7 +279,7 @@ public:
         void deserialize(ByteBuffer &buf);
     };
 
-    void insert(const row&);
+    sqlite3_int64 insert(const row&);
     void associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id);
 
 private:
