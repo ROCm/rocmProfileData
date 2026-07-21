@@ -6,6 +6,9 @@ setup(
     description="Interactive viewer for RocmProfileData (.rpd) trace files",
     packages=find_packages(),
     include_package_data=True,
+    package_data={
+        "rpd_dash": ["assets/*", "RPD_INFO.md"],
+    },
     python_requires=">=3.8",
     install_requires=[
         "dash",
