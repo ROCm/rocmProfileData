@@ -76,6 +76,7 @@ def _create_app():
         ("Metadata", "/metadata"),
         ("Counters", "/counters"),
         ("SQL Query", "/query"),
+        ("Chat", "/chat"),
     ]
 
     TL_LINKS = [
@@ -200,6 +201,9 @@ def _create_app():
         return {"display": "flex"}, {"display": "none"}, True, ""
 
     server = app.server
+
+    from rpd_dash.chat_api import chat_bp
+    server.register_blueprint(chat_bp)
 
     @server.route("/tracedata")
     def serve_trace_json():

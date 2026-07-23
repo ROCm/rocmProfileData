@@ -15,6 +15,7 @@ setup(
         "dash-ag-grid",
         "plotly",
         "pandas",
+        "openai",
     ],
     entry_points={
         "console_scripts": [
