@@ -39,6 +39,20 @@ ifneq (,$(HIP_PATH))
         RPD_INCLUDES += -D__HIP_PLATFORM_AMD__
         RPD_INCLUDES += -I/opt/rocm/include -I/opt/rocm/include/hsa
         RPD_INCLUDES += -Ijson/include
+
+        # rocm-trace-lite (RTL) data source — requires submodule init
+        ifneq (,$(wildcard ../rocm-trace-lite/src/trace_db.h))
+                $(info Building with rocm-trace-lite)
+                RTL_SRC = ../rocm-trace-lite/src
+                RPD_SRCS += RtlDataSource.cpp
+                RPD_INCLUDES += -I$(RTL_SRC)
+                RPD_LIBS += -lhsa-runtime64
+
+                RTL_SUBMODULE_SRCS = $(RTL_SRC)/hsa_intercept.cpp $(RTL_SRC)/hip_api_intercept.cpp $(RTL_SRC)/trace_db.cpp
+                RTL_SUBMODULE_OBJS = hsa_intercept.o hip_api_intercept.o trace_db_rtl.o
+        else
+                $(warning rocm-trace-lite submodule not initialized — skipping RtlDataSource (run: git submodule update --init))
+        endif
 endif
 
 ifneq ($(CUDA_PATH),)
@@ -56,7 +70,7 @@ ifneq ($(CPPTRACE_INCLUDE_PATH),)
 endif
 
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
-
+RTL_SUBMODULE_OBJS ?=
 
 RPD_MAIN = librpd_tracer.so
 RPD_SCRIPT = runTracer.sh loadTracer.sh
@@ -84,10 +98,20 @@ utilitySchema.h: $(SCHEMA_DIR)/utilitySchema.cmd
 Schema.o: tableSchema.h utilitySchema.h
 
 
-$(RPD_MAIN): $(RPD_OBJS)
+$(RPD_MAIN): $(RPD_OBJS) $(RTL_SUBMODULE_OBJS)
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -Wl,--version-script=marker_shim.ver -g
 
 .cpp.o:
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
+
+# rocm-trace-lite submodule objects (source lives outside rpd_tracer/)
+hsa_intercept.o: $(RTL_SRC)/hsa_intercept.cpp
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
+
+hip_api_intercept.o: $(RTL_SRC)/hip_api_intercept.cpp
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
+
+trace_db_rtl.o: $(RTL_SRC)/trace_db.cpp
 	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):

@@ -224,8 +224,9 @@ void Logger::init()
     std::list<std::string> factories = {
         "RoctxDataSourceFactory",
         "NvtxDataSourceFactory",
+        "RtlDataSourceFactory",
         "RocprofDataSourceFactory",
-        "RoctracerDataSourceFactory",
+        //"RoctracerDataSourceFactory",
         "CuptiDataSourceFactory",
         "AmdSmiDataSourceFactory"
         };
@@ -234,7 +235,6 @@ void Logger::init()
         DataSource* (*func) (void) = (DataSource* (*)()) dlsym(RTLD_DEFAULT, (*it).c_str());
         if (func) {
             m_sources.push_back(func());
-            //fprintf(stderr, "Using: %s\n", (*it).c_str());
         }
     }
 

@@ -7,3 +7,6 @@
 [submodule "cpptrace"]
 	path = cpptrace
 	url = https://github.com/jeremy-rifkin/cpptrace.git
+[submodule "rocm-trace-lite"]
+	path = rocm-trace-lite
+	url = https://github.com/sunway513/rocm-trace-lite.git
