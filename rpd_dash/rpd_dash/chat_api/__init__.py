@@ -37,7 +37,7 @@ def _get_client():
 
     base_url = os.environ.get("RPD_CHAT_BASE_URL", "http://localhost:8000/v1")
     model = os.environ.get("RPD_CHAT_MODEL", "default-model")
-    api_key = os.environ.get("RPD_CHAT_API_KEY", "not-needed")
+    api_key = os.environ.get("RPD_CHAT_API_KEY") or "not-needed"
     return OpenAI(base_url=base_url, api_key=api_key), model
 
 

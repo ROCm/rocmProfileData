@@ -151,7 +151,11 @@
     ChatUI.prototype._toggleLog = function () {
         var panel = this._el("chat-progress");
         if (panel) {
-            panel.style.display = panel.style.display === "none" ? "block" : "none";
+            if (panel.style.display === "none" || panel.style.display === "") {
+                panel.style.display = "block";
+            } else {
+                panel.style.display = "none";
+            }
         }
     };
 
@@ -213,6 +217,7 @@
         this.logLines = [];
 
         this._appendLog("Sending...");
+        this._toggleLog();
 
         var self = this;
         var xhr = new XMLHttpRequest();
@@ -221,17 +226,24 @@
         xhr.timeout = 180000;
 
         xhr.onload = function () {
-            if (xhr.status !== 200) return;
+            if (xhr.status !== 200) {
+                self._appendLog("HTTP error: " + xhr.status + " " + xhr.statusText);
+                if (xhr.responseText) {
+                    self._appendLog("Response: " + xhr.responseText.substring(0, 500));
+                }
+                self._done(false);
+                return;
+            }
             self._parseSSE(xhr.responseText);
         };
 
         xhr.onerror = function () {
-            self._appendLog("Request error.");
+            self._appendLog("Request error — check server is running.");
             self._done(false);
         };
 
         xhr.ontimeout = function () {
-            self._appendLog("Request timeout.");
+            self._appendLog("Request timeout (180s).");
             self._done(false);
         };
 
@@ -278,6 +290,9 @@
                 this._render();
                 this._done(true);
                 break;
+            case "stream_end":
+                this._done(true);
+                break;
         }
     };
 
@@ -293,7 +308,6 @@
         this._setSpinner(false);
         this._setCancelBtn(false);
         this._setInputEnabled(true);
-        // We can't easily abort the XHR SSE, but we signal the server
         if (this.currentSession) {
             var self = this;
             var xhr = new XMLHttpRequest();
@@ -320,12 +334,27 @@
         origHandle.call(this, ev);
     };
 
-    // Initialize when DOM is ready
+    function tryInit() {
+        if (document.getElementById("chat-input")) {
+            window._chatUI = new ChatUI();
+            return true;
+        }
+        return false;
+    }
+
+    // Initialize on DOMContentLoaded, or wait for chat elements via MutationObserver
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", function () {
-            window._chatUI = new ChatUI();
+            if (!tryInit()) {
+                var observer = new MutationObserver(function (mutations, obs) {
+                    if (tryInit()) {
+                        obs.disconnect();
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
         });
     } else {
-        window._chatUI = new ChatUI();
+        tryInit();
     }
 })();
