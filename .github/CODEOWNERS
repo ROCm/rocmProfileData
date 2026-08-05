@@ -4,3 +4,6 @@
 # Python
 /rocpd_python/ @mwootton
 /tools/ @mwootton
+
+# rlog
+/rlog/ @mwootton
