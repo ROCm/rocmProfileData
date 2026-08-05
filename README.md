@@ -1,5 +1,7 @@
 # Rocm Profile Data
 
+[![CI](https://github.com/ROCm/rocmProfileData/actions/workflows/ci.yml/badge.svg)](https://github.com/ROCm/rocmProfileData/actions/workflows/ci.yml)
+
 --------------------------------------------------------------------------------
 
 ROCm Profile Data is a collection of tools for tracing and analyzing gpu related activity on a system.  This is represented by a timeline of api calls, app log messages, async gpu operations, and related interactions/dependencies.
