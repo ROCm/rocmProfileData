@@ -1,4 +1,3 @@
-import sys
 import os
 import io
 import gzip
@@ -12,29 +11,6 @@ from rpd_dash.util import db
 
 _pkg_dir = os.path.dirname(__file__)
 _pages_dir = os.path.join(_pkg_dir, "pages")
-
-
-def _find_rocpd_util():
-    """Locate rocpd/util for chrometracing import."""
-    candidates = [
-        os.path.join(_pkg_dir, "..", "..", "rocpd", "util"),
-        os.path.join(sys.prefix, "lib", "rocpd", "util"),
-    ]
-    for c in candidates:
-        if os.path.isdir(c):
-            sys.path.insert(0, os.path.abspath(c))
-            return
-    try:
-        import rocpd
-        if getattr(rocpd, "__file__", None) is not None:
-            p = os.path.join(os.path.dirname(rocpd.__file__), "..", "rocpd", "util")
-            if os.path.isdir(p):
-                sys.path.insert(0, os.path.abspath(p))
-    except ImportError:
-        pass
-
-
-_find_rocpd_util()
 
 
 def _parse_args():
@@ -331,7 +307,7 @@ def _create_app():
 
     @server.route("/tracedata")
     def serve_trace_json():
-        from chrometracing import generateJson
+        from rocpd.util.chrometracing import generateJson
 
         trace_args = argparse.Namespace()
         trace_args.input_rpd = db.rpd_path

@@ -16,6 +16,7 @@ setup(
         "plotly",
         "pandas",
         "openai",
+        "rocpd",
     ],
     entry_points={
         "console_scripts": [
