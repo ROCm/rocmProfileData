@@ -32,6 +32,48 @@
         return document.getElementById(id);
     };
 
+    // dcc.Textarea is a React-controlled component. Setting `.value`
+    // directly only updates the DOM node, not React's internal state for
+    // that fiber -- on the next render React can stomp the DOM back to its
+    // last known value, which makes it look like new keystrokes are being
+    // appended to the previous (uncleared) prompt. Using the native value
+    // setter + dispatching a real `input` event routes through React's
+    // synthetic event system so its state stays in sync with the DOM.
+    ChatUI.prototype._setTextareaValue = function (el, value) {
+        if (!el) return;
+        var proto = window.HTMLTextAreaElement.prototype;
+        var setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+        setter.call(el, value);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    ChatUI.prototype._renderMarkdownTo = function (text) {
+        if (window.marked) {
+            try {
+                return window.marked.parse(text, { breaks: true, gfm: true });
+            } catch (e) { /* fall through to plain escaping */ }
+        }
+        return "<p>" + this._esc(text).replace(/\n/g, "<br>") + "</p>";
+    };
+
+    // Wrap ```code``` blocks (already rendered as <pre><code>...</code></pre>
+    // by marked) with a copy-to-clipboard button.
+    ChatUI.prototype._addCopyButtons = function (container) {
+        var pres = container.getElementsByTagName("pre");
+        for (var i = pres.length - 1; i >= 0; i--) {
+            var pre = pres[i];
+            if (pre.parentNode && pre.parentNode.className === "copy-block") continue;
+            var wrapper = document.createElement("div");
+            wrapper.className = "copy-block";
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(pre);
+            var btn = document.createElement("button");
+            btn.className = "copy-btn";
+            btn.textContent = "Copy";
+            wrapper.insertBefore(btn, pre);
+        }
+    };
+
     ChatUI.prototype._render = function () {
         var container = this._el("chat-messages");
         if (!container) return;
@@ -47,18 +89,16 @@
             if (msg.role === "user") {
                 html += '<div class="chat-bubble user">' + this._esc(this._textContent(msg.content)) + "</div>";
             } else {
-                html += '<div class="chat-bubble assistant"><div class="chat-md">' + this._esc(msg.content) + "</div></div>";
+                html += '<div class="chat-bubble assistant"><div class="chat-md">' + this._renderMarkdownTo(msg.content) + "</div></div>";
             }
         }
         if (this.streamingContent !== undefined && this.streamingContent !== null) {
             html += '<div class="chat-bubble assistant" id="chat-streaming-bubble"><div class="chat-md">'
-                + this._esc(this.streamingContent) + "</div></div>";
+                + this._renderMarkdownTo(this.streamingContent) + "</div></div>";
         }
         container.innerHTML = html;
+        this._addCopyButtons(container);
         container.scrollTop = container.scrollHeight;
-
-        // Render markdown in assistant bubbles
-        this._renderMarkdown();
     };
 
     ChatUI.prototype._renderStreamingBubble = function () {
@@ -70,61 +110,9 @@
             return;
         }
         var md = bubble.querySelector(".chat-md");
-        if (md) md.textContent = this.streamingContent;
+        if (md) md.innerHTML = this._renderMarkdownTo(this.streamingContent);
+        this._addCopyButtons(bubble);
         container.scrollTop = container.scrollHeight;
-    };
-
-    ChatUI.prototype._renderMarkdown = function () {
-        var els = this._el("chat-messages").getElementsByClassName("chat-md");
-        for (var i = 0; i < els.length; i++) {
-            // Simple markdown: tables, code blocks, bold, lists
-            var text = els[i].innerHTML;
-            // Code blocks
-            text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function (_, lang, code) {
-                return '<div class="copy-block">'
-                    + '<button class="copy-btn" data-copy-target>Copy</button>'
-                    + '<pre style="background:#f0f0f0;padding:8px;border-radius:4px;overflow-x:auto;font-size:12px"><code>' + code.replace(/\n$/, "") + "</code></pre>"
-                    + "</div>";
-            });
-            // Inline code
-            text = text.replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>');
-            // Bold
-            text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-            // Italic
-            text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-            // Tables
-            text = this._renderTable(text);
-            // Line breaks
-            text = text.replace(/\n/g, "<br>");
-            els[i].innerHTML = text;
-        }
-    };
-
-    ChatUI.prototype._renderTable = function (html) {
-        var tableRe = /((?:<br>[|].*<br>)*)/g;
-        return html.replace(tableRe, function (match) {
-            var lines = match.replace(/<br>/g, "\n").split("\n").filter(function (l) {
-                return l.trim() !== "" && !/^[-:\s]+$/.test(l.trim());
-            });
-            if (lines.length < 2) return match;
-            var t = '<table style="border-collapse:collapse;margin:8px 0;font-size:13px">';
-            for (var i = 0; i < lines.length; i++) {
-                var cells = lines[i].split("|").filter(function (c) {
-                    return c.trim() !== "";
-                });
-                t += "<tr>";
-                var tag = i === 0 ? "th" : "td";
-                for (var j = 0; j < cells.length; j++) {
-                    var style = i === 0
-                        ? "font-weight:bold;border:1px solid #ddd;padding:6px 10px;text-align:left;background:#fafafa"
-                        : "border:1px solid #ddd;padding:6px 10px";
-                    t += "<" + tag + ' style="' + style + '">' + cells[j].trim() + "</" + tag + ">";
-                }
-                t += "</tr>";
-            }
-            t += "</table>";
-            return t;
-        });
     };
 
     ChatUI.prototype._esc = function (s) {
@@ -242,7 +230,7 @@
         var text = inp.value.trim();
         if (!text) return;
 
-        inp.value = "";
+        this._setTextareaValue(inp, "");
         this.streamingContent = null;
         this.messages.push({ role: "user", content: text });
         this._save();
@@ -386,7 +374,7 @@
         var panel = this._el("chat-progress");
         if (panel) panel.textContent = "";
         var inp = this._el("chat-input");
-        if (inp) inp.value = "";
+        this._setTextareaValue(inp, "");
     };
 
     // Store session id for cancel

@@ -19,14 +19,6 @@ def layout():
                 style={"color": "#888", "marginBottom": "20px"},
             ),
             html.Div(
-                id="chat-spinner",
-                style={"display": "none", "padding": "10px 0"},
-                children=html.Div(
-                    [html.Div(className="skeleton-bar"), html.Div(className="skeleton-bar"), html.Div(className="skeleton-bar")],
-                    className="chat-thinking",
-                ),
-            ),
-            html.Div(
                 id="chat-messages",
                 style={
                     "minHeight": "100px",
@@ -51,6 +43,14 @@ def layout():
                     "overflowY": "auto",
                     "whiteSpace": "pre-wrap",
                 },
+            ),
+            html.Div(
+                id="chat-spinner",
+                style={"display": "none", "padding": "10px 0"},
+                children=html.Div(
+                    [html.Div(className="skeleton-bar"), html.Div(className="skeleton-bar"), html.Div(className="skeleton-bar")],
+                    className="chat-thinking",
+                ),
             ),
             html.Div(
                 [
