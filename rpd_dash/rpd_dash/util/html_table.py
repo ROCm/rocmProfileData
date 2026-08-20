@@ -1,3 +1,4 @@
+import re
 from html import escape as _esc
 
 from dash import html
@@ -67,8 +68,12 @@ def make_table(columns, rows, col_styles=None):
     )
 
 
+def _to_kebab_case(key):
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", key).lower()
+
+
 def _style_str(style):
-    return ";".join(f"{k}:{v}" for k, v in style.items())
+    return ";".join(f"{_to_kebab_case(k)}:{v}" for k, v in style.items())
 
 
 def render_table_html(columns, rows, col_styles=None):
