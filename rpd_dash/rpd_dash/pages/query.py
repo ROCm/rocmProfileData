@@ -82,9 +82,28 @@ def layout():
                 "cursor": "pointer",
                 "marginRight": "12px",
             }),
-            html.Span(id="query-status", style={"fontSize": "13px", "color": "#666"}),
+            html.Div([
+                html.Button(
+                    "Copy SQL",
+                    style={
+                        "fontSize": "11px", "padding": "4px 10px", "cursor": "pointer",
+                        "border": "1px solid #ccc", "borderRadius": "4px",
+                        "backgroundColor": "#f5f5f5", "marginRight": "8px",
+                    },
+                    **{
+                        "data-x-on:click": (
+                            "navigator.clipboard.writeText("
+                            "document.getElementById('sql-input').value); "
+                            "copied = true; setTimeout(() => copied = false, 1500)"
+                        ),
+                    },
+                ),
+                html.Span("Copied!", style={"color": "#1a9e5c", "fontSize": "12px"},
+                          **{"data-x-show": "copied", "data-x-transition": ""}),
+            ], **{"data-x-data": "{ copied: false }"}, style={"display": "flex", "alignItems": "center"}),
+            html.Span(id="query-status", style={"fontSize": "13px", "color": "#666", "marginLeft": "12px"}),
         ], style={"marginTop": "10px", "marginBottom": "20px", "display": "flex", "alignItems": "center"}),
-        html.Div(id="query-results"),
+        dcc.Loading(type="circle", children=html.Div(id="query-results")),
     ])
 
 

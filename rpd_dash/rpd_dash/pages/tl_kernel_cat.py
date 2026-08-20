@@ -1,6 +1,6 @@
 import re
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 import pandas as pd
 
@@ -84,7 +84,7 @@ def layout():
         return html.Div([
             html.H2("Kernel Categories"),
             html.H3("By Category"),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=cat_df.to_dict("records"),
                 columnDefs=[
                     {"field": "Category", "headerName": "Category", "flex": 2},
@@ -97,9 +97,9 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "400px"},
-            ),
+            )),
             html.H3("All Kernels", style={"marginTop": "25px"}),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=df.to_dict("records"),
                 columnDefs=[
                     {"field": "Category", "headerName": "Category", "flex": 1, "rowGroup": True, "hide": True},
@@ -115,7 +115,7 @@ def layout():
                     "autoGroupColumnDef": {"headerName": "Category", "minWidth": 250},
                 },
                 style={"height": "600px"},
-            ),
+            )),
         ])
     except Exception as e:
         return html.Div(f"Error loading kernel categories: {e}")

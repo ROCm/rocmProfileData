@@ -48,7 +48,7 @@ def layout():
             dcc.Input(id="short-threshold", type="number", value=10, min=1, max=1000,
                       style={"width": "80px", "marginLeft": "5px"}),
         ], style={"marginBottom": "20px"}),
-        html.Div(id="short-kernel-content"),
+        dcc.Loading(type="circle", children=html.Div(id="short-kernel-content")),
     ])
 
 

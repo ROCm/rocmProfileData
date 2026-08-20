@@ -66,13 +66,12 @@ def layout():
         gpu_ids = sorted(df["gpuId"].unique())
         multi_gpu = len(gpu_ids) > 1
 
-        sections = [html.H2("GPU Timeline")]
+        content = [html.H3("Aggregate" if multi_gpu else "")]
 
         # Aggregate timeline
         agg_rows, agg_chart = _compute_timeline(df)
-        sections.append(html.H3("Aggregate" if multi_gpu else ""))
-        sections.append(dcc.Graph(figure=_make_pie(agg_chart, "GPU Time Breakdown")))
-        sections.append(_make_table(agg_rows))
+        content.append(dcc.Graph(figure=_make_pie(agg_chart, "GPU Time Breakdown")))
+        content.append(_make_table(agg_rows))
 
         # Per-GPU timelines
         if multi_gpu:
@@ -83,11 +82,14 @@ def layout():
                 per_gpu_summary.extend([
                     {"GPU": gpu_id, **r} for r in gpu_rows
                 ])
-                sections.append(html.H3(f"GPU {gpu_id}", style={"marginTop": "25px"}))
-                sections.append(dcc.Graph(figure=_make_pie(gpu_chart, f"GPU {gpu_id}")))
-                sections.append(_make_table(gpu_rows))
+                content.append(html.H3(f"GPU {gpu_id}", style={"marginTop": "25px"}))
+                content.append(dcc.Graph(figure=_make_pie(gpu_chart, f"GPU {gpu_id}")))
+                content.append(_make_table(gpu_rows))
 
-        return html.Div(sections)
+        return html.Div([
+            html.H2("GPU Timeline"),
+            dcc.Loading(type="circle", children=html.Div(content)),
+        ])
     except Exception as e:
         return html.Div(f"Error loading GPU timeline: {e}")
 

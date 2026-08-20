@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 
 from rpd_dash.util import db
@@ -57,7 +57,7 @@ def layout():
         return html.Div([
             html.H2("Memory Copies"),
             html.H3("Summary by API"),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=summary_df.to_dict("records"),
                 columnDefs=[
                     {"field": "apiName", "headerName": "API", "flex": 2},
@@ -70,9 +70,9 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "250px"},
-            ),
+            )),
             html.H3("Individual Copies (top 1000 by size)", style={"marginTop": "30px"}),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=detail_df.to_dict("records"),
                 columnDefs=[
                     {"field": "apiName", "headerName": "API", "flex": 2},
@@ -88,7 +88,7 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "500px"},
-            ),
+            )),
         ])
     except Exception as e:
         return html.Div(f"Error loading copy summary: {e}")

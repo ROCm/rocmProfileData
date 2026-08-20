@@ -1,8 +1,5 @@
-import json
-
 import dash
-from dash import html, dcc, callback, Input, Output, State, ALL, ctx
-import dash_ag_grid as dag
+from dash import html
 
 from rpd_dash.util import db
 
@@ -18,13 +15,6 @@ JOIN rocpd_string C ON C.id = A.description_id
 WHERE C.string IN (SELECT DISTINCT kernelName FROM counter_summary)
 GROUP BY C.string
 ORDER BY TotalDuration_us DESC
-"""
-
-COUNTER_SQL = """
-SELECT counterName, dispatches, avg, min, max
-FROM counter_summary
-WHERE kernelName = ?
-ORDER BY counterName
 """
 
 
@@ -49,13 +39,10 @@ def layout():
         rows = []
         for i, row in df.iterrows():
             kernel = row["kernelName"]
-            truncated = kernel[:80] + "..." if len(kernel) > 80 else kernel
-            idx = int(i)
 
             header = html.Div([
                 html.Span(
                     "▶",
-                    id={"type": "tree-chevron", "index": idx},
                     style={
                         "flex": "0 0 20px",
                         "cursor": "pointer",
@@ -63,7 +50,9 @@ def layout():
                         "color": "#666",
                         "transition": "transform 0.15s",
                         "userSelect": "none",
+                        "display": "inline-block",
                     },
+                    **{"data-x-bind:style": "open ? 'transform:rotate(90deg)' : 'transform:rotate(0deg)'"},
                 ),
                 html.Span(kernel, title=kernel, style={
                     "flex": "1 1 0",
@@ -79,30 +68,38 @@ def layout():
                 _stat("Total", f"{int(row['TotalDuration_us']):,} us", "120px"),
                 _stat("Avg", f"{row['Avg_us']:,.1f} us", "100px"),
                 _stat("%", f"{row['Percentage']:.2f}", "60px"),
-            ], id={"type": "tree-header", "index": idx},
-               n_clicks=0,
-               style={
+            ], style={
                    "padding": "10px 14px",
                    "cursor": "pointer",
                    "borderBottom": "1px solid #eee",
                    "display": "flex",
                    "alignItems": "center",
                    "overflow": "hidden",
-               })
+               },
+               **{"data-x-on:click": "open = !open"})
 
             detail_panel = html.Div(
-                id={"type": "tree-panel", "index": idx},
-                style={"display": "none"},
+                html.Div(className="skeleton-card", style={"height": "60px"}),
+                className="htmx-fade",
+                style={
+                    "padding": "12px 14px 16px 36px",
+                    "backgroundColor": "#fafafa",
+                    "borderBottom": "1px solid #eee",
+                },
+                **{
+                    "data-x-show": "open",
+                    "data-x-transition": "",
+                    "data-hx-get": f"/api/page/counter-detail?kernel={kernel}",
+                    "data-hx-trigger": "intersect once",
+                    "data-hx-swap": "innerHTML",
+                },
             )
 
-            # Store kernel name so the callback can query it
-            store = dcc.Store(
-                id={"type": "tree-kernel", "index": idx},
-                data=kernel,
-            )
-
-            rows.append(html.Div([header, detail_panel, store],
-                                  style={"overflow": "hidden"}))
+            rows.append(html.Div(
+                [header, detail_panel],
+                style={"overflow": "hidden"},
+                **{"data-x-data": "{ open: false }"},
+            ))
 
         return html.Div([
             html.H2("GPU Counters"),
@@ -124,96 +121,3 @@ def _stat(label, value, width):
         html.Span(f"{label}: ", style={"color": "#999", "fontSize": "11px"}),
         html.Span(value, style={"fontSize": "12px"}),
     ], style={"flex": f"0 0 {width}", "textAlign": "right"})
-
-
-@callback(
-    Output({"type": "tree-panel", "index": ALL}, "style"),
-    Output({"type": "tree-panel", "index": ALL}, "children"),
-    Output({"type": "tree-chevron", "index": ALL}, "style"),
-    Input({"type": "tree-header", "index": ALL}, "n_clicks"),
-    State({"type": "tree-panel", "index": ALL}, "style"),
-    State({"type": "tree-panel", "index": ALL}, "children"),
-    State({"type": "tree-chevron", "index": ALL}, "style"),
-    State({"type": "tree-kernel", "index": ALL}, "data"),
-    prevent_initial_call=True,
-)
-def toggle_node(all_clicks, all_styles, all_children, all_chevron_styles, all_kernels):
-    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
-        return dash.no_update, dash.no_update, dash.no_update
-
-    clicked_idx = ctx.triggered_id["index"]
-
-    new_styles = list(all_styles)
-    new_children = list(all_children)
-    new_chevrons = list(all_chevron_styles)
-
-    for i in range(len(all_styles)):
-        if i != clicked_idx:
-            continue
-
-        currently_open = all_styles[i].get("display") != "none"
-
-        if currently_open:
-            new_styles[i] = {"display": "none"}
-            new_chevrons[i] = {**all_chevron_styles[i], "transform": "rotate(0deg)"}
-        else:
-            new_styles[i] = {
-                "display": "block",
-                "padding": "12px 14px 16px 36px",
-                "backgroundColor": "#fafafa",
-                "borderBottom": "1px solid #eee",
-            }
-            new_chevrons[i] = {**all_chevron_styles[i], "transform": "rotate(90deg)"}
-
-            if not all_children[i]:
-                kernel = all_kernels[i]
-                new_children[i] = _build_panel(kernel)
-
-    return new_styles, new_children, new_chevrons
-
-
-def _build_panel(kernel):
-    try:
-        df = db.query_df(COUNTER_SQL, params=(kernel,))
-        if df.empty:
-            return html.P("No counter data.")
-
-        rows = df.to_dict("records")
-        for r in rows:
-            r["avg"] = round(r["avg"], 2)
-            r["min"] = round(r["min"], 2)
-            r["max"] = round(r["max"], 2)
-
-        grid = dag.AgGrid(
-            rowData=rows,
-            columnDefs=[
-                {"field": "counterName", "headerName": "Counter", "flex": 2},
-                {"field": "dispatches", "headerName": "Dispatches", "flex": 1,
-                 "valueFormatter": {"function": "d3.format(',')(params.value)"}},
-                {"field": "avg", "headerName": "Avg", "flex": 1,
-                 "valueFormatter": {"function": "d3.format(',.2f')(params.value)"}},
-                {"field": "min", "headerName": "Min", "flex": 1,
-                 "valueFormatter": {"function": "d3.format(',.2f')(params.value)"}},
-                {"field": "max", "headerName": "Max", "flex": 1,
-                 "valueFormatter": {"function": "d3.format(',.2f')(params.value)"}},
-            ],
-            defaultColDef={"sortable": True, "resizable": True},
-            style={"height": f"{len(rows) * 30 + 42}px"},
-            dashGridOptions={"rowHeight": 28, "headerHeight": 32, "domLayout": "autoHeight"},
-        )
-
-        link = dcc.Link(
-            "View all dispatches →",
-            href=f"/counters/detail?kernel={kernel}",
-            style={
-                "color": "#1a73e8",
-                "textDecoration": "none",
-                "fontSize": "13px",
-                "display": "inline-block",
-                "marginTop": "10px",
-            },
-        )
-
-        return html.Div([grid, link])
-    except Exception as e:
-        return html.P(f"Error loading counters: {e}")

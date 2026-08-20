@@ -20,13 +20,11 @@ def layout():
             ),
             html.Div(
                 id="chat-spinner",
-                style={
-                    "display": "none",
-                    "textAlign": "center",
-                    "padding": "20px 0",
-                    "color": "#1a73e8",
-                },
-                children="Thinking...",
+                style={"display": "none", "padding": "10px 0"},
+                children=html.Div(
+                    [html.Div(className="skeleton-bar"), html.Div(className="skeleton-bar"), html.Div(className="skeleton-bar")],
+                    className="chat-thinking",
+                ),
             ),
             html.Div(
                 id="chat-messages",

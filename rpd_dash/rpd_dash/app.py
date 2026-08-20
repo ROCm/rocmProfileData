@@ -152,6 +152,49 @@ def _create_app():
         style={"padding": "60px", "textAlign": "center"},
     )
 
+    toast_div = html.Div(
+        html.Span(**{"data-x-text": "msg"}),
+        id="toast-container",
+        **{
+            "data-x-data": "{ show: false, msg: '' }",
+            "data-x-show": "show",
+            "data-x-transition:enter": "transition ease-out duration-200",
+            "data-x-transition:enter-start": "opacity-0 translate-y-2",
+            "data-x-transition:enter-end": "opacity-100 translate-y-0",
+            "data-x-transition:leave": "transition ease-in duration-150",
+            "data-x-transition:leave-start": "opacity-100",
+            "data-x-transition:leave-end": "opacity-0",
+            "data-x-on:rpd-toast.window": (
+                "msg = $event.detail; show = true; "
+                "clearTimeout(window._rpdToastTimer); "
+                "window._rpdToastTimer = setTimeout(() => show = false, 3000)"
+            ),
+        },
+    )
+
+    kbd_hints = html.Div(
+        [
+            html.Span("Press "),
+            html.Kbd("/"),
+            html.Span(" to search this page, "),
+            html.Kbd("Esc"),
+            html.Span(" to clear."),
+        ],
+        className="kbd-hint",
+        id="kbd-hints",
+        **{
+            "data-x-data": "{ show: false }",
+            "data-x-show": "show",
+            "data-x-init": (
+                "window.addEventListener('keydown', (e) => { "
+                "if (e.key === '/' && document.activeElement.tagName !== 'INPUT' "
+                "&& document.activeElement.tagName !== 'TEXTAREA') { show = true; } "
+                "if (e.key === 'Escape') { show = false; } })"
+            ),
+        },
+        style={"position": "fixed", "bottom": "12px", "left": "232px", "zIndex": 999},
+    )
+
     app.layout = html.Div([
         dcc.Store(id="rpd-loaded", data=db.rpd_path is not None),
         html.Div(
@@ -171,6 +214,8 @@ def _create_app():
             children=file_picker,
             style={"display": "none" if db.rpd_path else "block"},
         ),
+        toast_div,
+        kbd_hints,
     ])
 
     @callback(
@@ -204,6 +249,85 @@ def _create_app():
 
     from rpd_dash.chat_api import chat_bp
     server.register_blueprint(chat_bp)
+
+    from rpd_dash.util import fragments
+
+    @server.route("/api/page/dashboard-stats")
+    def api_dashboard_stats():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        return Response(fragments.dashboard_stats_html(), mimetype="text/html")
+
+    @server.route("/api/page/dashboard-busy")
+    def api_dashboard_busy():
+        if not db.rpd_path:
+            return Response("", mimetype="text/html")
+        return Response(fragments.dashboard_busy_html(), mimetype="text/html")
+
+    @server.route("/api/page/dashboard-domains")
+    def api_dashboard_domains():
+        if not db.rpd_path:
+            return Response("", mimetype="text/html")
+        return Response(fragments.dashboard_domains_html(), mimetype="text/html")
+
+    @server.route("/api/page/metadata")
+    def api_metadata():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        return Response(fragments.metadata_html(), mimetype="text/html")
+
+    @server.route("/api/page/file-info")
+    def api_file_info():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        return Response(fragments.file_info_html(), mimetype="text/html")
+
+    @server.route("/api/page/counter-detail")
+    def api_counter_detail():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        kernel = request.args.get("kernel", "")
+        return Response(fragments.counter_panel_html(kernel), mimetype="text/html")
+
+    @server.route("/api/live-stats")
+    def live_stats():
+        import time as _time
+
+        def generate():
+            while True:
+                if not db.rpd_path:
+                    break
+                try:
+                    html_fragment = fragments.dashboard_stats_sse_html()
+                except Exception:
+                    break
+                payload = html_fragment.replace("\n", "")
+                yield f"event: stats\ndata: {payload}\n\n"
+                _time.sleep(2)
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    @server.route("/api/live-status")
+    def live_status():
+        """Reports whether the loaded .rpd file looks like it's still being
+        actively written to (mtime changed within the last 30s), so the
+        client can decide whether to enable SSE live-refresh polling."""
+        import json as _json
+        import time as _time
+
+        if not db.rpd_path or not os.path.isfile(db.rpd_path):
+            return Response(_json.dumps({"live": False}), mimetype="application/json")
+        mtime = os.path.getmtime(db.rpd_path)
+        live = (_time.time() - mtime) < 30
+        return Response(_json.dumps({"live": live}), mimetype="application/json")
 
     @server.route("/tracedata")
     def serve_trace_json():
@@ -275,7 +399,7 @@ def _create_app():
 
 def main():
     app, args = _create_app()
-    app.run(host=args.host, port=args.port, debug=not args.no_debug)
+    app.run(host=args.host, port=args.port, debug=not args.no_debug, threaded=True)
 
 
 if __name__ == "__main__":

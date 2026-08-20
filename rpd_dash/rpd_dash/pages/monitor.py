@@ -44,7 +44,7 @@ def layout():
             fig.update_layout(height=300, margin=dict(t=40, b=30))
             charts.append(dcc.Graph(figure=fig))
 
-        return html.Div([html.H2("GPU Monitor")] + charts)
+        return html.Div([html.H2("GPU Monitor"), dcc.Loading(type="circle", children=html.Div(charts))])
     except Exception as e:
         return html.Div(f"Error loading monitor data: {e}")
 

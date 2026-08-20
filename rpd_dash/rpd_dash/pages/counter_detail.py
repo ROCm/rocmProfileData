@@ -88,13 +88,13 @@ def layout(kernel=None, **_kwargs):
             }),
             html.P(f"{len(rows)} dispatches, {len(counter_cols)} counters",
                    style={"color": "#888", "fontSize": "13px", "marginBottom": "16px"}),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=rows,
                 columnDefs=col_defs,
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": f"{min(len(rows) * 30 + 42, 700)}px"},
-            ),
+            )),
         ])
     except Exception as e:
         return html.Div(f"Error loading counter detail: {e}")

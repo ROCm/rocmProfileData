@@ -1,7 +1,7 @@
 import json
 import time
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 import pandas as pd
 
@@ -117,8 +117,7 @@ def layout():
             f"Total: {t_index + t_build + t_query:.3f}s"
         )
 
-        sections = [
-            html.H2("Torch Ops Summary"),
+        content = [
             html.Div(timing_info, style={"fontSize": "11px", "color": "#888", "marginBottom": "15px", "fontFamily": "monospace"}),
         ]
 
@@ -134,8 +133,8 @@ def layout():
         bwd_df = ops_agg[ops_agg["category"] == "backward_function"]
 
         if not fwd_df.empty:
-            sections.append(html.H3("Forward Ops"))
-            sections.append(dag.AgGrid(
+            content.append(html.H3("Forward Ops"))
+            content.append(dag.AgGrid(
                 rowData=fwd_df.to_dict("records"),
                 columnDefs=col_defs,
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
@@ -144,8 +143,8 @@ def layout():
             ))
 
         if not bwd_df.empty:
-            sections.append(html.H3("Backward Ops", style={"marginTop": "25px"}))
-            sections.append(dag.AgGrid(
+            content.append(html.H3("Backward Ops", style={"marginTop": "25px"}))
+            content.append(dag.AgGrid(
                 rowData=bwd_df.to_dict("records"),
                 columnDefs=col_defs,
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
@@ -165,8 +164,8 @@ def layout():
                     avg_cpu_us=("cpu_time_us", "mean"),
                 ).reset_index().sort_values("total_cpu_us", ascending=False)
 
-                sections.append(html.H3("Ops by Input Shape", style={"marginTop": "25px"}))
-                sections.append(dag.AgGrid(
+                content.append(html.H3("Ops by Input Shape", style={"marginTop": "25px"}))
+                content.append(dag.AgGrid(
                     rowData=grouped.to_dict("records"),
                     columnDefs=[
                         {"field": "apiName", "headerName": "Op", "flex": 2},
@@ -181,6 +180,9 @@ def layout():
                     style={"height": "500px"},
                 ))
 
-        return html.Div(sections)
+        return html.Div([
+            html.H2("Torch Ops Summary"),
+            dcc.Loading(type="circle", children=html.Div(content)),
+        ])
     except Exception as e:
         return html.Div(f"Error loading torch ops: {e}")

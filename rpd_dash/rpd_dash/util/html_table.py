@@ -1,3 +1,5 @@
+from html import escape as _esc
+
 from dash import html
 
 
@@ -62,4 +64,50 @@ def make_table(columns, rows, col_styles=None):
             "overflow": "hidden",
             "border": "1px solid #e0e0e0",
         },
+    )
+
+
+def _style_str(style):
+    return ";".join(f"{k}:{v}" for k, v in style.items())
+
+
+def render_table_html(columns, rows, col_styles=None):
+    """Build the same styled table as make_table(), but as a raw HTML string.
+
+    Used by Flask fragment endpoints (htmx) that can't return Dash components
+    directly and instead return `text/html` fragments.
+    """
+    col_styles = col_styles or {}
+
+    thead_cells = "".join(
+        f'<th style="{_style_str({**_HEADER_STYLE, **col_styles.get(c["field"], {})})}">{_esc(c["header"])}</th>'
+        for c in columns
+    )
+
+    body_rows = []
+    for i, row in enumerate(rows):
+        bg = {"backgroundColor": _ROW_ALT_BG} if i % 2 == 1 else {}
+        cells = []
+        for c in columns:
+            val = row.get(c["field"], "")
+            fmt = c.get("format")
+            if fmt and val is not None and val != "":
+                val = fmt(val)
+            style = {**_CELL_STYLE, **bg, **col_styles.get(c["field"], {})}
+            cells.append(f'<td style="{_style_str(style)}">{_esc(str(val))}</td>')
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
+
+    table_style = _style_str({
+        "width": "100%",
+        "borderCollapse": "collapse",
+        "borderRadius": "8px",
+        "overflow": "hidden",
+        "border": "1px solid #e0e0e0",
+    })
+
+    return (
+        f'<table style="{table_style}">'
+        f"<thead><tr>{thead_cells}</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        f"</table>"
     )

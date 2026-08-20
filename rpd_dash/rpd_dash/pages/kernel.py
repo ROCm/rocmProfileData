@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 
 from rpd_dash.util import db
@@ -43,18 +43,21 @@ def layout():
 
         return html.Div([
             html.H2("Kernel Summary"),
-            dag.AgGrid(
-                rowData=df.to_dict("records"),
-                columnDefs=[
-                    {"field": "Name", "headerName": "Kernel", "flex": 3, "tooltipField": "Name"},
-                    {"field": "TotalCalls", "headerName": "Calls", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
-                    {"field": dur_col, "headerName": "Total (us)", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
-                    {"field": ave_col, "headerName": "Avg (us)", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
-                    {"field": "Percentage", "headerName": "%", "flex": 1, "valueFormatter": {"function": "d3.format('.2f')(params.value)"}},
-                ],
-                defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
-                style={"height": "600px"},
+            dcc.Loading(
+                type="circle",
+                children=dag.AgGrid(
+                    rowData=df.to_dict("records"),
+                    columnDefs=[
+                        {"field": "Name", "headerName": "Kernel", "flex": 3, "tooltipField": "Name"},
+                        {"field": "TotalCalls", "headerName": "Calls", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
+                        {"field": dur_col, "headerName": "Total (us)", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
+                        {"field": ave_col, "headerName": "Avg (us)", "flex": 1, "valueFormatter": {"function": "d3.format(',')(params.value)"}},
+                        {"field": "Percentage", "headerName": "%", "flex": 1, "valueFormatter": {"function": "d3.format('.2f')(params.value)"}},
+                    ],
+                    defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                    dashGridOptions={"rowHeight": 28, "headerHeight": 32},
+                    style={"height": "600px"},
+                ),
             ),
         ])
     except Exception as e:

@@ -73,41 +73,43 @@ def layout():
 
         return html.Div([
             html.H2("Ops by Category"),
-            dcc.Graph(figure=fig),
-            html.H3("Category Summary"),
-            dag.AgGrid(
-                rowData=cat_df.to_dict("records"),
-                columnDefs=[
-                    {"field": "op_category", "headerName": "Category", "flex": 2},
-                    {"field": "unique_ops", "headerName": "Unique Ops", "flex": 1, "valueFormatter": fmt_num},
-                    {"field": "total_calls", "headerName": "Total Calls", "flex": 1, "valueFormatter": fmt_num},
-                    {"field": "total_cpu_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
-                    {"field": "pct", "headerName": "%", "flex": 1,
-                     "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
-                    {"field": "cum_pct", "headerName": "Cum %", "flex": 1,
-                     "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
-                ],
-                defaultColDef={"sortable": True, "resizable": True},
-                dashGridOptions={"rowHeight": 28, "headerHeight": 32},
-                style={"height": "450px"},
-            ),
-            html.H3("All Ops", style={"marginTop": "25px"}),
-            dag.AgGrid(
-                rowData=df.to_dict("records"),
-                columnDefs=[
-                    {"field": "op_category", "headerName": "Category", "flex": 1, "rowGroup": True, "hide": True},
-                    {"field": "apiName", "headerName": "Op", "flex": 3},
-                    {"field": "fwd_bwd", "headerName": "Fwd/Bwd", "flex": 1},
-                    {"field": "calls", "headerName": "Calls", "flex": 1, "valueFormatter": fmt_num},
-                    {"field": "cpu_time_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
-                ],
-                defaultColDef={"sortable": True, "resizable": True, "filter": True},
-                dashGridOptions={"rowHeight": 28, "headerHeight": 32, 
-                    "groupDefaultExpanded": 0,
-                    "autoGroupColumnDef": {"headerName": "Category", "minWidth": 250},
-                },
-                style={"height": "600px"},
-            ),
+            dcc.Loading(type="circle", children=html.Div([
+                dcc.Graph(figure=fig),
+                html.H3("Category Summary"),
+                dag.AgGrid(
+                    rowData=cat_df.to_dict("records"),
+                    columnDefs=[
+                        {"field": "op_category", "headerName": "Category", "flex": 2},
+                        {"field": "unique_ops", "headerName": "Unique Ops", "flex": 1, "valueFormatter": fmt_num},
+                        {"field": "total_calls", "headerName": "Total Calls", "flex": 1, "valueFormatter": fmt_num},
+                        {"field": "total_cpu_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
+                        {"field": "pct", "headerName": "%", "flex": 1,
+                         "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
+                        {"field": "cum_pct", "headerName": "Cum %", "flex": 1,
+                         "valueFormatter": {"function": "d3.format('.1f')(params.value)"}},
+                    ],
+                    defaultColDef={"sortable": True, "resizable": True},
+                    dashGridOptions={"rowHeight": 28, "headerHeight": 32},
+                    style={"height": "450px"},
+                ),
+                html.H3("All Ops", style={"marginTop": "25px"}),
+                dag.AgGrid(
+                    rowData=df.to_dict("records"),
+                    columnDefs=[
+                        {"field": "op_category", "headerName": "Category", "flex": 1, "rowGroup": True, "hide": True},
+                        {"field": "apiName", "headerName": "Op", "flex": 3},
+                        {"field": "fwd_bwd", "headerName": "Fwd/Bwd", "flex": 1},
+                        {"field": "calls", "headerName": "Calls", "flex": 1, "valueFormatter": fmt_num},
+                        {"field": "cpu_time_us", "headerName": "CPU Time (us)", "flex": 1, "valueFormatter": fmt_num},
+                    ],
+                    defaultColDef={"sortable": True, "resizable": True, "filter": True},
+                    dashGridOptions={"rowHeight": 28, "headerHeight": 32, 
+                        "groupDefaultExpanded": 0,
+                        "autoGroupColumnDef": {"headerName": "Category", "minWidth": 250},
+                    },
+                    style={"height": "600px"},
+                ),
+            ])),
         ])
     except Exception as e:
         return html.Div(f"Error loading ops by category: {e}")

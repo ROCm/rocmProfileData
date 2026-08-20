@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 
 from rpd_dash.util import db
@@ -21,7 +21,7 @@ def layout():
 
         return html.Div([
             html.H2("Autograd Kernel Summary"),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=df.to_dict("records"),
                 columnDefs=[
                     {"field": "autogradName", "headerName": "Autograd Operator", "flex": 2, "rowGroup": True, "hide": True},
@@ -41,7 +41,7 @@ def layout():
                     },
                 },
                 style={"height": "700px"},
-            ),
+            )),
         ])
     except Exception as e:
         return html.Div(f"Error loading autograd summary: {e}")

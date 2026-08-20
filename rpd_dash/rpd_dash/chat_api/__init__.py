@@ -123,16 +123,89 @@ def _chat_worker(
         while turn < MAX_TURNS and not stop_evt.is_set():
             turn += 1
             put({"type": "progress", "text": f"[turn {turn}/{MAX_TURNS}] Calling model..."})
-            resp = client.chat.completions.create(
-                model=model, messages=conv, tools=[tool_def]
-            )
-            choice = resp.choices[0]
 
-            if choice.message.tool_calls:
-                conv.append(choice.message.model_dump())
-                for tc in choice.message.tool_calls:
-                    if tc.function.name == "run_sql":
-                        sql = json.loads(tc.function.arguments)["sql"]
+            content_parts = []
+            tool_calls_acc: dict[int, dict] = {}
+
+            try:
+                stream = client.chat.completions.create(
+                    model=model, messages=conv, tools=[tool_def], stream=True
+                )
+            except TypeError:
+                # Backend/model doesn't support streaming - fall back to
+                # a single non-streaming call so chat still works.
+                resp = client.chat.completions.create(
+                    model=model, messages=conv, tools=[tool_def]
+                )
+                choice = resp.choices[0]
+                if choice.message.tool_calls:
+                    conv.append(choice.message.model_dump())
+                    for tc in choice.message.tool_calls:
+                        if tc.function.name == "run_sql":
+                            sql = json.loads(tc.function.arguments)["sql"]
+                            put({"type": "sql", "text": sql[:120]})
+                            t0 = time.time()
+                            result = _run_sql(sql)
+                            elapsed = time.time() - t0
+                            put({"type": "progress", "text": f"  -> {len(result)} chars in {elapsed:.2f}s"})
+                            conv.append({
+                                "role": "tool",
+                                "content": result,
+                                "tool_call_id": tc.id,
+                            })
+                    continue
+                if choice.message.content:
+                    put({"type": "progress", "text": f"Done ({turn} turns)."})
+                    put({"type": "answer", "content": choice.message.content})
+                    put({"type": "done", "status": "done"})
+                    return
+                continue
+
+            for chunk in stream:
+                if stop_evt.is_set():
+                    break
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                if delta.content:
+                    content_parts.append(delta.content)
+                    put({"type": "token", "content": delta.content})
+
+                if delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        acc = tool_calls_acc.setdefault(
+                            idx, {"id": None, "name": None, "arguments": ""}
+                        )
+                        if tc_delta.id:
+                            acc["id"] = tc_delta.id
+                        if tc_delta.function:
+                            if tc_delta.function.name:
+                                acc["name"] = tc_delta.function.name
+                            if tc_delta.function.arguments:
+                                acc["arguments"] += tc_delta.function.arguments
+
+            if stop_evt.is_set():
+                break
+
+            if tool_calls_acc:
+                tool_calls_sorted = [tool_calls_acc[i] for i in sorted(tool_calls_acc)]
+                conv.append({
+                    "role": "assistant",
+                    "content": "".join(content_parts) or None,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in tool_calls_sorted
+                    ],
+                })
+                for tc in tool_calls_sorted:
+                    if tc["name"] == "run_sql":
+                        sql = json.loads(tc["arguments"])["sql"]
                         put({"type": "sql", "text": sql[:120]})
                         t0 = time.time()
                         result = _run_sql(sql)
@@ -141,13 +214,14 @@ def _chat_worker(
                         conv.append({
                             "role": "tool",
                             "content": result,
-                            "tool_call_id": tc.id,
+                            "tool_call_id": tc["id"],
                         })
                 continue
 
-            if choice.message.content:
+            full_content = "".join(content_parts)
+            if full_content:
                 put({"type": "progress", "text": f"Done ({turn} turns)."})
-                put({"type": "answer", "content": choice.message.content})
+                put({"type": "answer", "content": full_content})
                 put({"type": "done", "status": "done"})
                 return
 

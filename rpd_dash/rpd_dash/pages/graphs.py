@@ -36,7 +36,7 @@ def layout():
 
         return html.Div([
             html.H2("Graph Captures"),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 id="graph-summary-grid",
                 rowData=df.to_dict("records"),
                 columnDefs=[
@@ -50,7 +50,7 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32, "rowSelection": {"mode": "singleRow"}},
                 style={"height": "300px"},
-            ),
+            )),
             html.Div(
                 [
                     html.Button("Show Kernels", id="btn-kernels", n_clicks=0, style={"marginRight": "10px"}),
@@ -58,7 +58,7 @@ def layout():
                 ],
                 style={"margin": "15px 0"},
             ),
-            html.Div(id="graph-detail"),
+            dcc.Loading(type="circle", children=html.Div(id="graph-detail")),
         ])
     except Exception as e:
         return html.Div(f"Error loading graphs: {e}")

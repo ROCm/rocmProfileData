@@ -36,7 +36,7 @@
         var container = this._el("chat-messages");
         if (!container) return;
 
-        if (this.messages.length === 0) {
+        if (this.messages.length === 0 && !this.streamingContent) {
             container.innerHTML = '<div style="color:#666;text-align:center;padding:40px 0">Start a conversation about this trace file.</div>';
             return;
         }
@@ -50,11 +50,28 @@
                 html += '<div class="chat-bubble assistant"><div class="chat-md">' + this._esc(msg.content) + "</div></div>";
             }
         }
+        if (this.streamingContent !== undefined && this.streamingContent !== null) {
+            html += '<div class="chat-bubble assistant" id="chat-streaming-bubble"><div class="chat-md">'
+                + this._esc(this.streamingContent) + "</div></div>";
+        }
         container.innerHTML = html;
         container.scrollTop = container.scrollHeight;
 
         // Render markdown in assistant bubbles
         this._renderMarkdown();
+    };
+
+    ChatUI.prototype._renderStreamingBubble = function () {
+        var container = this._el("chat-messages");
+        if (!container) return;
+        var bubble = this._el("chat-streaming-bubble");
+        if (!bubble) {
+            this._render();
+            return;
+        }
+        var md = bubble.querySelector(".chat-md");
+        if (md) md.textContent = this.streamingContent;
+        container.scrollTop = container.scrollHeight;
     };
 
     ChatUI.prototype._renderMarkdown = function () {
@@ -64,7 +81,10 @@
             var text = els[i].innerHTML;
             // Code blocks
             text = text.replace(/```(\w*)\n([\s\S]*?)```/g, function (_, lang, code) {
-                return '<pre style="background:#f0f0f0;padding:8px;border-radius:4px;overflow-x:auto;font-size:12px"><code>' + code.replace(/\n$/, "") + "</code></pre>";
+                return '<div class="copy-block">'
+                    + '<button class="copy-btn" data-copy-target>Copy</button>'
+                    + '<pre style="background:#f0f0f0;padding:8px;border-radius:4px;overflow-x:auto;font-size:12px"><code>' + code.replace(/\n$/, "") + "</code></pre>"
+                    + "</div>";
             });
             // Inline code
             text = text.replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:12px">$1</code>');
@@ -199,6 +219,21 @@
                 }
             });
         }
+
+        document.addEventListener("click", function (e) {
+            var btn = e.target.closest && e.target.closest(".copy-btn");
+            if (!btn) return;
+            var block = btn.closest(".copy-block");
+            var code = block && block.querySelector("code");
+            if (!code) return;
+            navigator.clipboard.writeText(code.textContent).then(function () {
+                var original = btn.textContent;
+                btn.textContent = "Copied!";
+                setTimeout(function () {
+                    btn.textContent = original;
+                }, 1500);
+            });
+        });
     };
 
     ChatUI.prototype._send = function () {
@@ -208,6 +243,7 @@
         if (!text) return;
 
         inp.value = "";
+        this.streamingContent = null;
         this.messages.push({ role: "user", content: text });
         this._save();
         this._render();
@@ -224,6 +260,12 @@
         xhr.open("POST", "/api/chat/send", true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.timeout = 180000;
+        this._sseCursor = 0;
+
+        xhr.onprogress = function () {
+            if (xhr.status && xhr.status !== 200) return;
+            self._parseSSEIncremental(xhr.responseText);
+        };
 
         xhr.onload = function () {
             if (xhr.status !== 200) {
@@ -234,7 +276,7 @@
                 self._done(false);
                 return;
             }
-            self._parseSSE(xhr.responseText);
+            self._parseSSEIncremental(xhr.responseText);
         };
 
         xhr.onerror = function () {
@@ -250,15 +292,25 @@
         xhr.send(JSON.stringify({ text: text, history: self.messages.slice(0, -1) }));
     };
 
-    ChatUI.prototype._parseSSE = function (text) {
-        var lines = text.split("\n");
+    // Incrementally parse newly-arrived SSE bytes as they stream in over XHR.
+    ChatUI.prototype._parseSSEIncremental = function (fullText) {
+        var chunk = fullText.slice(this._sseCursor);
+        if (!chunk) return;
+
+        var lastBoundary = chunk.lastIndexOf("\n\n");
+        if (lastBoundary === -1) return;
+
+        var complete = chunk.slice(0, lastBoundary + 2);
+        this._sseCursor += complete.length;
+
+        var lines = complete.split("\n");
         for (var i = 0; i < lines.length; i++) {
-            if (lines[i].startsWith("data: ")) {
+            if (lines[i].indexOf("data: ") === 0) {
                 var data = lines[i].slice(6);
                 try {
                     var ev = JSON.parse(data);
                     this._handleEvent(ev);
-                } catch (e) { /* skip */ }
+                } catch (e) { /* skip keep-alive/comment lines */ }
             }
         }
     };
@@ -275,7 +327,13 @@
             case "sql":
                 this._appendLog("[SQL] " + ev.text);
                 break;
+            case "token":
+                if (!this.streamingContent) this._setSpinner(false);
+                this.streamingContent = (this.streamingContent || "") + ev.content;
+                this._renderStreamingBubble();
+                break;
             case "answer":
+                this.streamingContent = null;
                 this.messages.push({ role: "assistant", content: ev.content });
                 this._save();
                 this._render();
@@ -284,6 +342,7 @@
                 this._done(true);
                 break;
             case "error":
+                this.streamingContent = null;
                 this._appendLog("Error: " + ev.message);
                 this.messages.push({ role: "assistant", content: "**Error:** " + ev.message });
                 this._save();
@@ -308,6 +367,8 @@
         this._setSpinner(false);
         this._setCancelBtn(false);
         this._setInputEnabled(true);
+        this.streamingContent = null;
+        window.dispatchEvent(new CustomEvent("rpd-toast", { detail: "Request cancelled" }));
         if (this.currentSession) {
             var self = this;
             var xhr = new XMLHttpRequest();
@@ -318,6 +379,7 @@
 
     ChatUI.prototype._clear = function () {
         this.messages = [];
+        this.streamingContent = null;
         this._save();
         this._render();
         this.logLines = [];

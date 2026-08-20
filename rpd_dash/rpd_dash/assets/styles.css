@@ -1,0 +1,124 @@
+/* Chat bubbles */
+.chat-bubble {
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    max-width: 85%;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    animation: chat-bubble-in 0.18s ease-out;
+}
+
+.chat-bubble.user {
+    background: #e8f0fe;
+    color: #1a1a1a;
+    margin-left: auto;
+}
+
+.chat-bubble.assistant {
+    background: #f5f5f5;
+    color: #1a1a1a;
+    margin-right: auto;
+}
+
+@keyframes chat-bubble-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Animated "thinking" spinner: pulsing skeleton bars mimicking text */
+.chat-thinking {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 260px;
+    margin: 10px auto;
+}
+
+.chat-thinking .skeleton-bar {
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(90deg, #eee 25%, #ddd 37%, #eee 63%);
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+.chat-thinking .skeleton-bar:nth-child(1) { width: 90%; }
+.chat-thinking .skeleton-bar:nth-child(2) { width: 75%; animation-delay: 0.15s; }
+.chat-thinking .skeleton-bar:nth-child(3) { width: 60%; animation-delay: 0.3s; }
+
+@keyframes skeleton-shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+
+/* Toast notifications */
+#toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    background: #2c2c2c;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* htmx swap fade-in: htmx toggles .htmx-swapping / .htmx-settling automatically */
+.htmx-fade.htmx-swapping {
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+}
+.htmx-fade.htmx-settling {
+    opacity: 1;
+    transition: opacity 0.25s ease-in;
+}
+
+/* Skeleton loading placeholders for htmx fragments */
+.skeleton-card {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e4 37%, #f0f0f0 63%);
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.4s ease infinite;
+    border-radius: 8px;
+}
+
+/* Copy-to-clipboard button on code blocks */
+.copy-block {
+    position: relative;
+}
+.copy-block .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    opacity: 0.7;
+}
+.copy-block .copy-btn:hover {
+    opacity: 1;
+}
+.copy-block .copy-copied {
+    color: #1a9e5c;
+    font-size: 11px;
+    margin-left: 6px;
+}
+
+/* Keyboard shortcut hints */
+.kbd-hint {
+    font-size: 11px;
+    color: #999;
+}
+.kbd-hint kbd {
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: monospace;
+}

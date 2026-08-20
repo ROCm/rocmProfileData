@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 
 from rpd_dash.util import db
@@ -27,7 +27,7 @@ def layout():
 
         return html.Div([
             html.H2("GPU Op Summary"),
-            dag.AgGrid(
+            dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=df.to_dict("records"),
                 columnDefs=[
                     {"field": "opType", "headerName": "Op Type", "flex": 3},
@@ -36,7 +36,7 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "600px"},
-            ),
+            )),
         ])
     except Exception as e:
         return html.Div(f"Error loading op summary: {e}")

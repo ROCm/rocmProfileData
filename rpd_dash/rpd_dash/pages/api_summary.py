@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, dcc
 import dash_ag_grid as dag
 
 from rpd_dash.util import db
@@ -43,7 +43,7 @@ def layout():
         if db.has_annotations() and db.table_exists("api"):
             domain_df = db.query_df(DOMAIN_SUMMARY_SQL)
             sections.append(html.H3("By Domain"))
-            sections.append(dag.AgGrid(
+            sections.append(dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=domain_df.to_dict("records"),
                 columnDefs=[
                     {"field": "domain", "headerName": "Domain", "flex": 2},
@@ -53,11 +53,11 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "200px"},
-            ))
+            )))
 
             df = db.query_df(API_ANNOTATED_SQL)
             sections.append(html.H3("All API Calls", style={"marginTop": "25px"}))
-            sections.append(dag.AgGrid(
+            sections.append(dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=df.to_dict("records"),
                 columnDefs=[
                     {"field": "domain", "headerName": "Domain", "flex": 1},
@@ -69,14 +69,14 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "600px"},
-            ))
+            )))
         else:
             if db.table_exists("api"):
                 df = db.query_df("SELECT apiName, count(*) as total_calls FROM api GROUP BY apiName ORDER BY total_calls DESC")
             else:
                 df = db.query_df(API_SQL)
 
-            sections.append(dag.AgGrid(
+            sections.append(dcc.Loading(type="circle", children=dag.AgGrid(
                 rowData=df.to_dict("records"),
                 columnDefs=[
                     {"field": "apiName", "headerName": "API Name", "flex": 3},
@@ -85,7 +85,7 @@ def layout():
                 defaultColDef={"sortable": True, "resizable": True, "filter": True},
                 dashGridOptions={"rowHeight": 28, "headerHeight": 32},
                 style={"height": "600px"},
-            ))
+            )))
 
         return html.Div(sections)
     except Exception as e:
