@@ -1,4 +1,4 @@
-# AGENTS.md — rpd_dash Development Guide
+# AGENTS.md — rpd_viewer Development Guide
 
 This file helps AI coding assistants work effectively in this Dash-based project.
 Read this before writing or modifying any code.
@@ -6,8 +6,8 @@ Read this before writing or modifying any code.
 ## Project Structure
 
 ```
-rpd_dash/
-  rpd_dash/
+rpd_viewer/
+  rpd_viewer/
     app.py              # App factory, layout, sidebar, NAV_LINKS, Flask routes
     pages/              # One file per page — auto-discovered by Dash
     util/               # Shared Python modules (db.py, html_table.py, etc.)
@@ -18,7 +18,7 @@ rpd_dash/
 
 ### Adding a new page
 
-1. Create `rpd_dash/pages/my_page.py`
+1. Create `rpd_viewer/pages/my_page.py`
 2. Call `dash.register_page(__name__, path="/my-page", name="My Page")` at module level
 3. Define a `layout()` **function** (not a variable) that returns a component tree
 4. Add `("My Page", "/my-page")` to `NAV_LINKS` in `app.py`
@@ -26,7 +26,7 @@ rpd_dash/
 
 ### Database access
 
-All pages access the SQLite database through `rpd_dash.util.db`:
+All pages access the SQLite database through `rpd_viewer.util.db`:
 - `db.rpd_path` — the loaded file path (None if no file loaded)
 - `db.get_connection()` — fresh connection, caller must close
 - `db.query_df(sql)` — returns a pandas DataFrame, handles connection lifecycle
@@ -39,7 +39,7 @@ package in `/opt/venv`, not from the source tree. The `build/` directory is a st
 artifact — never edit files there.
 
 **Do not test page modules with direct import.** Running
-`python -c "from rpd_dash.pages import chat"` will always fail with
+`python -c "from rpd_viewer.pages import chat"` will always fail with
 `validate_use_pages` error — this is expected. Dash page modules can only be
 imported by the Dash app's page discovery mechanism. To test, run the full app:
 `rpd-viewer <file.rpd>` or `make install && rpd-viewer`.
@@ -234,7 +234,7 @@ to the content area — that is only for the sidebar.
 ```python
 import dash
 from dash import html
-from rpd_dash.util import db
+from rpd_viewer.util import db
 
 dash.register_page(__name__, path="/example", name="Example")
 

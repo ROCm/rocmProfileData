@@ -5,7 +5,7 @@ import plotly.express as px
 from dash import dcc
 import pandas as pd
 
-from rpd_dash.util import db
+from rpd_viewer.util import db
 
 dash.register_page(__name__, path="/tl/gpu-timeline", name="GPU Timeline")
 

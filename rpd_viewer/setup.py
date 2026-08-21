@@ -7,7 +7,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     package_data={
-        "rpd_dash": ["assets/*", "RPD_INFO.md"],
+        "rpd_viewer": ["assets/*", "RPD_INFO.md"],
     },
     python_requires=">=3.8",
     install_requires=[
@@ -20,7 +20,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "rpd-viewer=rpd_dash.app:main",
+            "rpd-viewer=rpd_viewer.app:main",
         ],
     },
     zip_safe=False,

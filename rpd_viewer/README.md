@@ -1,4 +1,4 @@
-# rpd_dash — RPD Viewer
+# rpd_viewer — RPD Viewer
 
 A web-based viewer for `.rpd` trace files produced by
 [rocmProfileData](https://github.com/ROCm/rocmProfileData). It's a
@@ -10,7 +10,7 @@ just to answer a quick question.
 ## Install
 
 ```bash
-cd rpd_dash
+cd rpd_viewer
 make install       # pip install .
 ```
 

@@ -8,21 +8,21 @@ install: all
 	$(MAKE) install -C rocpd_python
 	$(MAKE) install -C rpd_tracer
 	$(MAKE) install -C remote
-	$(MAKE) install -C rpd_dash
+	$(MAKE) install -C rpd_viewer
 
 .PHONY: uninstall
 uninstall:
 	$(MAKE) uninstall -C rocpd_python
 	$(MAKE) uninstall -C rpd_tracer
 	$(MAKE) uninstall -C remote
-	$(MAKE) uninstall -C rpd_dash
+	$(MAKE) uninstall -C rpd_viewer
 
 .PHONY: clean
 clean: cpptrace-clean
 	$(MAKE) clean -C rocpd_python
 	$(MAKE) clean -C rpd_tracer
 	$(MAKE) clean -C remote
-	$(MAKE) clean -C rpd_dash
+	$(MAKE) clean -C rpd_viewer
 
 .PHONY: rpd
 rpd:

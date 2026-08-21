@@ -2,7 +2,7 @@ import dash
 from dash import html, dcc
 import dash_ag_grid as dag
 
-from rpd_dash.util import db
+from rpd_viewer.util import db
 
 dash.register_page(__name__, path="/op", name="GPU Ops")
 

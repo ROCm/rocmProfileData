@@ -7,7 +7,7 @@ import dash
 from dash import html, dcc, Input, Output, State, callback
 from flask import request, Response
 
-from rpd_dash.util import db
+from rpd_viewer.util import db
 
 _pkg_dir = os.path.dirname(__file__)
 _pages_dir = os.path.join(_pkg_dir, "pages")
@@ -223,10 +223,10 @@ def _create_app():
 
     server = app.server
 
-    from rpd_dash.chat_api import chat_bp
+    from rpd_viewer.chat_api import chat_bp
     server.register_blueprint(chat_bp)
 
-    from rpd_dash.util import fragments
+    from rpd_viewer.util import fragments
 
     @server.route("/api/page/dashboard-stats")
     def api_dashboard_stats():

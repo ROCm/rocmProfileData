@@ -4,7 +4,7 @@ import time
 import dash
 from dash import html, dcc
 
-from rpd_dash.util import db
+from rpd_viewer.util import db
 
 dash.register_page(__name__, path="/", name="Dashboard")
 

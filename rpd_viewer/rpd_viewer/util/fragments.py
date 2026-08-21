@@ -7,8 +7,8 @@ fragments that get swapped into the DOM.
 import re
 from html import escape as _esc
 
-from rpd_dash.util import db
-from rpd_dash.util.html_table import render_table_html
+from rpd_viewer.util import db
+from rpd_viewer.util.html_table import render_table_html
 
 BUSY_SQL = """
 SELECT A.gpuId, GpuTime / 1000 as GpuTime_us, WallTime / 1000 as WallTime_us,

@@ -8,7 +8,7 @@ import uuid
 
 from flask import Blueprint, Response, request
 
-from rpd_dash.util import db
+from rpd_viewer.util import db
 
 chat_bp = Blueprint("chat_api", __name__, url_prefix="/api/chat")
 

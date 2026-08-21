@@ -1,6 +1,6 @@
 # RPD_INFO.md Research Prompt
 
-This is the prompt used to generate `rpd_dash/RPD_INFO.md`, the schema reference
+This is the prompt used to generate `rpd_viewer/RPD_INFO.md`, the schema reference
 injected into the chat assistant's system prompt. Re-run it against a reference
 `.rpd` trace and the full source tree to regenerate that file.
 
@@ -122,7 +122,7 @@ working patterns and include them as ready-to-run SQL:
 
 **Queries the product already ships** (high value — these are the questions users
 actually ask):
-- `rpd_dash/rpd_dash/pages/*.py` and `rpd_dash/rpd_dash/util/fragments.py`
+- `rpd_viewer/rpd_viewer/pages/*.py` and `rpd_viewer/rpd_viewer/util/fragments.py`
   contain the SQL behind kernel ranking, API/op summaries, copy analysis,
   short-kernel analysis, torch-op breakdowns, counters, and busy stats.
 

@@ -3,7 +3,7 @@ PIP = pip3
 PACKAGE = rpd-viewer
 
 install:
-	@echo "Building rpd_dash"
+	@echo "Building rpd_viewer"
 	pip install .
 
 develop:
