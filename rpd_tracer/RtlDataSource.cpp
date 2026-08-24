@@ -37,6 +37,14 @@ extern "C" {
     DataSource *RtlDataSourceFactory() { return new RtlDataSource(); }
 }
 
+// roctx_shim.cpp is not compiled into the tracer: its roctx* symbols are
+// provided by RoctxDataSource instead. hsa_intercept.cpp calls this hook,
+// so provide it here. (Returns 0: RtlDataSource does not yet correlate
+// kernel events with roctx ranges.)
+namespace trace_db {
+uint64_t current_roctx_id() { return 0; }
+}
+
 static std::once_flag register_once;
 static std::once_flag registerAgain_once;
 
@@ -146,6 +154,14 @@ void RtlDataSource::init()
             setenv("HSA_TOOLS_LIB", info.dli_fname, 0);
         }
     }
+
+    // ROCm 7.x: rocprofiler-register scans all loaded libraries for an exported
+    // rocprofiler_configure symbol (e.g., from RocprofDataSource in this build).
+    // When found, the HSA runtime's LoadTools() treats registration as successful
+    // and skips the legacy HSA_TOOLS_LIB/OnLoad path entirely, so RTL's OnLoad
+    // never fires. Force the v1 (HSA_TOOLS_LIB) path; this runs at preload, before
+    // hsa_init, and only when RtlDataSource is the active source.
+    setenv("HSA_TOOLS_ROCPROFILER_V1_TOOLS", "1", 0);
 
     trace_db::set_api_event_callback(on_api_event, nullptr);
     trace_db::set_kernel_event_callback(on_kernel_event, nullptr);

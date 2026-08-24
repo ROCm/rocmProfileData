@@ -49,6 +49,13 @@ void Logger::rpdFinalize() {
         Logger::singleton().finalize();
 }
 
+sqlite3 *Logger::getConnection()
+{
+    sqlite3 *db = nullptr;
+    rpdSqliteOpen(m_storage->filename().c_str(), &db);
+    return db;
+}
+
 void Logger::resetStorage()
 {
     m_storage->finalize();
@@ -61,12 +68,6 @@ void Logger::resetStorage()
         (*it)->reset();
 }
 
-sqlite3 *Logger::getConnection()
-{
-    sqlite3 *db = nullptr;
-    rpdSqliteOpen(m_storage->filename().c_str(), &db);
-    return db;
-}
 
 void Logger::rpdstart()
 {
@@ -117,7 +118,6 @@ void Logger::init()
 
     const char *filename = getConfig("RPDT_FILENAME", "filename", "./trace.rpd");
     bool directWrite = (atoi(getConfig("RPDT_DIRECTWRITE", "directwrite", "0")) != 0);
-
     m_storage = new Storage(filename, directWrite);
 
     // Create one instance of each available datasource
@@ -143,7 +143,7 @@ void Logger::init()
             "NvtxDataSourceFactory",
             "RtlDataSourceFactory",
             "RocprofDataSourceFactory",
-            //"RoctracerDataSourceFactory",
+            "RoctracerDataSourceFactory",
             "CuptiDataSourceFactory",
             "RlogDataSourceFactory",
             "RocmSmiDataSourceFactory"
@@ -185,7 +185,9 @@ void Logger::init()
     std::list<std::string> rocmFactories = {
         "RocprofDataSourceFactory",
         "ClrDataSourceFactory",
-        "RoctracerDataSourceFactory"
+        "RoctracerDataSourceFactory",
+        "RtlDataSourceFactory",
+        "CuptiDataSourceFactory"
         };
 
     if (getenv("RPDT_CLOCKSYNC_RANK") != nullptr)
