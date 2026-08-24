@@ -1,0 +1,382 @@
+import os
+import io
+import gzip
+import argparse
+
+import dash
+from dash import html, dcc, Input, Output, State, callback
+from flask import request, Response
+
+from rpd_viewer.util import db
+
+_pkg_dir = os.path.dirname(__file__)
+_pages_dir = os.path.join(_pkg_dir, "pages")
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Interactive viewer for RPD trace files")
+    parser.add_argument("rpd_file", nargs="?", default=None, help="Path to .rpd trace file")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8050, help="Port to bind to (default: 8050)")
+    parser.add_argument("--no-debug", action="store_true", help="Disable debug mode")
+    return parser.parse_args()
+
+
+def _create_app():
+    args = _parse_args()
+
+    if args.rpd_file:
+        if not os.path.isfile(args.rpd_file):
+            print(f"Error: file not found: {args.rpd_file}")
+            sys.exit(1)
+        db.set_rpd_path(os.path.abspath(args.rpd_file))
+        print(f"Loaded: {db.rpd_path}")
+
+    app = dash.Dash(
+        __name__,
+        use_pages=True,
+        pages_folder=_pages_dir,
+        suppress_callback_exceptions=True,
+    )
+
+    NAV_LINKS = [
+        ("Dashboard", "/"),
+        ("Kernels", "/kernel"),
+        ("API Calls", "/api"),
+        ("GPU Ops", "/op"),
+        ("Copies", "/copy"),
+        ("Timeline", "/trace"),
+        ("Monitor", "/monitor"),
+        ("Graphs", "/graphs"),
+        ("Autograd", "/autograd"),
+        ("Metadata", "/metadata"),
+        ("Counters", "/counters"),
+        ("SQL Query", "/query"),
+        ("Chat", "/chat"),
+    ]
+
+    TL_LINKS = [
+        ("GPU Timeline", "/tl/gpu-timeline"),
+        ("Kernel Categories", "/tl/kernel-categories"),
+        ("Short Kernels", "/tl/short-kernels"),
+        ("Torch Ops", "/tl/torch-ops"),
+        ("Ops by Category", "/tl/ops-by-category"),
+    ]
+
+    link_style = {
+        "display": "block",
+        "padding": "8px 12px",
+        "marginBottom": "4px",
+        "textDecoration": "none",
+        "color": "#ddd",
+        "borderRadius": "4px",
+    }
+
+    sidebar = html.Div(
+        [
+            html.H2("RPD Viewer", style={"marginBottom": "20px", "color": "#ddd"}),
+            html.Hr(),
+            dcc.Link(id="rpd-filename", href="/file-info",
+                     style={"fontSize": "12px", "color": "#aaa", "marginBottom": "15px", "display": "block", "textDecoration": "none"}),
+            html.Nav([
+                dcc.Link(label, href=href, className="nav-link", style=link_style)
+                for label, href in NAV_LINKS
+            ]),
+            html.Div(
+                [
+                    html.Div("Analysis", style={
+                        "fontSize": "11px", "color": "#888", "textTransform": "uppercase",
+                        "letterSpacing": "1px", "padding": "12px 12px 4px",
+                    }),
+                    html.Nav([
+                        dcc.Link(label, href=href, className="nav-link", style=link_style)
+                        for label, href in TL_LINKS
+                    ]),
+                ],
+                style={"borderTop": "1px solid #444", "marginTop": "10px"},
+            ),
+        ],
+        style={
+            "width": "220px",
+            "minHeight": "100vh",
+            "backgroundColor": "#2c2c2c",
+            "padding": "20px",
+            "position": "fixed",
+            "top": 0,
+            "left": 0,
+        },
+    )
+
+    file_picker = html.Div(
+        [
+            html.H2("Load RPD File"),
+            html.P("Enter the path to an .rpd trace file:"),
+            dcc.Input(
+                id="file-path-input",
+                type="text",
+                placeholder="/path/to/trace.rpd",
+                style={"width": "500px", "padding": "8px", "fontSize": "14px"},
+            ),
+            html.Button(
+                "Load",
+                id="load-btn",
+                n_clicks=0,
+                style={"marginLeft": "10px", "padding": "8px 20px", "fontSize": "14px"},
+            ),
+            html.Div(id="file-error", style={"color": "red", "marginTop": "10px"}),
+        ],
+        style={"padding": "60px", "textAlign": "center"},
+    )
+
+    toast_div = html.Div(
+        html.Span(**{"data-x-text": "msg"}),
+        id="toast-container",
+        **{
+            "data-x-data": "{ show: false, msg: '' }",
+            "data-x-show": "show",
+            "data-x-transition:enter": "transition ease-out duration-200",
+            "data-x-transition:enter-start": "opacity-0 translate-y-2",
+            "data-x-transition:enter-end": "opacity-100 translate-y-0",
+            "data-x-transition:leave": "transition ease-in duration-150",
+            "data-x-transition:leave-start": "opacity-100",
+            "data-x-transition:leave-end": "opacity-0",
+            "data-x-on:rpd-toast.window": (
+                "msg = $event.detail; show = true; "
+                "clearTimeout(window._rpdToastTimer); "
+                "window._rpdToastTimer = setTimeout(() => show = false, 3000)"
+            ),
+        },
+    )
+
+    kbd_hints = html.Div(
+        [
+            html.Span("Press "),
+            html.Kbd("/"),
+            html.Span(" to search this page, "),
+            html.Kbd("Esc"),
+            html.Span(" to clear."),
+        ],
+        className="kbd-hint",
+        id="kbd-hints",
+        **{
+            "data-x-data": "{ show: false }",
+            "data-x-show": "show",
+            "data-x-init": (
+                "window.addEventListener('keydown', (e) => { "
+                "if (e.key === '/' && document.activeElement.tagName !== 'INPUT' "
+                "&& document.activeElement.tagName !== 'TEXTAREA') { show = true; } "
+                "if (e.key === 'Escape') { show = false; } })"
+            ),
+        },
+        style={"position": "fixed", "bottom": "12px", "left": "232px", "zIndex": 999},
+    )
+
+    app.layout = html.Div([
+        dcc.Store(id="rpd-loaded", data=db.rpd_path is not None),
+        html.Div(
+            id="main-app",
+            children=[
+                sidebar,
+                html.Div(
+                    dash.page_container,
+                    style={"marginLeft": "260px", "padding": "20px", "flex": "1",
+                           "minWidth": "0", "overflow": "hidden"},
+                ),
+            ],
+            style={"display": "flex" if db.rpd_path else "none"},
+        ),
+        html.Div(
+            id="picker-container",
+            children=file_picker,
+            style={"display": "none" if db.rpd_path else "block"},
+        ),
+        toast_div,
+        kbd_hints,
+    ])
+
+    @callback(
+        Output("rpd-filename", "children"),
+        Input("rpd-loaded", "data"),
+    )
+    def show_filename(_):
+        if db.rpd_path:
+            return os.path.basename(db.rpd_path)
+        return ""
+
+    @callback(
+        Output("main-app", "style"),
+        Output("picker-container", "style"),
+        Output("rpd-loaded", "data"),
+        Output("file-error", "children"),
+        Input("load-btn", "n_clicks"),
+        State("file-path-input", "value"),
+        prevent_initial_call=True,
+    )
+    def load_file(n_clicks, path):
+        if not path or not path.strip():
+            return dash.no_update, dash.no_update, dash.no_update, "Please enter a file path."
+        path = path.strip()
+        if not os.path.isfile(path):
+            return dash.no_update, dash.no_update, dash.no_update, f"File not found: {path}"
+        db.set_rpd_path(path)
+        return {"display": "flex"}, {"display": "none"}, True, ""
+
+    server = app.server
+
+    from rpd_viewer.chat_api import chat_bp
+    server.register_blueprint(chat_bp)
+
+    from rpd_viewer.util import fragments
+
+    @server.route("/api/page/dashboard-stats")
+    def api_dashboard_stats():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        return Response(fragments.dashboard_stats_html(), mimetype="text/html")
+
+    @server.route("/api/page/dashboard-busy")
+    def api_dashboard_busy():
+        if not db.rpd_path:
+            return Response("", mimetype="text/html")
+        return Response(fragments.dashboard_busy_html(), mimetype="text/html")
+
+    @server.route("/api/page/dashboard-domains")
+    def api_dashboard_domains():
+        if not db.rpd_path:
+            return Response("", mimetype="text/html")
+        return Response(fragments.dashboard_domains_html(), mimetype="text/html")
+
+    @server.route("/api/page/metadata")
+    def api_metadata():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        return Response(fragments.metadata_html(), mimetype="text/html")
+
+    @server.route("/api/page/file-info")
+    def api_file_info():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        return Response(fragments.file_info_html(), mimetype="text/html")
+
+    @server.route("/api/page/counter-detail")
+    def api_counter_detail():
+        if not db.rpd_path:
+            return Response("No RPD file loaded.", mimetype="text/html")
+        kernel = request.args.get("kernel", "")
+        return Response(fragments.counter_panel_html(kernel), mimetype="text/html")
+
+    @server.route("/api/live-stats")
+    def live_stats():
+        import time as _time
+
+        def generate():
+            while True:
+                if not db.rpd_path:
+                    break
+                try:
+                    html_fragment = fragments.dashboard_stats_sse_html()
+                except Exception:
+                    break
+                payload = html_fragment.replace("\n", "")
+                yield f"event: stats\ndata: {payload}\n\n"
+                _time.sleep(2)
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    @server.route("/api/live-status")
+    def live_status():
+        """Reports whether the loaded .rpd file looks like it's still being
+        actively written to (mtime changed within the last 30s), so the
+        client can decide whether to enable SSE live-refresh polling."""
+        import json as _json
+        import time as _time
+
+        if not db.rpd_path or not os.path.isfile(db.rpd_path):
+            return Response(_json.dumps({"live": False}), mimetype="application/json")
+        mtime = os.path.getmtime(db.rpd_path)
+        live = (_time.time() - mtime) < 30
+        return Response(_json.dumps({"live": live}), mimetype="application/json")
+
+    @server.route("/tracedata")
+    def serve_trace_json():
+        from rocpd.util.chrometracing import generateJson
+
+        trace_args = argparse.Namespace()
+        trace_args.input_rpd = db.rpd_path
+        trace_args.format = "object"
+        trace_args.start = "0%"
+        trace_args.end = "100%"
+
+        mem = io.StringIO()
+        generateJson(mem, trace_args)
+        data = mem.getvalue().encode("utf-8")
+
+        headers = {"Content-Disposition": "attachment; filename=trace.json"}
+
+        if "gzip" in request.headers.get("Accept-Encoding", ""):
+            data = gzip.compress(data)
+            headers["Content-Encoding"] = "gzip"
+
+        return Response(data, mimetype="application/json", headers=headers)
+
+    @server.route("/download-rpd")
+    def download_rpd():
+        if not db.rpd_path or not os.path.isfile(db.rpd_path):
+            return Response("No RPD file loaded", status=404)
+
+        filename = os.path.basename(db.rpd_path)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+        if "gzip" in request.headers.get("Accept-Encoding", ""):
+            import zlib
+            import struct
+
+            def generate():
+                yield b'\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff'
+                crc = zlib.crc32(b"")
+                size = 0
+                compress = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+                with open(db.rpd_path, "rb") as f:
+                    while True:
+                        chunk = f.read(64 * 1024)
+                        if not chunk:
+                            break
+                        crc = zlib.crc32(chunk, crc)
+                        size += len(chunk)
+                        compressed = compress.compress(chunk)
+                        if compressed:
+                            yield compressed
+                yield compress.flush()
+                yield struct.pack("<II", crc & 0xFFFFFFFF, size & 0xFFFFFFFF)
+
+            headers["Content-Encoding"] = "gzip"
+            return Response(generate(), mimetype="application/octet-stream", headers=headers)
+        else:
+            def generate():
+                with open(db.rpd_path, "rb") as f:
+                    while True:
+                        chunk = f.read(64 * 1024)
+                        if not chunk:
+                            break
+                        yield chunk
+
+            return Response(generate(), mimetype="application/octet-stream", headers=headers)
+
+    return app, args
+
+
+def main():
+    app, args = _create_app()
+    app.run(host=args.host, port=args.port, debug=not args.no_debug, threaded=True)
+
+
+if __name__ == "__main__":
+    main()
