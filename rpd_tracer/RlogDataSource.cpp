@@ -67,14 +67,13 @@ void RlogDataSource::mark(const char *domain, const char *category, const char *
     row.tid = GetTid();
     row.start = clocktime_ns();
     row.end = row.start;
-    static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
-    row.apiName_id = markerId;
-    row.args_id = EMPTY_STRING_ID;
+    // FIXME: possibly 'micro' cache the domain and category here.
+    // Don't search the whole pool with getOrCreate
+    row.domain_id = logger.stringTable().getOrCreate(std::string(domain));
+    row.category_id = logger.stringTable().getOrCreate(std::string(category));
+    row.apiName_id = logger.stringTable().getOrCreate(std::string(apiname));
+    row.args_id = logger.ustringTable().create(args);
     row.api_id = 0;
-
-    auto message = fmt::format("{}::{}::{} | {}", domain, category, apiname, args);
-
-    row.args_id = logger.stringTable().getOrCreate(message);
     logger.apiTable().insertRoctx(row);
 }
 
@@ -87,14 +86,13 @@ void RlogDataSource::rangePush(const char *domain, const char *category, const c
     row.tid = GetTid();
     row.start = clocktime_ns();
     row.end = row.start;
-    static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
-    row.apiName_id = markerId;
-    row.args_id = EMPTY_STRING_ID;
+    // FIXME: possibly 'micro' cache the domain and category here.
+    // Don't search the whole pool with getOrCreate
+    row.domain_id = logger.stringTable().getOrCreate(std::string(domain));
+    row.category_id = logger.stringTable().getOrCreate(std::string(category));
+    row.apiName_id = logger.stringTable().getOrCreate(std::string(apiname));
+    row.args_id = logger.ustringTable().create(args);
     row.api_id = 0;
-
-    auto message = fmt::format("{}::{}::{} | {}", domain, category, apiname, args);
-
-    row.args_id = logger.stringTable().getOrCreate(message);
     logger.apiTable().pushRoctx(row);
 }
 
@@ -107,11 +105,11 @@ void RlogDataSource::rangePop()
     row.tid = GetTid();
     row.start = clocktime_ns();
     row.end = row.start;
-    static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
-    row.apiName_id = markerId;
+    row.domain_id = EMPTY_STRING_ID;
+    row.category_id = EMPTY_STRING_ID;
+    row.apiName_id = EMPTY_STRING_ID;
     row.args_id = EMPTY_STRING_ID;
     row.api_id = 0;
-
     logger.apiTable().popRoctx(row);
 }
 
