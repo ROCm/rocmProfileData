@@ -21,7 +21,7 @@
 ********************************************************************************/
 #pragma once
 
-#include "../rlog/Logger.h"	// FIXME filename collision
+#include "rlog/Logger.h"
 #include "DataSource.h"
 
 namespace rpdtracer {

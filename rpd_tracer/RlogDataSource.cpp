@@ -27,7 +27,7 @@
 #include <cstdio>
 #include <fmt/format.h>
 
-#include "../rlog/RLogger.h"	// FIXME
+#include "rlog/Hub.h"
 
 using rpdtracer::DataSource;
 using rpdtracer::RlogDataSource;
@@ -49,12 +49,12 @@ void RlogDataSource::end()
 
 void RlogDataSource::startTracing()
 {
-    rlog::RLogger::singleton().addLogger(*this);
+    rlog::Hub::singleton().addLogger(*this);
 }
 
 void RlogDataSource::stopTracing()
 {
-    rlog::RLogger::singleton().removeLogger(*this);
+    rlog::Hub::singleton().removeLogger(*this);
 }
 
 void RlogDataSource::flush()
