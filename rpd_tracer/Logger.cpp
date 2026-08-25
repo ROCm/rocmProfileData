@@ -227,7 +227,8 @@ void Logger::init()
         "RocprofDataSourceFactory",
         "RoctracerDataSourceFactory",
         "CuptiDataSourceFactory",
-        "AmdSmiDataSourceFactory"
+        "RlogDataSourceFactory",
+        "RocmSmiDataSourceFactory"
         };
 
     for (auto it = factories.begin(); it != factories.end(); ++it) {
@@ -293,8 +294,13 @@ void Logger::finalize()
         if (m_worker != nullptr)
             m_worker->join();
 
-        for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
-            (*it)->stopTracing();
+        {
+            std::unique_lock<std::mutex> lock(m_activeMutex);
+            if (m_activeCount > 0) {
+                for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
+                    (*it)->stopTracing();
+            }
+        }
 
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->end();
