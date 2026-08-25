@@ -24,6 +24,8 @@
 #include "../rlog/Logger.h"	// FIXME filename collision
 #include "DataSource.h"
 
+namespace rpdtracer {
+
 class RlogDataSource : public DataSource, rlog::Logger
 {
 public:
@@ -42,3 +44,4 @@ public:
 private:
 };
 
+} // namespace rpdtracer

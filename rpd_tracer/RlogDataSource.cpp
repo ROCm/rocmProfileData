@@ -29,6 +29,10 @@
 
 #include "../rlog/RLogger.h"	// FIXME
 
+using rpdtracer::DataSource;
+using rpdtracer::RlogDataSource;
+
+
 // Create a factory for the Logger to locate and use
 extern "C" {
     DataSource *RlogDataSourceFactory() { return new RlogDataSource(); }
@@ -60,7 +64,7 @@ void RlogDataSource::flush()
 
 void RlogDataSource::mark(const char *domain, const char *category, const char *apiname, const char *args)
 {
-    ::Logger &logger = ::Logger::singleton();
+    rpdtracer::Logger &logger = rpdtracer::Logger::singleton();
 
     ApiTable::row row;
     row.pid = GetPid();
@@ -79,7 +83,7 @@ void RlogDataSource::mark(const char *domain, const char *category, const char *
 
 void RlogDataSource::rangePush(const char *domain, const char *category, const char *apiname, const char *args)
 {
-    ::Logger &logger = ::Logger::singleton();
+    rpdtracer::Logger &logger = rpdtracer::Logger::singleton();
 
     ApiTable::row row;
     row.pid = GetPid();
@@ -98,7 +102,7 @@ void RlogDataSource::rangePush(const char *domain, const char *category, const c
 
 void RlogDataSource::rangePop()
 {
-    ::Logger &logger = ::Logger::singleton();
+    rpdtracer::Logger &logger = rpdtracer::Logger::singleton();
 
     ApiTable::row row;
     row.pid = GetPid();
