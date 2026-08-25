@@ -20,9 +20,14 @@
 * THE SOFTWARE.
 ********************************************************************************/
 #include "RlogDataSource.h"
-#include "RLogger.h"
+
+#include "Logger.h"
+#include "Utility.h"
 
 #include <cstdio>
+#include <fmt/format.h>
+
+#include "../rlog/RLogger.h"	// FIXME
 
 // Create a factory for the Logger to locate and use
 extern "C" {
@@ -55,17 +60,59 @@ void RlogDataSource::flush()
 
 void RlogDataSource::mark(const char *domain, const char *category, const char *apiname, const char *args)
 {
-    fprintf(stderr, "RlogDataSource::mark\n");
+    ::Logger &logger = ::Logger::singleton();
+
+    ApiTable::row row;
+    row.pid = GetPid();
+    row.tid = GetTid();
+    row.start = clocktime_ns();
+    row.end = row.start;
+    static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+    row.apiName_id = markerId;
+    row.args_id = EMPTY_STRING_ID;
+    row.api_id = 0;
+
+    auto message = fmt::format("{}::{}::{} | {}", domain, category, apiname, args);
+
+    row.args_id = logger.stringTable().getOrCreate(message);
+    logger.apiTable().insertRoctx(row);
 }
 
 void RlogDataSource::rangePush(const char *domain, const char *category, const char *apiname, const char *args)
 {
-    fprintf(stderr, "RlogDataSource::rangePush\n");
+    ::Logger &logger = ::Logger::singleton();
+
+    ApiTable::row row;
+    row.pid = GetPid();
+    row.tid = GetTid();
+    row.start = clocktime_ns();
+    row.end = row.start;
+    static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+    row.apiName_id = markerId;
+    row.args_id = EMPTY_STRING_ID;
+    row.api_id = 0;
+
+    auto message = fmt::format("{}::{}::{} | {}", domain, category, apiname, args);
+
+    row.args_id = logger.stringTable().getOrCreate(message);
+    logger.apiTable().pushRoctx(row);
 }
 
 void RlogDataSource::rangePop()
 {
-    fprintf(stderr, "RlogDataSource::rangePop\n");
+    ::Logger &logger = ::Logger::singleton();
+
+    ApiTable::row row;
+    row.pid = GetPid();
+    row.tid = GetTid();
+    row.start = clocktime_ns();
+    row.end = row.start;
+    static sqlite3_int64 markerId = logger.stringTable().getOrCreate(std::string("UserMarker"));
+    row.apiName_id = markerId;
+    row.args_id = EMPTY_STRING_ID;
+    row.api_id = 0;
+
+    logger.apiTable().popRoctx(row);
 }
 
 
