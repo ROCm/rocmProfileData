@@ -48,11 +48,6 @@ void rpdflush()
     Logger::singleton().rpdflush();
 }
 
-void rpd_resetStorage()
-{
-    Logger::singleton().resetStorage();
-}
-
 // Known config properties (property name / env var):
 //   filename       / RPDT_FILENAME       — output file path (default: ./trace.rpd)
 //   delayinit      / RPDT_DELAYINIT      — skip singleton creation at load time (0/1, default: 0)
@@ -77,6 +72,11 @@ void rpd_setConfig(const char *property, const char *value)
 sqlite3 *rpd_getConnection()
 {
     return Logger::singleton().getConnection();
+}
+
+void rpd_resetStorage()
+{
+    Logger::singleton().resetStorage();
 }
 
 }  // extern "C"
