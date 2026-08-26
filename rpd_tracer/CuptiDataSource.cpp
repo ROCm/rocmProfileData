@@ -19,16 +19,6 @@ extern "C" {
     DataSource *CuptiDataSourceFactory() { return new CuptiDataSource(); }
 }  // extern "C"
 
-// FIXME: can we avoid shutdown corruption?
-// Other libraries crashing on unload
-// libsqlite unloading before we are done using it
-// Current workaround: register an onexit function when first activity is delivered back
-//                     this let's us unload first, or close to.
-// New workaround: register 3 times, only finalize once.  see register_once
-
-static std::once_flag register_once;
-static std::once_flag registerAgain_once;
-
 void CuptiDataSource::init()
 {
 
@@ -621,7 +611,6 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
         }
     }
     // nvtx handling moved to NvtxDataSource
-    std::call_once(register_once, atexit, Logger::rpdFinalize);
 }
 
 
@@ -718,7 +707,6 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
       }
     }
     free(buffer);
-    std::call_once(registerAgain_once, atexit, Logger::rpdFinalize);
 }
 
 

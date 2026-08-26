@@ -14,21 +14,6 @@ using rpdtracer::Logger;
 
 namespace rpdtracer { void rlogClientInit(); }
 
-#if 0
-static void rpdInit() __attribute__((constructor));
-static void rpdFinalize() __attribute__((destructor));
-// FIXME: can we avoid shutdown corruption?
-// Other rocm libraries crashing on unload
-// libsqlite unloading before we are done using it
-// Current workaround: register an onexit function when first activity is delivered back
-//                     this let's us unload first, or close to.
-// New workaround: register 3 times, only finalize once.  see register_once
-
-std::once_flag register_once;
-std::once_flag registerAgain_once;
-#endif
-
-
 // Hide the C-api here for now
 extern "C" {
 void rpdstart()
@@ -257,9 +242,6 @@ void Logger::init()
         std::unique_lock<std::mutex> lock(m_activeMutex);
         ++m_activeCount;
     }
-    static std::once_flag register_once;
-    std::call_once(register_once, atexit, Logger::rpdFinalize);
-
     // Start autoflush hack
     {
         int frequency = atoi(getConfig("RPDT_AUTOFLUSH", "autoflush", "0"));

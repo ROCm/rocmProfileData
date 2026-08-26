@@ -26,9 +26,13 @@
 
 namespace rpdtracer {
 
+class RlogDataSourcePrivate;
 class RlogDataSource : public DataSource, rlog::Logger
 {
 public:
+    RlogDataSource();
+    ~RlogDataSource();
+
     // DataSource
     void init() override;
     void end() override;
@@ -42,6 +46,8 @@ public:
     void rangePop() override;
 
 private:
+    RlogDataSourcePrivate *d;
+    friend class RlogDataSourcePrivate;
 };
 
 } // namespace rpdtracer

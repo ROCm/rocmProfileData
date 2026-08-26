@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #include "RoctracerDataSource.h"
 
-#include <roctracer_hip.h>
-#include <roctracer_ext.h>
+#include <roctracer/roctracer_hip.h>
+#include <roctracer/roctracer_ext.h>
 
 #include <hsa/hsa_ext_amd.h>
 
@@ -22,16 +22,6 @@ using rpdtracer::RocmApiIdList;
 extern "C" {
     DataSource *RoctracerDataSourceFactory() { return new RoctracerDataSource(); }
 }  // extern "C"
-
-// FIXME: can we avoid shutdown corruption?
-// Other rocm libraries crashing on unload
-// libsqlite unloading before we are done using it
-// Current workaround: register an onexit function when first activity is delivered back
-//                     this let's us unload first, or close to.
-// New workaround: register 3 times, only finalize once.  see register_once
-
-static std::once_flag register_once;
-static std::once_flag registerAgain_once;
 
 //RoctracerDataSource::RoctracerDataSource()
 //{
@@ -739,8 +729,6 @@ void RoctracerDataSource::api_callback(
             unwind(logger, name, row.api_id);
         }
     }
-
-    std::call_once(register_once, atexit, Logger::rpdFinalize);
 }
 
 
@@ -850,7 +838,6 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
     std::snprintf(buff, 4096, "count=%d", batchSize);
     logger.createOverheadRecord(cb_begin_time, cb_end_time, "hcc_activity_callback", buff);
 
-    std::call_once(registerAgain_once, atexit, Logger::rpdFinalize);
 }
 
 
