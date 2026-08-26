@@ -20,6 +20,7 @@
 * THE SOFTWARE.
 ********************************************************************************/
 #include "Logger.h"
+#include "Utility.h"
 
 #include <vector>
 #include <mutex>
@@ -49,6 +50,24 @@ void rpdflush()
 void rpd_resetStorage()
 {
     Logger::singleton().resetStorage();
+}
+
+// Known config properties (property name / env var):
+//   filename       / RPDT_FILENAME       — output file path (default: ./trace.rpd)
+//   delayinit      / RPDT_DELAYINIT      — skip singleton creation at load time (0/1, default: 0)
+//   directwrite    / RPDT_DIRECTWRITE    — write directly to sqlite, no temp tables (0/1, default: 0)
+//   autostart      / RPDT_AUTOSTART      — begin tracing immediately on init (0/1, default: 1)
+//   autoflush      / RPDT_AUTOFLUSH      — periodic flush frequency in Hz (0=off, default: 0)
+//   datasources    / RPDT_DATASOURCES    — comma-separated DataSource names to prioritize
+//   stackframes    / RPDT_STACKFRAMES    — record call stacks (0/1, default: 0)
+//   rocprof_noargs / RPDT_ROCPROF_NOARGS — suppress rocprofiler kernel args (0/1, default: 0)
+//
+// Embedded usage: set autostart=0 before the first rpdstart() call.
+// autostart=1 (default) holds its own ref on the tracing state, so a
+// subsequent rpdstop() will not actually stop tracing.
+void rpd_setConfig(const char *property, const char *value)
+{
+    rpdtracer::setConfig(property, value);
 }
 
 }  // extern "C"
