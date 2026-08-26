@@ -16,18 +16,15 @@ Storage::Storage(const char *filename, bool directWrite)
 {
     ensureSchema(filename);
 
-    if (getenv("RPDT_LOGAGG_PORT") != nullptr)
-        m_bufferPool.initShared(filename);
-
     m_metadataTable = new MetadataTable(filename);
-    m_stringTable = new StringTable(filename, directWrite, m_bufferPool);
-    m_ustringTable = new UStringTable(filename, directWrite, m_bufferPool);
-    m_kernelApiTable = new KernelApiTable(filename, directWrite, m_bufferPool);
-    m_copyApiTable = new CopyApiTable(filename, directWrite, m_bufferPool);
-    m_opTable = new OpTable(filename, directWrite, m_bufferPool);
-    m_apiTable = new ApiTable(filename, directWrite, m_bufferPool);
-    m_monitorTable = new MonitorTable(filename, directWrite, m_bufferPool);
-    m_stackFrameTable = new StackFrameTable(filename, directWrite, m_bufferPool);
+    m_stringTable = new StringTable(filename, directWrite);
+    m_ustringTable = new UStringTable(filename, directWrite);
+    m_kernelApiTable = new KernelApiTable(filename, directWrite);
+    m_copyApiTable = new CopyApiTable(filename, directWrite);
+    m_opTable = new OpTable(filename, directWrite);
+    m_apiTable = new ApiTable(filename, directWrite);
+    m_monitorTable = new MonitorTable(filename, directWrite);
+    m_stackFrameTable = new StackFrameTable(filename, directWrite);
 
     m_metadataTable->insert("session", fmt::format("id={} pid={}", m_metadataTable->sessionId(), GetPid()));
 

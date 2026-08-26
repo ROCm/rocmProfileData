@@ -1,9 +1,9 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
-#include "BufferPool.h"
 
 #include <thread>
+#include <array>
 #include <mutex>
 
 #include "rpd_tracer.h"
@@ -18,12 +18,10 @@ const char *SCHEMA_COPYAPI = "CREATE TEMPORARY TABLE \"temp_rocpd_copyapi\" (\"a
 class CopyApiTablePrivate
 {
 public:
-    CopyApiTablePrivate(CopyApiTable *cls) : p(cls) {
-        rows = p->m_slot->rows<CopyApiTable::row>();
-    }
+    CopyApiTablePrivate(CopyApiTable *cls) : p(cls) {} 
     static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
-    CopyApiTable::row *rows;
+    std::array<CopyApiTable::row, BUFFERSIZE> rows; // Circular buffer
 
     sqlite3_stmt *apiInsert;
     bool directWrite;
@@ -32,8 +30,8 @@ public:
 };
 
 
-CopyApiTable::CopyApiTable(const char *basefile, bool directWrite, BufferPool &pool)
-: BufferedTable(basefile, pool.allocate<CopyApiTable::row>(CopyApiTablePrivate::BUFFERSIZE, "CopyApiTable"), CopyApiTablePrivate::BATCHSIZE)
+CopyApiTable::CopyApiTable(const char *basefile, bool directWrite)
+: BufferedTable(basefile, CopyApiTablePrivate::BUFFERSIZE, CopyApiTablePrivate::BATCHSIZE)
 , d(new CopyApiTablePrivate(this))
 {
     int ret;
@@ -57,14 +55,15 @@ CopyApiTable::~CopyApiTable()
 void CopyApiTable::insert(const CopyApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    while (m_slot->head() - m_slot->tail() >= CopyApiTablePrivate::BUFFERSIZE) {
-        m_wait.notify_one();
+    while (m_head - m_tail >= CopyApiTablePrivate::BUFFERSIZE) {
+        // buffer is full; insert in-line or wait
+        m_wait.notify_one();  // make sure working is running
         m_wait.wait(lock);
     }
 
-    d->rows[(++m_slot->head()) % CopyApiTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_head) % CopyApiTablePrivate::BUFFERSIZE] = row;
 
-    if (workerRunning() == false && (m_slot->head() - m_slot->tail()) >= CopyApiTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_head - m_tail) >= CopyApiTablePrivate::BATCHSIZE) {
         lock.unlock();
         m_wait.notify_one();
     }
@@ -90,22 +89,23 @@ void CopyApiTable::writeRows()
     std::unique_lock<std::mutex> wlock(m_writeMutex);
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (m_slot->head() == m_slot->tail())
+    if (m_head == m_tail)
         return;
 
+    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     // FIXME
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = m_slot->tail() + 1;
-    int end = m_slot->tail() + BATCHSIZE;
-    end = (end > m_slot->head()) ? m_slot->head() : end;
+    int start = m_tail + 1;
+    int end = m_tail + BATCHSIZE;
+    end = (end > m_head) ? m_head : end;
     lock.unlock();
 
     sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
     for (int i = start; i <= end; ++i) {
         int index = 1;
-        CopyApiTable::row &r = d->rows[i % m_slot->capacity()];
+        CopyApiTable::row &r = d->rows[i % BUFFERSIZE];
 
         sqlite3_bind_int64(d->apiInsert, index++, r.api_id + m_idOffset);
         sqlite3_bind_text(d->apiInsert, index++, r.stream.c_str(), -1, SQLITE_STATIC);
@@ -136,14 +136,16 @@ void CopyApiTable::writeRows()
         sqlite3_reset(d->apiInsert);
     }
     lock.lock();
-    m_slot->tail() = end;
+    m_tail = end;
     lock.unlock();
 
+    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
+    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     // FIXME
     const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
-    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_slot->head() - m_slot->tail());
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "CopyApiTable::writeRows", buff);
 }
 

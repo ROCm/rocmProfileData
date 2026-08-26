@@ -10,9 +10,6 @@
 
 namespace rpdtracer {
 
-class BufferPool;
-class Slot;
-
 class Table
 {
 public:
@@ -44,15 +41,17 @@ protected:
     BufferedTablePrivate *d;
     friend class BufferedTablePrivate;
 
-    BufferedTable(const char *basefile, Slot *slot, int batchsize);
+    BufferedTable(const char *basefile, int bufferSize, int batchsize);
     virtual ~BufferedTable();
 
     std::mutex m_mutex;
     std::mutex m_writeMutex;
     std::condition_variable m_wait;
 
+    const int BUFFERSIZE;
     const int BATCHSIZE;
-    Slot *m_slot;
+    int m_head {0};
+    int m_tail {0};
 
     bool workerRunning();
 
@@ -65,7 +64,7 @@ class StringTablePrivate;
 class StringTable: public BufferedTable
 {
 public:
-    StringTable(const char *basefile, bool directWrite, BufferPool &pool);
+    StringTable(const char *basefile, bool directWrite = false);
     virtual ~StringTable();
 
     struct row {
@@ -89,7 +88,7 @@ class UStringTablePrivate;
 class UStringTable: public BufferedTable
 {
 public:
-    UStringTable(const char *basefile, bool directWrite, BufferPool &pool);
+    UStringTable(const char *basefile, bool directWrite = false);
     virtual ~UStringTable();
 
     struct row {
@@ -113,7 +112,7 @@ class ApiTablePrivate;
 class ApiTable: public BufferedTable
 {
 public:
-    ApiTable(const char *basefile, bool directWrite, BufferPool &pool);
+    ApiTable(const char *basefile, bool directWrite = false);
     virtual ~ApiTable();
 
     struct row {
@@ -143,7 +142,7 @@ class KernelApiTablePrivate;
 class KernelApiTable: public BufferedTable
 {
 public:
-    KernelApiTable(const char *basefile, bool directWrite, BufferPool &pool);
+    KernelApiTable(const char *basefile, bool directWrite = false);
     virtual ~KernelApiTable();
 
     struct row {
@@ -179,7 +178,7 @@ class CopyApiTablePrivate;
 class CopyApiTable: public BufferedTable
 {
 public:
-    CopyApiTable(const char *basefile, bool directWrite, BufferPool &pool);
+    CopyApiTable(const char *basefile, bool directWrite = false);
     virtual ~CopyApiTable();
 
     struct row {
@@ -235,7 +234,7 @@ class OpTablePrivate;
 class OpTable: public BufferedTable
 {
 public:
-    OpTable(const char *basefile, bool directWrite, BufferPool &pool);
+    OpTable(const char *basefile, bool directWrite = false);
     virtual ~OpTable();
 
     struct row {
@@ -283,7 +282,7 @@ class MonitorTablePrivate;
 class MonitorTable: public BufferedTable
 {
 public:
-    MonitorTable(const char *basefile, bool directWrite, BufferPool &pool);
+    MonitorTable(const char *basefile, bool directWrite = false);
     virtual ~MonitorTable();
 
     struct row {
@@ -311,7 +310,7 @@ class StackFrameTablePrivate;
 class StackFrameTable: public BufferedTable
 {
 public:
-    StackFrameTable(const char *basefile, bool directWrite, BufferPool &pool);
+    StackFrameTable(const char *basefile, bool directWrite = false);
     virtual ~StackFrameTable();
 
     struct row {

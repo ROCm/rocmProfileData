@@ -1,10 +1,10 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
-#include "BufferPool.h"
 
 #include <map>
 #include <thread>
+#include <array>
 #include <mutex>
 
 #include "rpd_tracer.h"
@@ -26,12 +26,10 @@ CREATE TEMPORARY TABLE "temp_rocpd_api_ops" ("id" integer NOT NULL PRIMARY KEY A
 class OpTablePrivate
 {
 public:
-    OpTablePrivate(OpTable *cls) : p(cls) {
-        rows = p->m_slot->rows<OpTable::row>();
-    }
+    OpTablePrivate(OpTable *cls) : p(cls) {} 
     static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
-    OpTable::row *rows;
+    std::array<OpTable::row, BUFFERSIZE> rows; // Circular buffer
     std::map<sqlite3_int64, sqlite3_int64> descriptions;
     std::mutex descriptionLock;
 
@@ -43,8 +41,8 @@ public:
 };
 
 
-OpTable::OpTable(const char *basefile, bool directWrite, BufferPool &pool)
-: BufferedTable(basefile, pool.allocate<OpTable::row>(OpTablePrivate::BUFFERSIZE, "OpTable"), OpTablePrivate::BATCHSIZE)
+OpTable::OpTable(const char *basefile, bool directWrite)
+: BufferedTable(basefile, OpTablePrivate::BUFFERSIZE, OpTablePrivate::BATCHSIZE)
 , d(new OpTablePrivate(this))
 {
     int ret;
@@ -71,14 +69,16 @@ OpTable::~OpTable()
 void OpTable::insert(const OpTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    while (m_slot->head() - m_slot->tail() >= OpTablePrivate::BUFFERSIZE) {
-        m_wait.notify_one();
+    while (m_head - m_tail >= OpTablePrivate::BUFFERSIZE) {
+        // buffer is full; insert in-line or wait
+        m_wait.notify_one();  // make sure working is running
         m_wait.wait(lock);
     }
 
-    d->rows[(++m_slot->head()) % OpTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_head) % OpTablePrivate::BUFFERSIZE] = row;
 
-    if (workerRunning() == false && (m_slot->head() - m_slot->tail()) >= OpTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_head - m_tail) >= OpTablePrivate::BATCHSIZE) {
+        //lock.unlock();
         m_wait.notify_one();
     }
 }
@@ -114,14 +114,14 @@ void OpTable::writeRows()
     std::unique_lock<std::mutex> wlock(m_writeMutex);
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (m_slot->head() == m_slot->tail())
+    if (m_head == m_tail)
         return;
 
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = m_slot->tail() + 1;
-    int end = m_slot->tail() + BATCHSIZE;
-    end = (end > m_slot->head()) ? m_slot->head() : end;
+    int start = m_tail + 1;
+    int end = m_tail + BATCHSIZE;
+    end = (end > m_head) ? m_head : end;
     lock.unlock();
 
     sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
@@ -129,7 +129,7 @@ void OpTable::writeRows()
     for (int i = start; i <= end; ++i) {
         // insert rocpd_op
         int index = 1;
-        OpTable::row &r = d->rows[i % m_slot->capacity()];
+        OpTable::row &r = d->rows[i % BUFFERSIZE];
         sqlite3_int64 primaryKey = i + m_idOffset;
 
 // Disable this for now.  Getting kernel names from roctracer op records now.
@@ -164,13 +164,13 @@ void OpTable::writeRows()
         sqlite3_reset(d->apiOpInsert);
     }
     lock.lock();
-    m_slot->tail() = end;
+    m_tail = end;
     lock.unlock();
 
     sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = clocktime_ns() + 1;
     char buff[4096];
-    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_slot->head() - m_slot->tail());
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "OpTable::writeRows", buff);
 }
 
