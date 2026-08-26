@@ -12,6 +12,8 @@
 
 using rpdtracer::Logger;
 
+namespace rpdtracer { void rlogClientInit(); }
+
 #if 0
 static void rpdInit() __attribute__((constructor));
 static void rpdFinalize() __attribute__((destructor));
@@ -97,7 +99,7 @@ void Logger::rpdstart()
 {
     std::unique_lock<std::mutex> lock(m_activeMutex);
     if (m_activeCount == 0) {
-        //fprintf(stderr, "rpd_tracer: START\n");
+        rlog::mark("rpd_tracer", "", "rpdstart", "");
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->startTracing();
     }
@@ -108,7 +110,7 @@ void Logger::rpdstop()
 {
     std::unique_lock<std::mutex> lock(m_activeMutex);
     if (m_activeCount == 1) {
-        //fprintf(stderr, "rpd_tracer: STOP\n");
+        rlog::mark("rpd_tracer", "", "rpdstop", "");
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->stopTracing();
     }
@@ -180,9 +182,10 @@ void Logger::init()
 {
     fprintf(stderr, "rpd_tracer, because\n");
 
-    const char *filename = getenv("RPDT_FILENAME");
-    if (filename == NULL)
-        filename = "./trace.rpd";
+    rlogClientInit();
+
+    rlog::getProperty("rpd_tracer", "filename", "./trace.rpd");
+    const char *filename = getConfig("RPDT_FILENAME", "filename", "./trace.rpd");
     m_filename = filename;
 
     // Ensure schema exists
@@ -231,6 +234,7 @@ void Logger::init()
         "RocmSmiDataSourceFactory"
         };
 
+
     for (auto it = factories.begin(); it != factories.end(); ++it) {
         DataSource* (*func) (void) = (DataSource* (*)()) dlsym(RTLD_DEFAULT, (*it).c_str());
         if (func) {
@@ -245,12 +249,8 @@ void Logger::init()
 
     // Allow starting with recording disabled via ENV
     bool startTracing = true;
-    char *val = getenv("RPDT_AUTOSTART");
-    if (val != NULL) {
-        int autostart = atoi(val);
-        if (autostart == 0)
-            startTracing = false;
-    }
+    if (atoi(getConfig("RPDT_AUTOSTART", "autostart", "1")) == 0)
+        startTracing = false;
     if (startTracing == true) {
         for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
             (*it)->startTracing();
@@ -261,9 +261,8 @@ void Logger::init()
     std::call_once(register_once, atexit, Logger::rpdFinalize);
 
     // Start autoflush hack
-    const char *autoflush = getenv("RPDT_AUTOFLUSH");
-    if (autoflush != nullptr) {
-        int frequency = atoi(autoflush);
+    {
+        int frequency = atoi(getConfig("RPDT_AUTOFLUSH", "autoflush", "0"));
         if (frequency > 0) {
             m_period = 1000000 / frequency;  // usecs
             m_done = false;
@@ -272,11 +271,7 @@ void Logger::init()
     }
 
     // Enable stack frame recording
-    const char *stackframe = getenv("RPDT_STACKFRAMES");
-    if (stackframe != nullptr) {
-        int val = atoi(stackframe);
-        m_writeStackFrames = (val != 0);
-    }
+    m_writeStackFrames = (atoi(getConfig("RPDT_STACKFRAMES", "stackframes", "0")) != 0);
 
     loggerInitialized = true;  // detect lazy init
 }
@@ -334,11 +329,15 @@ void Logger::createOverheadRecord(uint64_t start, uint64_t end, const std::strin
 {
     if (m_writeOverheadRecords == false)
         return;
+    static sqlite3_int64 domain_id = m_stringTable->getOrCreate("rpd_tracer");
+    static sqlite3_int64 category_id = m_stringTable->getOrCreate("overhead");
     ApiTable::row row;
     row.pid = GetPid();
     row.tid = GetTid();
     row.start = start;
     row.end = end;
+    row.domain_id = domain_id;
+    row.category_id = category_id;
     row.apiName_id = m_stringTable->getOrCreate(name);
     row.args_id = m_ustringTable->create(args);
     row.api_id = 0;

@@ -79,7 +79,6 @@ namespace
                     crow.size = *(reinterpret_cast<const size_t*>(arg_value_addr));
                 }
                 else if (strcmp("kind", arg_name) == 0) {
-                    crow.kindStr = std::string(arg_value_str);
                     crow.kind = *(reinterpret_cast<const hipMemcpyKind*>(arg_value_addr));
                 }
                 else if (strcmp("stream", arg_name) == 0) {
@@ -302,12 +301,8 @@ RocprofDataSource::RocprofDataSource()
     s->instances[d->id] = this;
     d->apiData.reserve(d->apiDataSize);
 
-    // Backdoor to suppress args logging
-    char *val = getenv("RPDT_ROCPROF_NOARGS");
-    if (val != NULL) {
-        int noargs = atoi(val);
-        d->logArgs = (noargs == 0);
-    }
+    // Suppress args logging
+    d->logArgs = (atoi(getConfig("RPDT_ROCPROF_NOARGS", "rocprof_noargs", "0")) == 0);
 }
 
 RocprofDataSource::~RocprofDataSource()
