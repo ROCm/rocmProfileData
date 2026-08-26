@@ -82,6 +82,24 @@ static void registerThreadStack()
     }
 }
 
+static void drainStacks()
+{
+    timestamp_t now = clocktime_ns();
+    Logger &logger = Logger::singleton();
+
+    std::lock_guard<std::mutex> lock(s_stacksMutex);
+    for (auto &entry : s_stacks) {
+        auto &stack = *entry.second;
+        while (!stack.empty()) {
+            ApiTable::row row = stack.front();
+            stack.pop_front();
+            row.end = now;
+            row.api_id = Logger::singleton().nextAnnotationId();
+            logger.apiTable().insert(row);
+        }
+    }
+}
+
 
 void NvtxDataSourcePrivate::cacheIds()
 {
@@ -193,6 +211,10 @@ void NvtxDataSource::startTracing()
 void NvtxDataSource::stopTracing()
 {
     d->active.store(false, std::memory_order_relaxed);
+
+    // Drain in-flight ranges so their string ids (valid only in the
+    // current storage) cannot outlive a resetStorage()
+    drainStacks();
 }
 
 void NvtxDataSource::flush()
@@ -207,20 +229,5 @@ void NvtxDataSource::reset()
 void NvtxDataSource::end()
 {
     d->active.store(false, std::memory_order_relaxed);
-
-    // Final shutdown: drain all in-flight ranges
-    timestamp_t now = clocktime_ns();
-    Logger &logger = Logger::singleton();
-
-    std::lock_guard<std::mutex> lock(s_stacksMutex);
-    for (auto &entry : s_stacks) {
-        auto &stack = *entry.second;
-        while (!stack.empty()) {
-            ApiTable::row row = stack.front();
-            stack.pop_front();
-            row.end = now;
-            row.api_id = Logger::singleton().nextAnnotationId();
-            logger.apiTable().insert(row);
-        }
-    }
+    drainStacks();
 }
