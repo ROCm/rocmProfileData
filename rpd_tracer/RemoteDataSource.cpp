@@ -364,11 +364,21 @@ void RemoteDataSource::acceptLoop()
  **************************************************************************/
 void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
 {
+    const uint32_t HEADER_SIZE = 4 + 8 + 4 + 4;
+    const uint32_t MAX_PAYLOAD_SIZE = 256 * 1024 * 1024;
+    // Smallest serialized row is StringTable (4-byte length + 8-byte id)
+    const uint32_t MIN_ROW_SIZE = 12;
+
     while (m_running) {
         // Read message header
         uint32_t messageSize;
         if (!conn->recv(&messageSize, 4))
             break;
+
+        if (messageSize < HEADER_SIZE || messageSize - HEADER_SIZE > MAX_PAYLOAD_SIZE) {
+            rpdLog("RemoteDataSource: invalid messageSize %u, dropping connection\n", messageSize);
+            break;
+        }
 
         sqlite3_int64 idOffset;
         if (!conn->recv(&idOffset, 8))
@@ -382,7 +392,19 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         if (!conn->recv(&rowCount, 4))
             break;
 
+        uint32_t payloadSize = messageSize - HEADER_SIZE;
+
+        if (rowCount < 0 || (uint64_t)rowCount * MIN_ROW_SIZE > payloadSize) {
+            rpdLog("RemoteDataSource: invalid rowCount %d for %u-byte payload, dropping connection\n",
+                   rowCount, payloadSize);
+            break;
+        }
+
         if (rowCount == 0) {
+            if (payloadSize != 0) {
+                rpdLog("RemoteDataSource: flush with %u-byte payload, dropping connection\n", payloadSize);
+                break;
+            }
             // Enqueue flush as a zero-row batch; writer thread handles it in order
             BatchItem flushItem;
             flushItem.idOffset = 0;
@@ -397,7 +419,6 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         }
 
         // Read payload
-        uint32_t payloadSize = messageSize - 4 - 8 - 4 - 4;
         BatchItem item;
         item.idOffset = idOffset;
         item.nodeId = nodeId;
@@ -417,6 +438,7 @@ void RemoteDataSource::recvLoop(TcpConnection *conn, WriterChannel *channel)
         channel->cv.notify_one();
     }
 
+    conn->close();
 }
 
 /**************************************************************************
