@@ -4,12 +4,14 @@ PREFIX = /usr/local
 HIP_PATH ?= $(wildcard /opt/rocm/)
 CUDA_PATH ?= $(wildcard /usr/local/cuda/)
 CPPTRACE_INCLUDE_PATH ?= $(wildcard ../cpptrace_install/include)
+RLOG_PATH ?= $(wildcard ../rlog)
+RLOG_LIB_PATH ?= /usr/local
 
 ROCM_VERSION ?= $(shell cat /opt/rocm/.info/version)
 
 RPD_LIBS = -lsqlite3 -lfmt
 RPD_INCLUDES =
-RPD_SRCS = Schema.cpp Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp UStringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp Unwind.cpp RoctxDataSource.cpp NvtxDataSource.cpp
+RPD_SRCS = Schema.cpp Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp UStringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Logger.cpp Unwind.cpp RoctxDataSource.cpp NvtxDataSource.cpp RlogClient.cpp
 
 ifneq (,$(HIP_PATH))
         $(info rocm_version is ${ROCM_VERSION})
@@ -46,6 +48,13 @@ ifneq ($(CUDA_PATH),)
         RPD_LIBS += -L/usr/local/cuda/lib64 -lcupti
         RPD_INCLUDES += -I/usr/local/cuda/include
         RPD_SRCS += CuptiDataSource.cpp
+endif
+
+ifneq (,$(RLOG_PATH))
+        $(info Building with rlog)
+        RPD_LIBS += -L$(RLOG_LIB_PATH)/lib -lrlog
+        RPD_INCLUDES += -I$(RLOG_PATH)/include
+        RPD_SRCS += $(RLOG_PATH)/src/rlog.cpp RlogDataSource.cpp
 endif
 
 ifneq ($(CPPTRACE_INCLUDE_PATH),)

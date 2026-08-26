@@ -6,10 +6,12 @@
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 #include <cxxabi.h>
+#include <cstdlib>
 #include <string>
 #include <cstddef>
 #include <cstdint>
 #include <sqlite3.h>
+#include "rlog/client.h"
 
 namespace rpdtracer {
 
@@ -43,6 +45,14 @@ static timestamp_t clocktime_ns() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
+}
+
+static inline const char* getConfig(const char *envvar, const char *property, const char *defaultValue)
+{
+    const char *val = std::getenv(envvar);
+    if (val != nullptr)
+        return val;
+    return rlog::getProperty("rpd_tracer", property, defaultValue);
 }
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);
