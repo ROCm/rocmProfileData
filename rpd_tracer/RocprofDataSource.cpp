@@ -717,10 +717,14 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
             return;
         for (size_t j = 0; j < ctr_accum_used; ++j) {
             auto& [counter_handle, accum] = ctr_accum_slots[j];
-            auto name_it = s->counterIdNames.find(counter_handle);
-            if (name_it == s->counterIdNames.end())
-                continue;
-            const std::string& counterName = name_it->second;
+            std::string counterName;
+            {
+                std::lock_guard<std::mutex> lock(s->counterConfigMutex);
+                auto name_it = s->counterIdNames.find(counter_handle);
+                if (name_it == s->counterIdNames.end())
+                    continue;
+                counterName = name_it->second;
+            }
             bool shouldAverage = s->averagedCounters().count(counterName) > 0;
             double value = shouldAverage ? (accum.sum / accum.count) : accum.sum;
             sqlite3_int64 name_id = t_stringCache.lookup(counterName, logger.stringTable(), logger.storageGeneration());
@@ -1005,11 +1009,14 @@ void RocprofDataSource::counter_dispatch_callback(
     // Lazily build counter configs for this agent
     s->buildCounterConfigs(agent_id);
 
-    auto it = s->counterConfigs.find(agent_id.handle);
-    if (it == s->counterConfigs.end() || it->second.empty())
-        return;
-
-    auto& configs = it->second;
+    std::vector<rocprofiler_counter_config_id_t> configs;
+    {
+        std::lock_guard<std::mutex> lock(s->counterConfigMutex);
+        auto it = s->counterConfigs.find(agent_id.handle);
+        if (it == s->counterConfigs.end())
+            return;
+        configs = it->second;
+    }
     if (configs.empty())
         return;
 
