@@ -1,6 +1,8 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
+#include "WriterBackend.h"
+#include "ByteBuffer.h"
 
 #include <thread>
 #include <map>
@@ -16,16 +18,85 @@ namespace rpdtracer {
 
 const char *SCHEMA_MONITOR = "CREATE TEMPORARY TABLE \"temp_rocpd_monitor\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"deviceType\" varchar(16) NOT NULL, \"deviceId\" integer NOT NULL, \"monitorType\" varchar(16) NOT NULL, \"start\" integer NOT NULL, \"end\" integer NOT NULL, \"value\" integer NOT NULL)";
 
+
+class MonitorTableWriterBackend : public WriterBackend
+{
+public:
+    MonitorTableWriterBackend(const char *basefile, bool directWrite)
+    : m_directWrite(directWrite)
+    {
+        rpdSqliteOpen(basefile, &m_conn);
+        sqlite3_busy_handler(m_conn, &rpdtracer::sqlite_busy_handler, NULL);
+        sqlite3_exec(m_conn, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
+        sqlite3_exec(m_conn, "PRAGMA synchronous=NORMAL", NULL, NULL, NULL);
+
+        if (!directWrite) {
+            sqlite3_exec(m_conn, SCHEMA_MONITOR, NULL, NULL, NULL);
+            sqlite3_prepare_v2(m_conn, "insert into temp_rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) values (?,?,?,?,?,?)", -1, &m_monitorInsert, NULL);
+        } else {
+            sqlite3_prepare_v2(m_conn, "insert into rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) values (?,?,?,?,?,?)", -1, &m_monitorInsert, NULL);
+        }
+    }
+
+    ~MonitorTableWriterBackend() {
+        sqlite3_finalize(m_monitorInsert);
+        sqlite3_close(m_conn);
+    }
+
+    void setIdOffset(sqlite3_int64 offset) override { m_idOffset = offset; }
+
+    void writeBatch(void *rowData, int start, int end, int capacity) override {
+        auto *rows = static_cast<MonitorTable::row*>(rowData);
+
+        sqlite3_exec(m_conn, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+
+        for (int i = start; i <= end; ++i) {
+            int index = 1;
+            MonitorTable::row &r = rows[i % capacity];
+            sqlite3_bind_text(m_monitorInsert, index++, r.deviceType.c_str(), -1, SQLITE_STATIC);
+            sqlite3_bind_int64(m_monitorInsert, index++, r.deviceId);
+            sqlite3_bind_text(m_monitorInsert, index++, r.monitorType.c_str(), -1, SQLITE_STATIC);
+            sqlite3_bind_int64(m_monitorInsert, index++, r.start);
+            sqlite3_bind_int64(m_monitorInsert, index++, r.end);
+            sqlite3_bind_int64(m_monitorInsert, index++, r.value);
+
+            sqlite3_step(m_monitorInsert);
+            sqlite3_reset(m_monitorInsert);
+        }
+
+        sqlite3_exec(m_conn, "END TRANSACTION", NULL, NULL, NULL);
+    }
+
+    void flush() override {
+        if (m_directWrite)
+            return;
+        int ret = 0;
+        ret = sqlite3_exec(m_conn, "begin transaction", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "insert into rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) select deviceType, deviceId, monitorType, start, end, value from temp_rocpd_monitor", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "delete from temp_rocpd_monitor", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "commit", NULL, NULL, NULL);
+    }
+
+private:
+    sqlite3 *m_conn;
+    sqlite3_stmt *m_monitorInsert;
+    sqlite3_int64 m_idOffset{0};
+    bool m_directWrite;
+};
+
+WriterBackend* MonitorTable::createWriterBackend(const char *basefile, bool directWrite)
+{
+    return new MonitorTableWriterBackend(basefile, directWrite);
+}
+
+
 class MonitorTablePrivate
 {
 public:
-    MonitorTablePrivate(MonitorTable *cls) : p(cls) {} 
+    MonitorTablePrivate(MonitorTable *cls) : p(cls) {}
     static const int BUFFERSIZE = 4096 * 8;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<MonitorTable::row, BUFFERSIZE> rows; // Circular buffer
-
-    sqlite3_stmt *monitorInsert;
-    bool directWrite;
 
     class rowCompare
     {
@@ -46,18 +117,10 @@ public:
 
 
 MonitorTable::MonitorTable(const char *basefile, bool directWrite)
-: BufferedTable(basefile, MonitorTablePrivate::BUFFERSIZE, MonitorTablePrivate::BATCHSIZE)
+: BufferedTable(basefile, MonitorTablePrivate::BUFFERSIZE, MonitorTablePrivate::BATCHSIZE,
+    createWriterBackend(basefile, directWrite))
 , d(new MonitorTablePrivate(this))
 {
-    int ret;
-    d->directWrite = directWrite;
-
-    if (!directWrite) {
-        ret = sqlite3_exec(m_connection, SCHEMA_MONITOR, NULL, NULL, NULL);
-        ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) values (?,?,?,?,?,?)", -1, &d->monitorInsert, NULL);
-    } else {
-        ret = sqlite3_prepare_v2(m_connection, "insert into rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) values (?,?,?,?,?,?)", -1, &d->monitorInsert, NULL);
-    }
 }
 
 
@@ -78,7 +141,7 @@ void MonitorTable::insert(const MonitorTable::row &row)
 
 #if 0
     static sqlite3_int64 prev = clocktime_ns();
-    fprintf(stderr, "      %lld   delta %lld\n", row.start, row.start - prev);
+    rpdLog("      %lld   delta %lld\n", row.start, row.start - prev);
     prev = row.start;
 #endif
 
@@ -127,15 +190,7 @@ void MonitorTable::endCurrentRuns(sqlite3_int64 endTimestamp)
 
 void MonitorTable::flushRows()
 {
-    if (d->directWrite)
-        return;
-
-    int ret = 0;
-    ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "insert into rocpd_monitor(deviceType, deviceId, monitorType, start, end, value) select deviceType, deviceId, monitorType, start, end, value from temp_rocpd_monitor", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_monitor: %d\n", ret);
-    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_monitor", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
+    m_writerBackend->flush();
 }
 
 
@@ -154,30 +209,35 @@ void MonitorTable::writeRows()
     end = (end > m_head) ? m_head : end;
     lock.unlock();
 
-    sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+    m_writerBackend->writeBatch(d->rows.data(), start, end, BUFFERSIZE);
 
-    for (int i = start; i <= end; ++i) {
-        int index = 1;
-        MonitorTable::row &r = d->rows[i % BUFFERSIZE];
-        sqlite3_bind_text(d->monitorInsert, index++, r.deviceType.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int64(d->monitorInsert, index++, r.deviceId);
-        sqlite3_bind_text(d->monitorInsert, index++, r.monitorType.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_int64(d->monitorInsert, index++, r.start);
-        sqlite3_bind_int64(d->monitorInsert, index++, r.end);
-        sqlite3_bind_int64(d->monitorInsert, index++, r.value);
-
-        int ret = sqlite3_step(d->monitorInsert);
-        sqlite3_reset(d->monitorInsert);
-    }
     lock.lock();
     m_tail = end;
     lock.unlock();
 
-    sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "MonitorTable::writeRows", buff);
+}
+
+
+void MonitorTable::row::serialize(ByteBuffer &buf) const {
+    buf.writeString(deviceType);
+    buf.writeString(monitorType);
+    buf.writeInt64(deviceId);
+    buf.writeInt64(start);
+    buf.writeInt64(end);
+    buf.writeInt64(value);
+}
+
+void MonitorTable::row::deserialize(ByteBuffer &buf) {
+    deviceType = buf.readString();
+    monitorType = buf.readString();
+    deviceId = buf.readInt64();
+    start = buf.readInt64();
+    end = buf.readInt64();
+    value = buf.readInt64();
 }
 
 }  // namespace rpdtracer

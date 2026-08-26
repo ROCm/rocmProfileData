@@ -15,7 +15,6 @@ public:
     DbResource(const std::string &basefile, const std::string &resourceName);
     ~DbResource();
 
-    void lock();
     bool tryLock();
     void unlock();
 

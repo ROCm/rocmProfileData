@@ -10,17 +10,13 @@ using rpdtracer::MetadataTable;
 
 namespace rpdtracer {
 
-//const char *SCHEMA_OP = "CREATE TEMPORARY TABLE \"temp_rocpd_op\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"gpuId\" integer NOT NULL, \"queueId\" integer NOT NULL, \"sequenceId\" integer NOT NULL, \"completionSignal\" varchar(18) NOT NULL, \"start\" integer NOT NULL, \"end\" integer NOT NULL, \"description_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"opType_id\" integer NOT NULL REFERENCES \"rocpd_string\" (\"id\") DEFERRABLE INITIALLY DEFERRED)";
-
-//const char *SCHEMA_API_OPS = "CREATE TEMPORARY TABLE \"temp_rocpd_api_ops\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"api_id\" integer NOT NULL REFERENCES \"rocpd_api\" (\"id\") DEFERRABLE INITIALLY DEFERRED, \"op_id\" integer NOT NULL REFERENCES \"rocpd_op\" (\"id\") DEFERRABLE INITIALLY DEFERRED)";
-
-
 class MetadataTablePrivate
 {
 public:
     MetadataTablePrivate(MetadataTable *cls) : p(cls) {} 
 
     sqlite3_stmt *sessionInsert;
+    sqlite3_stmt *metaInsert;
 
     sqlite3_int64 sessionId;
     void createSession();
@@ -39,6 +35,7 @@ MetadataTable::MetadataTable(const char *basefile)
 : Table(basefile)
 , d(new MetadataTablePrivate(this))
 {
+    sqlite3_prepare_v2(m_connection, "INSERT INTO rocpd_metadata(tag, value) VALUES (?,?)", -1, &d->metaInsert, NULL);
     d->createSession();
 }
 
@@ -48,6 +45,16 @@ void MetadataTable::flush()
 
 void MetadataTable::finalize()
 {
+}
+
+void MetadataTable::insert(const std::string &tag, const std::string &value)
+{
+    sqlite3_exec(m_connection, "BEGIN", NULL, NULL, NULL);
+    sqlite3_bind_text(d->metaInsert, 1, tag.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(d->metaInsert, 2, value.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(d->metaInsert);
+    sqlite3_reset(d->metaInsert);
+    sqlite3_exec(m_connection, "END", NULL, NULL, NULL);
 }
 
 sqlite3_int64 MetadataTable::sessionId()

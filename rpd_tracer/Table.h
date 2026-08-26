@@ -10,6 +10,9 @@
 
 namespace rpdtracer {
 
+class ByteBuffer;
+class WriterBackend;
+
 class Table
 {
 public:
@@ -19,7 +22,8 @@ public:
     virtual void flush() = 0;
     virtual void finalize() = 0;
 
-    void setIdOffset(sqlite3_int64 offset);
+    virtual void setIdOffset(sqlite3_int64 offset);
+    sqlite3 *connection() { return m_connection; }
 
 protected:
     sqlite3 *m_connection;
@@ -35,13 +39,16 @@ class BufferedTable: public Table
 public:
     void flush() override;
     void finalize() override;
+    void setIdOffset(sqlite3_int64 offset) override;
 
 protected:
     BufferedTablePrivate *d;
     friend class BufferedTablePrivate;
 
-    BufferedTable(const char *basefile, int bufferSize, int batchsize);
+    BufferedTable(const char *basefile, int bufferSize, int batchsize, WriterBackend *backend);
     virtual ~BufferedTable();
+
+    WriterBackend *m_writerBackend;
 
     std::mutex m_mutex;
     std::mutex m_writeMutex;
@@ -65,10 +72,13 @@ class StringTable: public BufferedTable
 public:
     StringTable(const char *basefile, bool directWrite = false);
     virtual ~StringTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         std::string string;
         sqlite3_int64 string_id;
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     //void insert(const row&);
@@ -89,10 +99,13 @@ class UStringTable: public BufferedTable
 public:
     UStringTable(const char *basefile, bool directWrite = false);
     virtual ~UStringTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         std::string string;
         sqlite3_int64 string_id;
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     //void insert(const row&);
@@ -113,6 +126,7 @@ class ApiTable: public BufferedTable
 public:
     ApiTable(const char *basefile, bool directWrite = false);
     virtual ~ApiTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         int pid;
@@ -124,15 +138,11 @@ public:
         sqlite3_int64 apiName_id;
         sqlite3_int64 args_id;
         sqlite3_int64 api_id;  // correlation id
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     void insert(const row&);
-    // TODO: remove once Logger::createOverheadRecord and Logger::rpd_rangePush/rpd_rangePop are migrated
-    void insertRoctx(row&);
-    void pushRoctx(const row&);
-    void popRoctx(const row&);
-    void suspendRoctx(sqlite3_int64 atTime);
-    void resumeRoctx(sqlite3_int64 atTime);
 
 private:
     ApiTablePrivate *d;
@@ -149,6 +159,7 @@ class KernelApiTable: public BufferedTable
 public:
     KernelApiTable(const char *basefile, bool directWrite = false);
     virtual ~KernelApiTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         std::string stream;
@@ -166,6 +177,8 @@ public:
         //aquireFence
         //releaseFence
         sqlite3_int64 api_id;   // Baseclass ApiTable primary key (correlation id)
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     void insert(const row&);
@@ -185,6 +198,7 @@ class CopyApiTable: public BufferedTable
 public:
     CopyApiTable(const char *basefile, bool directWrite = false);
     virtual ~CopyApiTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         std::string stream;
@@ -196,10 +210,11 @@ public:
         int dstDevice {0};
         int srcDevice {0};
         int kind {0};
-        std::string kindStr;
         bool sync {false};
         bool pinned {false};
         sqlite3_int64 api_id {0};   // Baseclass ApiTable primary key (correlation id)
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
     void insert(const row&);
 
@@ -242,6 +257,7 @@ class OpTable: public BufferedTable
 public:
     OpTable(const char *basefile, bool directWrite = false);
     virtual ~OpTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         int gpuId;
@@ -252,6 +268,8 @@ public:
         sqlite3_int64 description_id;
         sqlite3_int64 opType_id;
         sqlite3_int64 api_id;  // correlation id
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     void insert(const row&);
@@ -273,6 +291,7 @@ public:
     MetadataTable(const char *basefile);
 
     sqlite3_int64 sessionId();
+    void insert(const std::string &tag, const std::string &value);
 
     void flush();
     void finalize();
@@ -289,6 +308,7 @@ class MonitorTable: public BufferedTable
 public:
     MonitorTable(const char *basefile, bool directWrite = false);
     virtual ~MonitorTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         std::string deviceType;
@@ -297,6 +317,8 @@ public:
         sqlite3_int64 start;
         sqlite3_int64 end;
         sqlite3_int64 value;
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     void insert(const row&);
@@ -317,11 +339,14 @@ class StackFrameTable: public BufferedTable
 public:
     StackFrameTable(const char *basefile, bool directWrite = false);
     virtual ~StackFrameTable();
+    static WriterBackend* createWriterBackend(const char *basefile, bool directWrite);
 
     struct row {
         sqlite3_int64 api_id {0};   // ApiTable primary key (correlation id)
         int depth;
         sqlite3_int64 name_id;
+        void serialize(ByteBuffer &buf) const;
+        void deserialize(ByteBuffer &buf);
     };
 
     void insert(const row&);

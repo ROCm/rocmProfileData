@@ -1,11 +1,14 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
+#include "WriterBackend.h"
+#include "ByteBuffer.h"
 
 #include <thread>
 #include <unordered_map>
 #include <array>
 #include <mutex>
+#include <shared_mutex>
 
 #include "rpd_tracer.h"
 #include "Utility.h"
@@ -17,40 +20,95 @@ namespace rpdtracer {
 const char *SCHEMA_STRING = "CREATE TEMPORARY TABLE \"temp_rocpd_string\" (\"id\" integer NOT NULL PRIMARY KEY AUTOINCREMENT, \"string\" varchar(4096) NOT NULL)";
 
 
+class StringTableWriterBackend : public WriterBackend
+{
+public:
+    StringTableWriterBackend(const char *basefile, bool directWrite)
+    : m_directWrite(directWrite)
+    {
+        rpdSqliteOpen(basefile, &m_conn);
+        sqlite3_busy_handler(m_conn, &rpdtracer::sqlite_busy_handler, NULL);
+        sqlite3_exec(m_conn, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
+        sqlite3_exec(m_conn, "PRAGMA synchronous=NORMAL", NULL, NULL, NULL);
+
+        if (!directWrite) {
+            sqlite3_exec(m_conn, SCHEMA_STRING, NULL, NULL, NULL);
+            sqlite3_prepare_v2(m_conn, "insert into temp_rocpd_string(id, string) values (?,?)", -1, &m_stringInsert, NULL);
+        } else {
+            sqlite3_prepare_v2(m_conn, "insert into rocpd_string(id, string) values (?,?)", -1, &m_stringInsert, NULL);
+        }
+    }
+
+    ~StringTableWriterBackend() {
+        sqlite3_finalize(m_stringInsert);
+        sqlite3_close(m_conn);
+    }
+
+    void setIdOffset(sqlite3_int64 offset) override { m_idOffset = offset; }
+
+    void writeBatch(void *rowData, int start, int end, int capacity) override {
+        auto *rows = static_cast<StringTable::row*>(rowData);
+
+        sqlite3_exec(m_conn, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+
+        for (int i = start; i <= end; ++i) {
+            int index = 1;
+            StringTable::row &r = rows[i % capacity];
+            sqlite3_bind_int64(m_stringInsert, index++, r.string_id + m_idOffset);
+            sqlite3_bind_text(m_stringInsert, index++, r.string.c_str(), -1, SQLITE_STATIC);
+            sqlite3_step(m_stringInsert);
+            sqlite3_reset(m_stringInsert);
+        }
+
+        sqlite3_exec(m_conn, "END TRANSACTION", NULL, NULL, NULL);
+    }
+
+    void flush() override {
+        if (m_directWrite)
+            return;
+        int ret = 0;
+        ret = sqlite3_exec(m_conn, "begin transaction", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "insert into rocpd_string select * from temp_rocpd_string", NULL, NULL, NULL);
+        rpdLog("rocpd_string: %d\n", ret);
+        ret = sqlite3_exec(m_conn, "delete from temp_rocpd_string", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "commit", NULL, NULL, NULL);
+    }
+
+private:
+    sqlite3 *m_conn;
+    sqlite3_stmt *m_stringInsert;
+    sqlite3_int64 m_idOffset{0};
+    bool m_directWrite;
+};
+
+WriterBackend* StringTable::createWriterBackend(const char *basefile, bool directWrite)
+{
+    return new StringTableWriterBackend(basefile, directWrite);
+}
+
+
 class StringTablePrivate
 {
 public:
-    StringTablePrivate(StringTable *cls) : p(cls) {} 
+    StringTablePrivate(StringTable *cls) : p(cls) {}
     static const int BUFFERSIZE = 4096 * 8;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<StringTable::row, BUFFERSIZE> rows; // Circular buffer
     std::unordered_map<std::string,sqlite3_int64> cache;     // Cache for string lookups
 
-    sqlite3_stmt *stringInsert;
-    bool directWrite;
-
     void insert(StringTable::row&);
 
-    std::mutex cacheMutex;
+    std::shared_mutex cacheMutex;
 
     StringTable *p;
 };
 
 
 StringTable::StringTable(const char *basefile, bool directWrite)
-: BufferedTable(basefile, StringTablePrivate::BUFFERSIZE, StringTablePrivate::BATCHSIZE)
+: BufferedTable(basefile, StringTablePrivate::BUFFERSIZE, StringTablePrivate::BATCHSIZE,
+    createWriterBackend(basefile, directWrite))
 , d(new StringTablePrivate(this))
 {
-    int ret;
-    d->directWrite = directWrite;
-
-    if (!directWrite) {
-        ret = sqlite3_exec(m_connection, SCHEMA_STRING, NULL, NULL, NULL);
-        ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_string(id, string) values (?,?)", -1, &d->stringInsert, NULL);
-    } else {
-        ret = sqlite3_prepare_v2(m_connection, "insert into rocpd_string(id, string) values (?,?)", -1, &d->stringInsert, NULL);
-    }
-
     d->cache.reserve(64 * 1024);  // Avoid/delay rehashing for typical runs
 
     StringTable::getOrCreate("");    // empty string is id=1
@@ -64,19 +122,22 @@ StringTable::~StringTable()
 
 sqlite3_int64 StringTable::getOrCreate(const std::string &key)
 {
-    std::lock_guard<std::mutex> guard(d->cacheMutex);
-    auto it = d->cache.find(key);
-    if (it == d->cache.end()) {
-        // new string, create a row
-        StringTable::row row;
-        row.string_id = 0;
-        row.string = key;
-        d->insert(row);		// string_id gets updated with id
-        // update cache
-        d->cache.insert({row.string, row.string_id});
-        return row.string_id;
+    {
+        std::shared_lock<std::shared_mutex> guard(d->cacheMutex);
+        auto it = d->cache.find(key);
+        if (it != d->cache.end())
+            return it->second;
     }
-    return it->second;
+    std::unique_lock<std::shared_mutex> guard(d->cacheMutex);
+    auto it = d->cache.find(key);
+    if (it != d->cache.end())
+        return it->second;
+    StringTable::row row;
+    row.string_id = 0;
+    row.string = key;
+    d->insert(row);
+    d->cache.insert({row.string, row.string_id});
+    return row.string_id;
 }
 
 void StringTablePrivate::insert(StringTable::row &row)
@@ -108,17 +169,7 @@ void StringTablePrivate::insert(StringTable::row &row)
 
 void StringTable::flushRows()
 {
-    if (d->directWrite)
-        return;
-
-    int ret = 0;
-
-    ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_string: %d\n", ret);
-    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_string", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
-
+    m_writerBackend->flush();
 }
 
 void StringTable::writeRows()
@@ -129,8 +180,6 @@ void StringTable::writeRows()
     if (m_head == m_tail)
         return;
 
-    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    //FIXME
     const timestamp_t cb_begin_time = clocktime_ns();
 
     int start = m_tail + 1;
@@ -138,26 +187,12 @@ void StringTable::writeRows()
     end = (end > m_head) ? m_head : end;
     lock.unlock();
 
-    sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+    m_writerBackend->writeBatch(d->rows.data(), start, end, BUFFERSIZE);
 
-    for (int i = start; i <= end; ++i) {
-        // insert rocpd_string
-        int index = 1;
-        StringTable::row &r = d->rows[i % BUFFERSIZE];
-        //printf("%lld %s\n", r.string_id, r.string.c_str());
-        sqlite3_bind_int64(d->stringInsert, index++, r.string_id + m_idOffset);
-        sqlite3_bind_text(d->stringInsert, index++, r.string.c_str(), -1, SQLITE_STATIC);	// FIXME SQLITE_TRANSIENT?
-        int ret = sqlite3_step(d->stringInsert);
-        sqlite3_reset(d->stringInsert);
-    }
     lock.lock();
     m_tail = end;
     lock.unlock();
 
-    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-    //FIXME
     const timestamp_t cb_end_time = clocktime_ns();
 #if 0
     // FIXME
@@ -167,6 +202,17 @@ void StringTable::writeRows()
         createOverheadRecord(cb_begin_time, cb_end_time, "StringTable::writeRows", buff);
     }
 #endif
+}
+
+
+void StringTable::row::serialize(ByteBuffer &buf) const {
+    buf.writeString(string);
+    buf.writeInt64(string_id);
+}
+
+void StringTable::row::deserialize(ByteBuffer &buf) {
+    string = buf.readString();
+    string_id = buf.readInt64();
 }
 
 }  // namespace rpdtracer
