@@ -512,12 +512,22 @@ void run_server(int port, MeasurementBuffer& buffer, std::atomic<bool>& done) {
         // Send UDP port assignment to client
         char msg[32];
         std::snprintf(msg, sizeof(msg), "%d", udpPort);
-        send(clientFd, msg, std::strlen(msg), 0);
+        bool handshake = send(clientFd, msg, std::strlen(msg), 0) >= 0;
 
-        // Wait for ACK
-        char ack[32] = {};
-        recv(clientFd, ack, sizeof(ack) - 1, 0);
+        // Wait for ACK with a timeout so a client that never ACKs
+        // cannot stall the accept loop
+        if (handshake) {
+            timeval ackTimeout{};
+            ackTimeout.tv_sec = 5;
+            setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &ackTimeout, sizeof(ackTimeout));
+            char ack[32] = {};
+            handshake = recv(clientFd, ack, sizeof(ack) - 1, 0) > 0;
+        }
         close(clientFd);
+        if (!handshake) {
+            std::fprintf(stderr, "ChronoSync: no handshake from %s, dropping client\n", clientIp);
+            continue;
+        }
 
         std::string peerIp(clientIp);
         probeThreads.emplace_back([peerIp, udpPort, &buffer, &done]() {
