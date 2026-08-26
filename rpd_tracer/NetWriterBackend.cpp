@@ -43,9 +43,9 @@ bool NetWriterBackend::ensureConnected()
     // Retry with backoff — receiver may not be listening yet
     for (int attempt = 0; attempt < 10; ++attempt) {
         if (m_conn.connect(m_host.c_str(), m_port)) {
-            m_connected = true;
             sendHandshake();
-            return true;
+            if (m_connected)
+                return true;
         }
         usleep(100000 * (attempt + 1));  // 100ms, 200ms, 300ms...
     }
@@ -57,9 +57,14 @@ bool NetWriterBackend::ensureConnected()
 void NetWriterBackend::sendHandshake()
 {
     /*  Handshake: [tag: 32 bytes][directWrite: 1 byte]  */
-    m_conn.send(m_tag, 32);
     char dw = m_directWrite ? 1 : 0;
-    m_conn.send(&dw, 1);
+    bool ok = m_conn.send(m_tag, 32) && m_conn.send(&dw, 1);
+    if (!ok) {
+        m_conn.close();
+        m_connected = false;
+        return;
+    }
+    m_connected = true;
     m_handshakeSent = true;
 }
 
@@ -88,11 +93,13 @@ void NetWriterBackend::writeBatch(void *rowData, int start, int end, int capacit
     uint32_t payloadSize = static_cast<uint32_t>(m_buf.size());
     uint32_t messageSize = 4 + 8 + 4 + 4 + payloadSize;
 
-    m_conn.send(&messageSize, 4);
-    m_conn.send(&m_idOffset, 8);
-    m_conn.send(&m_nodeId, 4);
-    m_conn.send(&rowCount, 4);
-    m_conn.send(m_buf.data(), payloadSize);
+    bool ok = m_conn.send(&messageSize, 4)
+           && m_conn.send(&m_idOffset, 8)
+           && m_conn.send(&m_nodeId, 4)
+           && m_conn.send(&rowCount, 4)
+           && m_conn.send(m_buf.data(), payloadSize);
+    if (!ok)
+        dropConnection();
 }
 
 void NetWriterBackend::flush()
@@ -104,10 +111,19 @@ void NetWriterBackend::flush()
     uint32_t messageSize = 4 + 8 + 4 + 4;
     uint32_t rowCount = 0;
 
-    m_conn.send(&messageSize, 4);
-    m_conn.send(&m_idOffset, 8);
-    m_conn.send(&m_nodeId, 4);
-    m_conn.send(&rowCount, 4);
+    bool ok = m_conn.send(&messageSize, 4)
+           && m_conn.send(&m_idOffset, 8)
+           && m_conn.send(&m_nodeId, 4)
+           && m_conn.send(&rowCount, 4);
+    if (!ok)
+        dropConnection();
+}
+
+void NetWriterBackend::dropConnection()
+{
+    rpdLog("NetWriterBackend: send failed for %s, reconnecting on next write\n", m_tag);
+    m_conn.close();
+    m_connected = false;
 }
 
 }  // namespace rpdtracer

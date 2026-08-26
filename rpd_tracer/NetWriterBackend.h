@@ -64,6 +64,7 @@ public:
 private:
     bool ensureConnected();
     void sendHandshake();
+    void dropConnection();
 
     TcpConnection m_conn;
     ByteBuffer m_buf;
