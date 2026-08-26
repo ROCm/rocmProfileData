@@ -95,7 +95,7 @@ void ApiTable::flushRows()
     int ret = 0;
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_api select * from temp_rocpd_api", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_api: %d\n", ret);
+    rpdLog("rocpd_api: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_api", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }

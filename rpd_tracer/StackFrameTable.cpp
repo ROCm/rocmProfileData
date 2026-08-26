@@ -78,7 +78,7 @@ void StackFrameTable::flushRows()
     int ret = 0;
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_stackframe select * from temp_rocpd_stackframe", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_stackframe: %d\n", ret);
+    rpdLog("rocpd_stackframe: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_stackframe", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }

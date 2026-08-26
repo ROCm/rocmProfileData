@@ -3,6 +3,7 @@
  **************************************************************************/
 #pragma once
 
+#include <cstdarg>
 #include <time.h>
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
@@ -71,6 +72,23 @@ static inline const char* getConfig(const char *envvar, const char *property, co
     if (val != nullptr)
         return val;
     return rlog::getProperty("rpd_tracer", property, defaultValue);
+}
+
+static inline bool rpdQuiet()
+{
+    static bool quiet = (atoi(getConfig("RPDT_QUIET", "quiet", "0")) != 0);
+    return quiet;
+}
+
+__attribute__((format(printf, 1, 2)))
+static inline void rpdLog(const char *fmt, ...)
+{
+    if (rpdQuiet())
+        return;
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
 }
 
 static inline int rpdSqliteOpen(const char *basefile, sqlite3 **db)

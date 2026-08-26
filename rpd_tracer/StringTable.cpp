@@ -119,7 +119,7 @@ void StringTable::flushRows()
 
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_string select * from temp_rocpd_string", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_string: %d\n", ret);
+    rpdLog("rocpd_string: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_string", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 

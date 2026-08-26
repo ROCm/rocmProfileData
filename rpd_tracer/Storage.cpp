@@ -81,8 +81,11 @@ void Storage::finalize()
     m_ustringTable->finalize();
     m_stringTable->finalize();
 
+    // Checkpoint WAL into main database before connections close
+    sqlite3_exec(m_stringTable->connection(), "PRAGMA wal_checkpoint(TRUNCATE)", NULL, NULL, NULL);
+
     const timestamp_t end_time = clocktime_ns();
-    fprintf(stderr, "rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
+    rpdLog("rpd_tracer: finalized in %f ms\n", 1.0 * (end_time - begin_time) / 1000000);
 }
 
 sqlite3_int64 Storage::sessionId() const

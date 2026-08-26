@@ -20,6 +20,7 @@ public:
     virtual void finalize() = 0;
 
     void setIdOffset(sqlite3_int64 offset);
+    sqlite3 *connection() { return m_connection; }
 
 protected:
     sqlite3 *m_connection;

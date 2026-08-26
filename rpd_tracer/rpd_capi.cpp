@@ -64,6 +64,7 @@ void rpd_resetStorage()
 //   datasources_exclude  / RPDT_DATASOURCES_EXCLUDE  — remove these DataSources from the list
 //   stackframes    / RPDT_STACKFRAMES    — record call stacks (0/1, default: 0)
 //   rocprof_noargs / RPDT_ROCPROF_NOARGS — suppress rocprofiler kernel args (0/1, default: 0)
+//   quiet          / RPDT_QUIET          — suppress informational output to stderr (0/1, default: 0)
 //
 // Embedded usage: set autostart=0 before the first rpdstart() call.
 // autostart=1 (default) holds its own ref on the tracing state, so a

@@ -38,6 +38,7 @@ Set properties with `rpd_setConfig()` before calling `rpdstart()`. Properties ar
 | `datasources_exclude` | `RPDT_DATASOURCES_EXCLUDE` | (empty) | Remove these DataSources |
 | `datasources_priority` | `RPDT_DATASOURCES_PRIORITY` | (empty) | Prioritize these DataSources |
 | `rocprof_noargs` | `RPDT_ROCPROF_NOARGS` | `0` | Suppress rocprofiler kernel args |
+| `quiet` | `RPDT_QUIET` | `0` | Suppress informational output to stderr |
 
 ## Basic Usage
 
