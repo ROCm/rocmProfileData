@@ -63,6 +63,8 @@ void Storage::flush()
     m_apiTable->flush();
     m_monitorTable->flush();
     m_stackFrameTable->flush();
+
+    sqlite3_exec(m_stringTable->connection(), "PRAGMA wal_checkpoint(TRUNCATE)", NULL, NULL, NULL);
 }
 
 void Storage::finalize()

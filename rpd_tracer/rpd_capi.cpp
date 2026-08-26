@@ -144,4 +144,14 @@ extern "C" int __cxa_atexit(void (*func)(void*), void* arg, void* /*dso_handle*/
     return 0;
 }
 
+#else // embedded build
+
+namespace {
+    struct EmbeddedDefaults {
+        EmbeddedDefaults() {
+            rpdtracer::setConfig("autostart", "0");
+        }
+    } s_embeddedDefaults;
+}
+
 #endif // RPD_TRACER_BUILD
