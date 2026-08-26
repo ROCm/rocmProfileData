@@ -53,6 +53,16 @@ void Logger::rpdFinalize() {
 
 void Logger::resetStorage()
 {
+    // The autoflush worker calls rpdflush() -> m_storage->flush(); stop it
+    // for the duration of the swap so it cannot use the old storage
+    bool autoflush = (m_worker != nullptr);
+    if (autoflush) {
+        m_done = true;
+        m_worker->join();
+        delete m_worker;
+        m_worker = nullptr;
+    }
+
     m_storage->finalize();
     delete m_storage;
     const char *filename = getConfig("RPDT_FILENAME", "filename", "./trace.rpd");
@@ -61,6 +71,11 @@ void Logger::resetStorage()
 
     for (auto it = m_sources.begin(); it != m_sources.end(); ++it)
         (*it)->reset();
+
+    if (autoflush) {
+        m_done = false;
+        m_worker = new std::thread(&Logger::autoflushWorker, this);
+    }
 }
 
 void Logger::rpdstart()
