@@ -3,6 +3,7 @@
  **************************************************************************/
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
@@ -43,6 +44,14 @@ private:
 };
 
 
+struct PoolHeader {
+    std::atomic<int> ready{0};
+    std::atomic<int> slotCount{0};
+    std::atomic<size_t> allocOffset{0};
+    size_t totalSize{0};
+};
+
+
 class BufferPool {
 public:
     BufferPool();
@@ -50,6 +59,8 @@ public:
 
     BufferPool(const BufferPool&) = delete;
     BufferPool& operator=(const BufferPool&) = delete;
+
+    void initShared(const char *dbFilename);
 
     template<typename T>
     Slot* allocate(int count, const char* tag);
@@ -61,6 +72,12 @@ private:
         std::function<void()> destructor;
     };
     std::vector<SlotEntry> m_entries;
+
+    bool m_shared{false};
+    void *m_shmBase{nullptr};
+    int m_shmFd{-1};
+    std::string m_shmName;
+    bool m_creator{false};
 };
 
 
@@ -69,11 +86,21 @@ Slot* BufferPool::allocate(int count, const char* tag)
 {
     size_t headerSize = sizeof(Slot::Header);
     size_t dataSize = sizeof(T) * count;
-    size_t totalSize = headerSize + dataSize;
+    size_t slotSize = headerSize + dataSize;
 
-    void *memory = std::malloc(totalSize);
-    if (!memory)
-        throw std::bad_alloc();
+    void *memory;
+
+    if (!m_shared) {
+        memory = std::malloc(slotSize);
+        if (!memory)
+            throw std::bad_alloc();
+    } else {
+        PoolHeader *pool = static_cast<PoolHeader*>(m_shmBase);
+        size_t offset = pool->allocOffset.fetch_add(slotSize, std::memory_order_relaxed);
+        if (offset + slotSize > pool->totalSize)
+            throw std::bad_alloc();
+        memory = static_cast<char*>(m_shmBase) + offset;
+    }
 
     Slot::Header *header = static_cast<Slot::Header*>(memory);
     header->head = 0;
@@ -93,6 +120,11 @@ Slot* BufferPool::allocate(int count, const char* tag)
         for (int i = 0; i < count; ++i)
             rows[i].~T();
     }});
+
+    if (m_shared) {
+        PoolHeader *pool = static_cast<PoolHeader*>(m_shmBase);
+        pool->slotCount.fetch_add(1, std::memory_order_release);
+    }
 
     return slot;
 }

@@ -16,6 +16,9 @@ Storage::Storage(const char *filename, bool directWrite)
 {
     ensureSchema(filename);
 
+    if (getenv("RPDT_LOGAGG_PORT") != nullptr)
+        m_bufferPool.initShared(filename);
+
     m_metadataTable = new MetadataTable(filename);
     m_stringTable = new StringTable(filename, directWrite, m_bufferPool);
     m_ustringTable = new UStringTable(filename, directWrite, m_bufferPool);
