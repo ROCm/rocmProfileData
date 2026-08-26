@@ -10,6 +10,7 @@
 #include <sqlite3.h>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 using rpdtracer::DataSource;
@@ -34,8 +35,10 @@ public:
     sqlite3_int64 markCategoryId{0};
     sqlite3_int64 apiNameId{0};
 
-    std::atomic<sqlite3_int64> idCounter{sqlite3_int64(1) << 31};
     std::atomic<sqlite3_int64> resumeTime{0};
+
+    bool idsCached{false};
+    void cacheIds();
 };
 
 }    // namespace rpdtracer
@@ -64,6 +67,7 @@ RoctxDataSource::~RoctxDataSource()
 
 // Per-thread roctx range stack
 static thread_local std::deque<ApiTable::row> t_roctxStack;
+static thread_local rpdtracer::UStringCache t_ustringCache;
 
 // Track all thread stacks for shutdown drain
 static std::mutex s_stacksMutex;
@@ -81,18 +85,16 @@ static void registerThreadStack()
 }
 
 
-// ---- lazy init for string IDs ----
-
-static std::once_flag s_cacheOnce;
-
-static void cacheStringIds()
+void RoctxDataSourcePrivate::cacheIds()
 {
-    RoctxDataSourcePrivate *d = RoctxDataSource::instance().priv();
+    if (idsCached)
+        return;
     Logger &logger = Logger::singleton();
-    d->domainId = logger.stringTable().getOrCreate("roctx");
-    d->rangeCategoryId = logger.stringTable().getOrCreate("range");
-    d->markCategoryId = logger.stringTable().getOrCreate("mark");
-    d->apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    domainId = logger.stringTable().getOrCreate("roctx");
+    rangeCategoryId = logger.stringTable().getOrCreate("range");
+    markCategoryId = logger.stringTable().getOrCreate("mark");
+    apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    idsCached = true;
 }
 
 // ---- roctx shim functions ----
@@ -105,7 +107,7 @@ void roctxMarkA(const char *message)
     RoctxDataSourcePrivate *d = RoctxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     Logger &logger = Logger::singleton();
 
@@ -117,8 +119,8 @@ void roctxMarkA(const char *message)
     row.domain_id = d->domainId;
     row.category_id = d->markCategoryId;
     row.apiName_id = d->apiNameId;
-    row.args_id = logger.ustringTable().create(message);
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.args_id = t_ustringCache.lookup(message, logger.ustringTable(), logger.storageGeneration());
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
 }
@@ -128,7 +130,7 @@ int roctxRangePushA(const char *message)
     RoctxDataSourcePrivate *d = RoctxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return -1;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     registerThreadStack();
 
@@ -142,7 +144,7 @@ int roctxRangePushA(const char *message)
     row.domain_id = d->domainId;
     row.category_id = d->rangeCategoryId;
     row.apiName_id = d->apiNameId;
-    row.args_id = logger.ustringTable().create(message);
+    row.args_id = t_ustringCache.lookup(message, logger.ustringTable(), logger.storageGeneration());
     row.api_id = 0;
 
     t_roctxStack.push_front(row);
@@ -168,7 +170,7 @@ int roctxRangePop()
         row.start = resumeTime;
 
     row.end = clocktime_ns();
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
     return static_cast<int>(t_roctxStack.size());
@@ -199,6 +201,11 @@ void RoctxDataSource::flush()
 {
 }
 
+void RoctxDataSource::reset()
+{
+    d->idsCached = false;
+}
+
 void RoctxDataSource::end()
 {
     d->active.store(false, std::memory_order_relaxed);
@@ -214,7 +221,7 @@ void RoctxDataSource::end()
             ApiTable::row row = stack.front();
             stack.pop_front();
             row.end = now;
-            row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+            row.api_id = Logger::singleton().nextAnnotationId();
             logger.apiTable().insert(row);
         }
     }
