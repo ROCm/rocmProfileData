@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 #include <sqlite3.h>
+#include "Logger.h"
 #include "Table.h"
 
 namespace rpdtracer {
