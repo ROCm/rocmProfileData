@@ -842,7 +842,10 @@ int RocprofDataSource::toolInit(rocprofiler_client_finalize_t finialize_func, vo
     apiList.add("__hipPushCallConfiguration");
     apiList.add("__hipPopCallConfiguration");
     apiList.add("hipCtxSetCurrent");
-    apiList.add("hipGetDeviceProperties");
+    apiList.add("hipGetDevicePropertiesR0600");
+    apiList.add("hipGetDeviceCount");
+    apiList.add("hipDeviceGetAttribute");
+    apiList.add("hipRuntimeGetVersion");
     apiList.add("hipPeekAtLastError");
     apiList.add("hipModuleGetFunction");
 
