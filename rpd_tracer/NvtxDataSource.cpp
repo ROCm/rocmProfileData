@@ -10,6 +10,7 @@
 #include <sqlite3.h>
 
 #include "Logger.h"
+#include "UStringCache.h"
 #include "Utility.h"
 
 using rpdtracer::DataSource;
@@ -34,8 +35,10 @@ public:
     sqlite3_int64 markCategoryId{0};
     sqlite3_int64 apiNameId{0};
 
-    std::atomic<sqlite3_int64> idCounter{sqlite3_int64(1) << 33};
     std::atomic<sqlite3_int64> resumeTime{0};
+
+    bool idsCached{false};
+    void cacheIds();
 };
 
 }    // namespace rpdtracer
@@ -64,6 +67,7 @@ NvtxDataSource::~NvtxDataSource()
 
 // Per-thread nvtx range stack
 static thread_local std::deque<ApiTable::row> t_nvtxStack;
+static thread_local rpdtracer::UStringCache t_ustringCache;
 
 // Track all thread stacks for shutdown drain
 static std::mutex s_stacksMutex;
@@ -81,18 +85,16 @@ static void registerThreadStack()
 }
 
 
-// ---- lazy init for string IDs ----
-
-static std::once_flag s_cacheOnce;
-
-static void cacheStringIds()
+void NvtxDataSourcePrivate::cacheIds()
 {
-    NvtxDataSourcePrivate *d = NvtxDataSource::instance().priv();
+    if (idsCached)
+        return;
     Logger &logger = Logger::singleton();
-    d->domainId = logger.stringTable().getOrCreate("nvtx");
-    d->rangeCategoryId = logger.stringTable().getOrCreate("range");
-    d->markCategoryId = logger.stringTable().getOrCreate("mark");
-    d->apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    domainId = logger.stringTable().getOrCreate("nvtx");
+    rangeCategoryId = logger.stringTable().getOrCreate("range");
+    markCategoryId = logger.stringTable().getOrCreate("mark");
+    apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    idsCached = true;
 }
 
 // ---- nvtx shim functions ----
@@ -105,7 +107,7 @@ void nvtxMarkA(const char *message)
     NvtxDataSourcePrivate *d = NvtxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     Logger &logger = Logger::singleton();
 
@@ -117,8 +119,8 @@ void nvtxMarkA(const char *message)
     row.domain_id = d->domainId;
     row.category_id = d->markCategoryId;
     row.apiName_id = d->apiNameId;
-    row.args_id = logger.ustringTable().create(message);
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.args_id = t_ustringCache.lookup(message, logger.ustringTable(), logger.storageGeneration());
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
 }
@@ -128,7 +130,7 @@ int nvtxRangePushA(const char *message)
     NvtxDataSourcePrivate *d = NvtxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return -1;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     registerThreadStack();
 
@@ -142,7 +144,7 @@ int nvtxRangePushA(const char *message)
     row.domain_id = d->domainId;
     row.category_id = d->rangeCategoryId;
     row.apiName_id = d->apiNameId;
-    row.args_id = logger.ustringTable().create(message);
+    row.args_id = t_ustringCache.lookup(message, logger.ustringTable(), logger.storageGeneration());
     row.api_id = 0;
 
     t_nvtxStack.push_front(row);
@@ -168,7 +170,7 @@ int nvtxRangePop()
         row.start = resumeTime;
 
     row.end = clocktime_ns();
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
     return static_cast<int>(t_nvtxStack.size());
@@ -199,6 +201,11 @@ void NvtxDataSource::flush()
 {
 }
 
+void NvtxDataSource::reset()
+{
+    d->idsCached = false;
+}
+
 void NvtxDataSource::end()
 {
     d->active.store(false, std::memory_order_relaxed);
@@ -214,7 +221,7 @@ void NvtxDataSource::end()
             ApiTable::row row = stack.front();
             stack.pop_front();
             row.end = now;
-            row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+            row.api_id = Logger::singleton().nextAnnotationId();
             logger.apiTable().insert(row);
         }
     }
