@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 #include "Logger.h"
 
+#include <algorithm>
 #include <list>
 #include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
+#include <fmt/format.h>
 
 #include "Utility.h"
 #include "Schema.h"
@@ -133,12 +135,24 @@ void Logger::init()
         "RocmSmiDataSourceFactory"
         };
 
+    std::list<std::string> rocmFactories = {
+        "RocprofDataSourceFactory",
+        "ClrDataSourceFactory",
+        "RoctracerDataSourceFactory"
+        };
 
+    bool rocmSourceAdded = false;
     for (auto it = factories.begin(); it != factories.end(); ++it) {
+        bool isRocmFactory = std::find(rocmFactories.begin(), rocmFactories.end(), *it) != rocmFactories.end();
+        if (isRocmFactory && rocmSourceAdded)
+            continue;
         DataSource* (*func) (void) = (DataSource* (*)()) dlsym(RTLD_DEFAULT, (*it).c_str());
         if (func) {
             m_sources.push_back(func());
-            //fprintf(stderr, "Using: %s\n", (*it).c_str());
+            if (isRocmFactory)
+                rocmSourceAdded = true;
+            std::string sourceName = it->substr(0, it->size() - 7);  // strip "Factory"
+            m_storage->metadataTable().insert("process_datasource", fmt::format("pid={} source={}", GetPid(), sourceName));
         }
     }
 

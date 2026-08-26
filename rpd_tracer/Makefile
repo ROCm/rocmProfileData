@@ -9,29 +9,24 @@ RLOG_LIB_PATH ?= /usr/local
 
 ROCM_VERSION ?= $(shell cat /opt/rocm/.info/version)
 
-RPD_LIBS = -lsqlite3 -lfmt
+RPD_LIBS = -lsqlite3 -lfmt -ldl
 RPD_INCLUDES =
 RPD_SRCS = Schema.cpp Table.cpp BufferedTable.cpp OpTable.cpp KernelApiTable.cpp CopyApiTable.cpp ApiTable.cpp StringTable.cpp UStringTable.cpp MetadataTable.cpp MonitorTable.cpp StackFrameTable.cpp ApiIdList.cpp DbResource.cpp Storage.cpp Logger.cpp Unwind.cpp RoctxDataSource.cpp NvtxDataSource.cpp RlogClient.cpp
 
 ifneq (,$(HIP_PATH))
         $(info rocm_version is ${ROCM_VERSION})
-        #USE_ROCPROFILER_SDK = false
         ifneq (,$(wildcard /opt/rocm/include/rocprofiler-sdk))
         ifneq ($(shell echo ${ROCM_VERSION} | cut -d. -f1), 6)
-            # Disable rocprofiler-sdk (for performance reasons)
-            # USE_ROCPROFILER_SDK = true
-        endif
-        endif
-
-        ifeq ($(USE_ROCPROFILER_SDK), true)
                 $(info Building with rocprofiler-sdk)
 		RPD_LIBS += -lrocprofiler-sdk
 		RPD_SRCS += RocprofDataSource.cpp
-        else
+        endif
+        endif
+
+        ifneq (,$(wildcard /opt/rocm/include/roctracer))
                 $(info Building with roctracer)
 		RPD_LIBS += -lroctracer64
 		RPD_SRCS += RoctracerDataSource.cpp
-		RPD_INCLUDES += -I/opt/rocm/include/roctracer
         endif
 
         RPD_LIBS += -L/opt/rocm/lib
@@ -60,12 +55,12 @@ endif
 ifneq ($(CPPTRACE_INCLUDE_PATH),)
         $(info Building with cpptrace)
         RPD_INCLUDES += -DRPD_STACKFRAME_SUPPORT
-        RPD_LIBS += -L$(CPPTRACE_INCLUDE_PATH)/../lib -lcpptrace -ldwarf -lz -lzstd -ldl
+        RPD_LIBS += -L$(CPPTRACE_INCLUDE_PATH)/../lib -lcpptrace -ldwarf -lz -lzstd
         RPD_INCLUDES += -I $(CPPTRACE_INCLUDE_PATH)
 endif
 
 RPD_OBJS = $(RPD_SRCS:.cpp=.o)
-
+RPD_DEPS = $(RPD_OBJS:.o=.d)
 
 RPD_TRACER = librpd_tracer.so
 RPD_EMBEDDED = librpd_embedded.so
@@ -106,12 +101,13 @@ $(RPD_TRACER): $(RPD_OBJS) rpd_capi_tracer.o
 $(RPD_EMBEDDED): $(RPD_OBJS) rpd_capi_embedded.o
 	$(CXX) -o $@ $^ -shared -rdynamic -std=c++11 $(RPD_LIBS) -Wl,--version-script=marker_shim.ver -g
 
-.cpp.o:
-	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3
+%.o: %.cpp
+	$(CXX) -o $@ -c $< $(RPD_INCLUDES) -DAMD_INTERNAL_BUILD -std=c++17 -fPIC -g -O3 -MMD -MP
 
 #$(PREFIX)/lib/lib$(RPD_MAIN):
 #	ln -s $(PREFIX)/lib/$(RPD_MAIN) $@
 
+-include $(RPD_DEPS)
 -include rpd_capi_tracer.d rpd_capi_embedded.d
 
 .PHONY: install

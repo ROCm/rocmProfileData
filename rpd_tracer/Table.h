@@ -266,6 +266,7 @@ public:
     MetadataTable(const char *basefile);
 
     sqlite3_int64 sessionId();
+    void insert(const std::string &tag, const std::string &value);
 
     void flush();
     void finalize();

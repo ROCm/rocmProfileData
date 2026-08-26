@@ -26,6 +26,8 @@ Storage::Storage(const char *filename, bool directWrite)
     m_monitorTable = new MonitorTable(filename, directWrite);
     m_stackFrameTable = new StackFrameTable(filename, directWrite);
 
+    m_metadataTable->insert("session", fmt::format("id={} pid={}", m_metadataTable->sessionId(), GetPid()));
+
     sqlite3_int64 offset = m_metadataTable->sessionId() * (sqlite3_int64(1) << 32);
     m_metadataTable->setIdOffset(offset);
     m_stringTable->setIdOffset(offset);

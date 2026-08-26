@@ -4,7 +4,7 @@
 
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_ext.h>
-
+#include <roctracer/roctracer_roctx.h>
 #include <hsa/hsa_ext_amd.h>
 
 #include <sqlite3.h>
