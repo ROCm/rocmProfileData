@@ -243,13 +243,19 @@ void firefly_run(const char* role, MeasurementBuffer& buffer) {
 
     int localCount = 0;
     int64_t latest_offset = 0;
+    std::vector<Measurement> window;
     {
         std::lock_guard<std::mutex> lock(buffer.mutex);
         localCount = buffer.count;
         if (localCount <= 0)
             return;
-        int idx = (localCount - 1) % static_cast<int>(buffer.measurements.size());
+        const int capacity = static_cast<int>(buffer.measurements.size());
+        int idx = (localCount - 1) % capacity;
         latest_offset = buffer.measurements[idx].offset;
+        int available = (localCount < capacity) ? localCount : capacity;
+        window.reserve(static_cast<std::size_t>(available));
+        for (int i = 0; i < available; ++i)
+            window.push_back(buffer.measurements[(localCount - available + i) % capacity]);
     }
 
     // IQR outlier check: reject the latest sample if it's an outlier
@@ -257,9 +263,9 @@ void firefly_run(const char* role, MeasurementBuffer& buffer) {
     if (localCount > static_cast<int>(MEDIAN_WINDOW_SIZE)) {
         const MeasurementAnalysis analysis = read_latest_measurements(role,
                                                                       MEDIAN_WINDOW_SIZE,
-                                                                      buffer.measurements.data(),
+                                                                      window.data(),
                                                                       localCount,
-                                                                      buffer.measurements.size());
+                                                                      window.size());
         if (!analysis.samples.empty()) {
             std::vector<int64_t> offsets;
             offsets.reserve(analysis.samples.size());
