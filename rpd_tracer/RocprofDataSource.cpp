@@ -755,7 +755,8 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.api_id = record->correlation_id.internal;
 
                 sqlite3_int64 op_id = logger.opTable().insert(row);
-                s->dispatchOpId[dispatch.dispatch_id] = op_id;
+                if (s->collectCounters)
+                    s->dispatchOpId[dispatch.dispatch_id] = op_id;
 
                 // piece together a kernelapi entry
                 KernelApiTable::row krow;
