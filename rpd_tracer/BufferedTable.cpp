@@ -2,6 +2,7 @@
  * Copyright (c) 2023 Advanced Micro Devices, Inc.
  **************************************************************************/
 #include "Table.h"
+#include "BufferPool.h"
 #include "Utility.h"
 
 #include <thread>
@@ -25,10 +26,10 @@ public:
     BufferedTable *p;
 };
 
-BufferedTable::BufferedTable(const char *basefile, int bufferSize, int batchsize)
+BufferedTable::BufferedTable(const char *basefile, Slot *slot, int batchsize)
 : Table(basefile)
-, BUFFERSIZE(bufferSize)
 , BATCHSIZE(batchsize)
+, m_slot(slot)
 , d(new BufferedTablePrivate(this))
 {
     d->done = false;
@@ -49,7 +50,7 @@ void BufferedTable::flush()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    d->flushTarget = m_head;
+    d->flushTarget = m_slot->head();
     d->flushRequested = true;
     m_wait.notify_one();
     while (d->flushRequested)
@@ -84,14 +85,14 @@ void BufferedTablePrivate::work()
     std::unique_lock<std::mutex> lock(p->m_mutex);
 
     while (done == false) {
-        while ((p->m_head - p->m_tail) >= p->BATCHSIZE) {
+        while ((p->m_slot->head() - p->m_slot->tail()) >= p->BATCHSIZE) {
             lock.unlock();
             p->writeRows();
             p->m_wait.notify_all();
             lock.lock();
         }
         if (flushRequested) {
-            while (p->m_tail < flushTarget) {
+            while (p->m_slot->tail() < flushTarget) {
                 lock.unlock();
                 p->writeRows();
                 lock.lock();
@@ -105,7 +106,7 @@ void BufferedTablePrivate::work()
         workerRunning = true;
     }
     // done: drain remaining rows before exit
-    while (p->m_head > p->m_tail) {
+    while (p->m_slot->head() > p->m_slot->tail()) {
         lock.unlock();
         p->writeRows();
         lock.lock();

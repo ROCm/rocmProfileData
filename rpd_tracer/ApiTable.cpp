@@ -1,9 +1,9 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
+#include "BufferPool.h"
 
 #include <thread>
-#include <array>
 #include <mutex>
 
 #include "Utility.h"
@@ -19,10 +19,12 @@ CREATE TEMPORARY TABLE "temp_rocpd_api" ("id" integer NOT NULL PRIMARY KEY AUTOI
 class ApiTablePrivate
 {
 public:
-    ApiTablePrivate(ApiTable *cls) : p(cls) {}
+    ApiTablePrivate(ApiTable *cls) : p(cls) {
+        rows = p->m_slot->rows<ApiTable::row>();
+    }
     static const int BUFFERSIZE = 4096 * 16;
     static const int BATCHSIZE = 4096;           // rows per transaction
-    std::array<ApiTable::row, BUFFERSIZE> rows; // Circular buffer
+    ApiTable::row *rows;
 
     sqlite3_stmt *apiInsert;
     sqlite3_stmt *apiInsertNoId;
@@ -32,8 +34,8 @@ public:
 };
 
 
-ApiTable::ApiTable(const char *basefile, bool directWrite)
-: BufferedTable(basefile, ApiTablePrivate::BUFFERSIZE, ApiTablePrivate::BATCHSIZE)
+ApiTable::ApiTable(const char *basefile, bool directWrite, BufferPool &pool)
+: BufferedTable(basefile, pool.allocate<ApiTable::row>(ApiTablePrivate::BUFFERSIZE, "ApiTable"), ApiTablePrivate::BATCHSIZE)
 , d(new ApiTablePrivate(this))
 {
     int ret;
@@ -61,25 +63,21 @@ void ApiTable::insert(const ApiTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
-        // buffer is full; insert in-line or wait
-        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
+    if (m_slot->head() - m_slot->tail() >= ApiTablePrivate::BUFFERSIZE) {
+        //FIXME
         const timestamp_t start = clocktime_ns();
-        // FIXME: overhead record here
-        m_wait.notify_one();  // make sure working is running
+        m_wait.notify_one();
         m_wait.wait(lock);
-        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
+        //FIXME
         const timestamp_t end = clocktime_ns();
         lock.unlock();
         createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::ApiTable::insert");
         lock.lock();
     }
 
-    d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_slot->head()) % ApiTablePrivate::BUFFERSIZE] = row;
 
-    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_slot->head() - m_slot->tail()) >= ApiTablePrivate::BATCHSIZE) {
         lock.unlock();
         m_wait.notify_one();
     }
@@ -106,16 +104,15 @@ void ApiTable::writeRows()
     std::unique_lock<std::mutex> wlock(m_writeMutex);
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (m_head == m_tail)
+    if (m_slot->head() == m_slot->tail())
         return;
 
-    //const timestamp_t cb_begin_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     //FIXME
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = m_tail + 1;
-    int end = m_tail + BATCHSIZE;
-    end = (end > m_head) ? m_head : end;
+    int start = m_slot->tail() + 1;
+    int end = m_slot->tail() + BATCHSIZE;
+    end = (end > m_slot->head()) ? m_slot->head() : end;
     lock.unlock();
 
     sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
@@ -123,7 +120,7 @@ void ApiTable::writeRows()
     for (int i = start; i <= end; ++i) {
         // insert rocpd_api
         int index = 1;
-        ApiTable::row &r = d->rows[i % BUFFERSIZE];
+        ApiTable::row &r = d->rows[i % m_slot->capacity()];
         sqlite3_bind_int64(d->apiInsert, index++, r.api_id + m_idOffset);
         sqlite3_bind_int(d->apiInsert, index++, r.pid);
         sqlite3_bind_int(d->apiInsert, index++, r.tid);
@@ -137,16 +134,14 @@ void ApiTable::writeRows()
         sqlite3_reset(d->apiInsert);
     }
     lock.lock();
-    m_tail = end;
+    m_slot->tail() = end;
     lock.unlock();
 
-    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     //FIXME
     const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
-    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_slot->head() - m_slot->tail());
     createOverheadRecord(cb_begin_time, cb_end_time, "ApiTable::writeRows", buff);
 }
 

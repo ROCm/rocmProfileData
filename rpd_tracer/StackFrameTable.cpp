@@ -1,9 +1,9 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
+#include "BufferPool.h"
 
 #include <thread>
-#include <array>
 #include <mutex>
 
 #include "rpd_tracer.h"
@@ -18,10 +18,12 @@ const char *SCHEMA = R"sql(CREATE TEMPORARY TABLE "temp_rocpd_stackframe" ("id" 
 class StackFrameTablePrivate
 {
 public:
-    StackFrameTablePrivate(StackFrameTable *cls) : p(cls) {} 
+    StackFrameTablePrivate(StackFrameTable *cls) : p(cls) {
+        rows = p->m_slot->rows<StackFrameTable::row>();
+    }
     static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
-    std::array<StackFrameTable::row, BUFFERSIZE> rows; // Circular buffer
+    StackFrameTable::row *rows;
 
     sqlite3_stmt *insertStatement;
     bool directWrite;
@@ -30,8 +32,8 @@ public:
 };
 
 
-StackFrameTable::StackFrameTable(const char *basefile, bool directWrite)
-: BufferedTable(basefile, StackFrameTablePrivate::BUFFERSIZE, StackFrameTablePrivate::BATCHSIZE)
+StackFrameTable::StackFrameTable(const char *basefile, bool directWrite, BufferPool &pool)
+: BufferedTable(basefile, pool.allocate<StackFrameTable::row>(StackFrameTablePrivate::BUFFERSIZE, "StackFrameTable"), StackFrameTablePrivate::BATCHSIZE)
 , d(new StackFrameTablePrivate(this))
 {
     int ret;
@@ -55,15 +57,14 @@ StackFrameTable::~StackFrameTable()
 void StackFrameTable::insert(const StackFrameTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
-    while (m_head - m_tail >= StackFrameTablePrivate::BUFFERSIZE) {
-        // buffer is full; insert in-line or wait
-        m_wait.notify_one();  // make sure working is running
+    while (m_slot->head() - m_slot->tail() >= StackFrameTablePrivate::BUFFERSIZE) {
+        m_wait.notify_one();
         m_wait.wait(lock);
     }
 
-    d->rows[(++m_head) % StackFrameTablePrivate::BUFFERSIZE] = row;
+    d->rows[(++m_slot->head()) % StackFrameTablePrivate::BUFFERSIZE] = row;
 
-    if (workerRunning() == false && (m_head - m_tail) >= StackFrameTablePrivate::BATCHSIZE) {
+    if (workerRunning() == false && (m_slot->head() - m_slot->tail()) >= StackFrameTablePrivate::BATCHSIZE) {
         lock.unlock();
         m_wait.notify_one();
     }
@@ -89,21 +90,21 @@ void StackFrameTable::writeRows()
     std::unique_lock<std::mutex> wlock(m_writeMutex);
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (m_head == m_tail)
+    if (m_slot->head() == m_slot->tail())
         return;
 
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    int start = m_tail + 1;
-    int end = m_tail + BATCHSIZE;
-    end = (end > m_head) ? m_head : end;
+    int start = m_slot->tail() + 1;
+    int end = m_slot->tail() + BATCHSIZE;
+    end = (end > m_slot->head()) ? m_slot->head() : end;
     lock.unlock();
 
     sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
 
     for (int i = start; i <= end; ++i) {
         int index = 1;
-        StackFrameTable::row &r = d->rows[i % BUFFERSIZE];
+        StackFrameTable::row &r = d->rows[i % m_slot->capacity()];
 
         sqlite3_bind_int64(d->insertStatement, index++, r.api_id + m_idOffset);
         sqlite3_bind_int(d->insertStatement, index++, r.depth);
@@ -112,16 +113,14 @@ void StackFrameTable::writeRows()
         sqlite3_reset(d->insertStatement);
     }
     lock.lock();
-    m_tail = end;
+    m_slot->tail() = end;
     lock.unlock();
 
-    //const timestamp_t cb_mid_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
-    //const timestamp_t cb_end_time = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
     // FIXME
     const timestamp_t cb_end_time = clocktime_ns();
     char buff[4096];
-    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
+    std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_slot->head() - m_slot->tail());
     createOverheadRecord(cb_begin_time, cb_end_time, "StackFrameTable::writeRows", buff);
 }
 
