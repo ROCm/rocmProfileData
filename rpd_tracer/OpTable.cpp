@@ -1,6 +1,8 @@
 // Copyright (C) Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 #include "Table.h"
+#include "WriterBackend.h"
+#include "ByteBuffer.h"
 
 #include <map>
 #include <thread>
@@ -23,40 +25,112 @@ CREATE TEMPORARY TABLE "temp_rocpd_api_ops" ("id" integer NOT NULL PRIMARY KEY A
 )|";
 
 
+class OpTableWriterBackend : public WriterBackend
+{
+public:
+    OpTableWriterBackend(const char *basefile, bool directWrite)
+    : m_directWrite(directWrite)
+    {
+        rpdSqliteOpen(basefile, &m_conn);
+        sqlite3_busy_handler(m_conn, &rpdtracer::sqlite_busy_handler, NULL);
+        sqlite3_exec(m_conn, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
+        sqlite3_exec(m_conn, "PRAGMA synchronous=NORMAL", NULL, NULL, NULL);
+
+        if (!directWrite) {
+            sqlite3_exec(m_conn, SCHEMA_OP, NULL, NULL, NULL);
+            sqlite3_exec(m_conn, SCHEMA_API_OPS, NULL, NULL, NULL);
+            sqlite3_prepare_v2(m_conn, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)", -1, &m_opInsert, NULL);
+            sqlite3_prepare_v2(m_conn, "insert into temp_rocpd_api_ops(api_id, op_id) values (?,?)", -1, &m_apiOpInsert, NULL);
+        } else {
+            sqlite3_prepare_v2(m_conn, "insert into rocpd_op(id, gpuId, queueId, sequenceId, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)", -1, &m_opInsert, NULL);
+            sqlite3_prepare_v2(m_conn, "insert into rocpd_api_ops(api_id, op_id) values (?,?)", -1, &m_apiOpInsert, NULL);
+        }
+    }
+
+    ~OpTableWriterBackend() {
+        sqlite3_finalize(m_opInsert);
+        sqlite3_finalize(m_apiOpInsert);
+        sqlite3_close(m_conn);
+    }
+
+    void setIdOffset(sqlite3_int64 offset) override { m_idOffset = offset; }
+
+    void writeBatch(void *rowData, int start, int end, int capacity) override {
+        auto *rows = static_cast<OpTable::row*>(rowData);
+
+        sqlite3_exec(m_conn, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+
+        for (int i = start; i <= end; ++i) {
+            int index = 1;
+            OpTable::row &r = rows[i % capacity];
+            sqlite3_int64 primaryKey = i + m_idOffset;
+
+            sqlite3_bind_int64(m_opInsert, index++, primaryKey);
+            sqlite3_bind_int(m_opInsert, index++, r.gpuId);
+            sqlite3_bind_int(m_opInsert, index++, r.queueId);
+            sqlite3_bind_int(m_opInsert, index++, r.sequenceId);
+            sqlite3_bind_int64(m_opInsert, index++, r.start);
+            sqlite3_bind_int64(m_opInsert, index++, r.end);
+            sqlite3_bind_int64(m_opInsert, index++, r.description_id + m_idOffset);
+            sqlite3_bind_int64(m_opInsert, index++, r.opType_id + m_idOffset);
+            sqlite3_step(m_opInsert);
+            sqlite3_reset(m_opInsert);
+
+            index = 1;
+            sqlite3_bind_int64(m_apiOpInsert, index++, sqlite3_int64(r.api_id) + m_idOffset);
+            sqlite3_bind_int64(m_apiOpInsert, index++, sqlite3_int64(i) + m_idOffset);
+            sqlite3_step(m_apiOpInsert);
+            sqlite3_reset(m_apiOpInsert);
+        }
+
+        sqlite3_exec(m_conn, "END TRANSACTION", NULL, NULL, NULL);
+    }
+
+    void flush() override {
+        if (m_directWrite)
+            return;
+        int ret = 0;
+        ret = sqlite3_exec(m_conn, "begin transaction", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "insert into rocpd_op select * from temp_rocpd_op", NULL, NULL, NULL);
+        rpdLog("rocpd_op: %d\n", ret);
+        ret = sqlite3_exec(m_conn, "insert into rocpd_api_ops (api_id, op_id) select api_id, op_id from temp_rocpd_api_ops", NULL, NULL, NULL);
+        rpdLog("rocpd_api_ops: %d\n", ret);
+        ret = sqlite3_exec(m_conn, "delete from temp_rocpd_op", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "delete from temp_rocpd_api_ops", NULL, NULL, NULL);
+        ret = sqlite3_exec(m_conn, "commit", NULL, NULL, NULL);
+    }
+
+private:
+    sqlite3 *m_conn;
+    sqlite3_stmt *m_opInsert;
+    sqlite3_stmt *m_apiOpInsert;
+    sqlite3_int64 m_idOffset{0};
+    bool m_directWrite;
+};
+
+WriterBackend* OpTable::createWriterBackend(const char *basefile, bool directWrite)
+{
+    return new OpTableWriterBackend(basefile, directWrite);
+}
+
+
 class OpTablePrivate
 {
 public:
-    OpTablePrivate(OpTable *cls) : p(cls) {} 
+    OpTablePrivate(OpTable *cls) : p(cls) {}
     static const int BUFFERSIZE = 4096 * 4;
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<OpTable::row, BUFFERSIZE> rows; // Circular buffer
-    std::map<sqlite3_int64, sqlite3_int64> descriptions;
-    std::mutex descriptionLock;
-
-    sqlite3_stmt *opInsert;
-    sqlite3_stmt *apiOpInsert;
-    bool directWrite;
 
     OpTable *p;
 };
 
 
 OpTable::OpTable(const char *basefile, bool directWrite)
-: BufferedTable(basefile, OpTablePrivate::BUFFERSIZE, OpTablePrivate::BATCHSIZE)
+: BufferedTable(basefile, OpTablePrivate::BUFFERSIZE, OpTablePrivate::BATCHSIZE,
+    createWriterBackend(basefile, directWrite))
 , d(new OpTablePrivate(this))
 {
-    int ret;
-    d->directWrite = directWrite;
-
-    if (!directWrite) {
-        ret = sqlite3_exec(m_connection, SCHEMA_OP, NULL, NULL, NULL);
-        ret = sqlite3_exec(m_connection, SCHEMA_API_OPS, NULL, NULL, NULL);
-        ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_op(id, gpuId, queueId, sequenceId, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
-        ret = sqlite3_prepare_v2(m_connection, "insert into temp_rocpd_api_ops(api_id, op_id) values (?,?)", -1, &d->apiOpInsert, NULL);
-    } else {
-        ret = sqlite3_prepare_v2(m_connection, "insert into rocpd_op(id, gpuId, queueId, sequenceId, start, end, description_id, opType_id) values (?,?,?,?,?,?,?,?)", -1, &d->opInsert, NULL);
-        ret = sqlite3_prepare_v2(m_connection, "insert into rocpd_api_ops(api_id, op_id) values (?,?)", -1, &d->apiOpInsert, NULL);
-    }
 }
 
 
@@ -70,22 +144,19 @@ void OpTable::insert(const OpTable::row &row)
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     while (m_head - m_tail >= OpTablePrivate::BUFFERSIZE) {
-        // buffer is full; insert in-line or wait
-        m_wait.notify_one();  // make sure working is running
+        m_wait.notify_one();
         m_wait.wait(lock);
     }
 
     d->rows[(++m_head) % OpTablePrivate::BUFFERSIZE] = row;
 
     if (workerRunning() == false && (m_head - m_tail) >= OpTablePrivate::BATCHSIZE) {
-        //lock.unlock();
         m_wait.notify_one();
     }
 }
 
 void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_int64 &string_id)
 {
-// Disable this for now.  Getting kernel names from roctracer op records now.
 #if 0
     std::lock_guard<std::mutex> guard(d->descriptionLock);
     d->descriptions[api_id] = string_id;
@@ -94,18 +165,7 @@ void OpTable::associateDescription(const sqlite3_int64 &api_id, const sqlite3_in
 
 void OpTable::flushRows()
 {
-    if (d->directWrite)
-        return;
-
-    int ret = 0;
-    ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "insert into rocpd_op select * from temp_rocpd_op", NULL, NULL, NULL);
-    rpdLog("rocpd_op: %d\n", ret);
-    ret = sqlite3_exec(m_connection, "insert into rocpd_api_ops (api_id, op_id) select api_id, op_id from temp_rocpd_api_ops", NULL, NULL, NULL);
-    rpdLog("rocpd_api_ops: %d\n", ret);
-    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_op", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "delete from temp_rocpd_api_ops", NULL, NULL, NULL);
-    ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
+    m_writerBackend->flush();
 }
 
 
@@ -124,54 +184,39 @@ void OpTable::writeRows()
     end = (end > m_head) ? m_head : end;
     lock.unlock();
 
-    sqlite3_exec(m_connection, "BEGIN DEFERRED TRANSACTION", NULL, NULL, NULL);
+    m_writerBackend->writeBatch(d->rows.data(), start, end, BUFFERSIZE);
 
-    for (int i = start; i <= end; ++i) {
-        // insert rocpd_op
-        int index = 1;
-        OpTable::row &r = d->rows[i % BUFFERSIZE];
-        sqlite3_int64 primaryKey = i + m_idOffset;
-
-// Disable this for now.  Getting kernel names from roctracer op records now.
-#if 0
-        // check for description override
-        {
-            std::lock_guard<std::mutex> guard(d->descriptionLock);
-            auto it = d->descriptions.find(r.api_id);
-            if (it != d->descriptions.end()) {
-                r.description_id = it->second;
-                d->descriptions.erase(it);
-            }
-        }
-#endif
-        sqlite3_bind_int64(d->opInsert, index++, primaryKey);
-        sqlite3_bind_int(d->opInsert, index++, r.gpuId);
-        sqlite3_bind_int(d->opInsert, index++, r.queueId);
-        sqlite3_bind_int(d->opInsert, index++, r.sequenceId);
-        sqlite3_bind_int64(d->opInsert, index++, r.start);
-        sqlite3_bind_int64(d->opInsert, index++, r.end);
-        sqlite3_bind_int64(d->opInsert, index++, r.description_id + m_idOffset);
-        sqlite3_bind_int64(d->opInsert, index++, r.opType_id + m_idOffset);
-        int ret = sqlite3_step(d->opInsert);
-        sqlite3_reset(d->opInsert);
-
-        // Insert rocpd_api_ops
-        //sqlite_int64 rowId = sqlite3_last_insert_rowid(m_connection);
-        index = 1;
-        sqlite3_bind_int64(d->apiOpInsert, index++, sqlite3_int64(r.api_id) + m_idOffset);
-        sqlite3_bind_int64(d->apiOpInsert, index++, sqlite3_int64(i) + m_idOffset);
-        ret = sqlite3_step(d->apiOpInsert);
-        sqlite3_reset(d->apiOpInsert);
-    }
     lock.lock();
     m_tail = end;
     lock.unlock();
 
-    sqlite3_exec(m_connection, "END TRANSACTION", NULL, NULL, NULL);
     const timestamp_t cb_end_time = clocktime_ns() + 1;
     char buff[4096];
     std::snprintf(buff, 4096, "count=%d | remaining=%d", end - start + 1, m_head - m_tail);
     createOverheadRecord(cb_begin_time, cb_end_time, "OpTable::writeRows", buff);
+}
+
+
+void OpTable::row::serialize(ByteBuffer &buf) const {
+    buf.writeInt(gpuId);
+    buf.writeInt(queueId);
+    buf.writeInt(sequenceId);
+    buf.writeInt64(start);
+    buf.writeInt64(end);
+    buf.writeInt64(description_id);
+    buf.writeInt64(opType_id);
+    buf.writeInt64(api_id);
+}
+
+void OpTable::row::deserialize(ByteBuffer &buf) {
+    gpuId = buf.readInt();
+    queueId = buf.readInt();
+    sequenceId = buf.readInt();
+    start = buf.readInt64();
+    end = buf.readInt64();
+    description_id = buf.readInt64();
+    opType_id = buf.readInt64();
+    api_id = buf.readInt64();
 }
 
 }  // namespace rpdtracer

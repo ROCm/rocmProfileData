@@ -2,6 +2,7 @@
  * Copyright (c) 2023 Advanced Micro Devices, Inc.
  **************************************************************************/
 #include "Table.h"
+#include "WriterBackend.h"
 #include "Utility.h"
 
 #include <thread>
@@ -25,10 +26,11 @@ public:
     BufferedTable *p;
 };
 
-BufferedTable::BufferedTable(const char *basefile, int bufferSize, int batchsize)
+BufferedTable::BufferedTable(const char *basefile, int bufferSize, int batchsize, WriterBackend *backend)
 : Table(basefile)
 , BUFFERSIZE(bufferSize)
 , BATCHSIZE(batchsize)
+, m_writerBackend(backend)
 , d(new BufferedTablePrivate(this))
 {
     d->done = false;
@@ -40,8 +42,8 @@ BufferedTable::BufferedTable(const char *basefile, int bufferSize, int batchsize
 
 BufferedTable::~BufferedTable()
 {
+    delete m_writerBackend;
     delete d;
-    // finalize here?  Possibly a second time
 }
 
 
@@ -77,6 +79,13 @@ void BufferedTable::finalize()
 bool BufferedTable::workerRunning()
 {
     return d->workerRunning;
+}
+
+void BufferedTable::setIdOffset(sqlite3_int64 offset)
+{
+    Table::setIdOffset(offset);
+    if (m_writerBackend)
+        m_writerBackend->setIdOffset(offset);
 }
 
 void BufferedTablePrivate::work()
