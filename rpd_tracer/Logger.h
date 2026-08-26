@@ -57,8 +57,8 @@ public:
     uint64_t storageGeneration() { return m_storage->generation(); }
     bool writeStackFrames() { return m_writeStackFrames; };
 
-    void resetStorage();
     sqlite3 *getConnection();
+    void resetStorage();
 
 private:
     int m_activeCount {0};
