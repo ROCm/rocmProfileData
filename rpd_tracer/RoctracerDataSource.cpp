@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 #include "RoctracerDataSource.h"
 
-#include <roctracer_hip.h>
-#include <roctracer_ext.h>
-
+#include <roctracer/roctracer_hip.h>
+#include <roctracer/roctracer_ext.h>
+#include <roctracer/roctracer_roctx.h>
 #include <hsa/hsa_ext_amd.h>
 
 #include <sqlite3.h>
@@ -22,16 +22,6 @@ using rpdtracer::RocmApiIdList;
 extern "C" {
     DataSource *RoctracerDataSourceFactory() { return new RoctracerDataSource(); }
 }  // extern "C"
-
-// FIXME: can we avoid shutdown corruption?
-// Other rocm libraries crashing on unload
-// libsqlite unloading before we are done using it
-// Current workaround: register an onexit function when first activity is delivered back
-//                     this let's us unload first, or close to.
-// New workaround: register 3 times, only finalize once.  see register_once
-
-static std::once_flag register_once;
-static std::once_flag registerAgain_once;
 
 //RoctracerDataSource::RoctracerDataSource()
 //{
@@ -89,6 +79,7 @@ namespace {
     int mapDeviceId(int id) { return id - deviceOffset; };
 } // namespace
 
+static RoctracerDataSource *s_instance = nullptr;
 
 void RoctracerDataSource::api_callback(
     uint32_t domain,
@@ -109,7 +100,7 @@ void RoctracerDataSource::api_callback(
             char buff[4096];
             ApiTable::row row;
 
-            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
+            s_instance->cacheIds();
 
             const char *name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cid, 0);
             sqlite3_int64 name_id = logger.stringTable().getOrCreate(name);
@@ -117,7 +108,7 @@ void RoctracerDataSource::api_callback(
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
-            row.domain_id = domain_id;
+            row.domain_id = s_instance->m_domainId;
             row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
@@ -708,7 +699,7 @@ void RoctracerDataSource::api_callback(
                     break;
                 case HIP_API_ID_hipStreamBeginCapture:
                     row.args_id = logger.ustringTable().create(
-                        fmt::format("stream = {} | mode = {}", (void*)data->args.hipStreamBeginCapture.stream, data->args.hipStreamBeginCapture.mode)
+                        fmt::format("stream = {} | mode = {}", (void*)data->args.hipStreamBeginCapture.stream, static_cast<int>(data->args.hipStreamBeginCapture.mode))
                     );
                     break;
                 case HIP_API_ID_hipStreamEndCapture:
@@ -739,8 +730,6 @@ void RoctracerDataSource::api_callback(
             unwind(logger, name, row.api_id);
         }
     }
-
-    std::call_once(register_once, atexit, Logger::rpdFinalize);
 }
 
 
@@ -850,12 +839,26 @@ void RoctracerDataSource::hcc_activity_callback(const char* begin, const char* e
     std::snprintf(buff, 4096, "count=%d", batchSize);
     logger.createOverheadRecord(cb_begin_time, cb_end_time, "hcc_activity_callback", buff);
 
-    std::call_once(registerAgain_once, atexit, Logger::rpdFinalize);
 }
 
 
 
+void RoctracerDataSource::cacheIds()
+{
+    if (m_idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    m_domainId = logger.stringTable().getOrCreate("hip");
+    m_idsCached = true;
+}
+
+void RoctracerDataSource::reset()
+{
+    m_idsCached = false;
+}
+
 void RoctracerDataSource::init() {
+    s_instance = this;
     createDeviceMap();
 
     // Pick some apis to ignore
@@ -866,12 +869,12 @@ void RoctracerDataSource::init() {
     m_apiList.add("__hipPushCallConfiguration");
     m_apiList.add("__hipPopCallConfiguration");
     m_apiList.add("hipCtxSetCurrent");
-    m_apiList.add("hipEventRecord");
-    m_apiList.add("hipEventQuery");
-    m_apiList.add("hipGetDeviceProperties");
+    m_apiList.add("hipGetDevicePropertiesR0600");
+    m_apiList.add("hipGetDeviceCount");
+    m_apiList.add("hipDeviceGetAttribute");
+    m_apiList.add("hipRuntimeGetVersion");
     m_apiList.add("hipPeekAtLastError");
     m_apiList.add("hipModuleGetFunction");
-    m_apiList.add("hipEventCreateWithFlags");
 
     // roctracer properties
     //    Whatever the hell that means.  Magic encantation, thanks.
