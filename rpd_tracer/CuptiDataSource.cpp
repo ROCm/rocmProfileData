@@ -19,18 +19,25 @@ extern "C" {
     DataSource *CuptiDataSourceFactory() { return new CuptiDataSource(); }
 }  // extern "C"
 
-// FIXME: can we avoid shutdown corruption?
-// Other libraries crashing on unload
-// libsqlite unloading before we are done using it
-// Current workaround: register an onexit function when first activity is delivered back
-//                     this let's us unload first, or close to.
-// New workaround: register 3 times, only finalize once.  see register_once
+static CuptiDataSource *s_instance = nullptr;
 
-static std::once_flag register_once;
-static std::once_flag registerAgain_once;
+void CuptiDataSource::cacheIds()
+{
+    if (m_idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    m_domainId = logger.stringTable().getOrCreate("cuda");
+    m_idsCached = true;
+}
+
+void CuptiDataSource::reset()
+{
+    m_idsCached = false;
+}
 
 void CuptiDataSource::init()
 {
+    s_instance = this;
 
     // Pick some apis to ignore
     m_apiList.setInvertMode(true);  // Omit the specified api
@@ -124,7 +131,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             char buff[4096];
             ApiTable::row row;
 
-            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("cuda");
+            s_instance->cacheIds();
 
             const char *name = "";
             cuptiGetCallbackName(domain, cbid, &name);
@@ -133,7 +140,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
-            row.domain_id = domain_id;
+            row.domain_id = s_instance->m_domainId;
             row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
@@ -603,7 +610,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             char buff[4096];
             ApiTable::row row;
 
-            static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("cuda");
+            s_instance->cacheIds();
 
             const char *name = "";
             cuptiGetCallbackName(domain, cbid, &name);
@@ -612,7 +619,7 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
             row.tid = GetTid();
             row.start = timestamp;  // From TLS from preceding enter call
             row.end = clocktime_ns();
-            row.domain_id = domain_id;
+            row.domain_id = s_instance->m_domainId;
             row.category_id = EMPTY_STRING_ID;
             row.apiName_id = name_id;
             row.args_id = EMPTY_STRING_ID;
@@ -621,7 +628,6 @@ void CUPTIAPI CuptiDataSource::api_callback(void *userdata, CUpti_CallbackDomain
         }
     }
     // nvtx handling moved to NvtxDataSource
-    std::call_once(register_once, atexit, Logger::rpdFinalize);
 }
 
 
@@ -659,8 +665,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.gpuId = record->deviceId;
                             row.queueId = record->contextId;        // FIXME: this or stream
                             row.sequenceId = record->streamId;
-                            row.start = record->start + toffset;
-                            row.end = record->end + toffset;
+                            row.start = adjust_external_ts(record->start + toffset);
+                            row.end = adjust_external_ts(record->end + toffset);
                             row.description_id = EMPTY_STRING_ID;
                             row.opType_id = logger.stringTable().getOrCreate("Memcpy");
                             row.api_id = record->correlationId;
@@ -673,8 +679,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.gpuId = record->deviceId;
                             row.queueId = record->contextId;        // FIXME: this or stream
                             row.sequenceId = record->streamId;
-                            row.start = record->start + toffset;
-                            row.end = record->end + toffset;
+                            row.start = adjust_external_ts(record->start + toffset);
+                            row.end = adjust_external_ts(record->end + toffset);
                             row.description_id = EMPTY_STRING_ID;
                             row.opType_id = logger.stringTable().getOrCreate("Memset");
                             row.api_id = record->correlationId;
@@ -689,8 +695,8 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
                             row.gpuId = record->deviceId;
                             row.queueId = record->contextId;	// FIXME: this or stream
                             row.sequenceId = record->streamId;
-                            row.start = record->start + toffset;
-                            row.end = record->end + toffset;
+                            row.start = adjust_external_ts(record->start + toffset);
+                            row.end = adjust_external_ts(record->end + toffset);
                             row.description_id = logger.stringTable().getOrCreate(cxx_demangle(record->name));
                             row.opType_id = logger.stringTable().getOrCreate(name);
                             row.api_id = record->correlationId;
@@ -718,7 +724,6 @@ void CUPTIAPI CuptiDataSource::bufferCompleted(CUcontext ctx, uint32_t streamId,
       }
     }
     free(buffer);
-    std::call_once(registerAgain_once, atexit, Logger::rpdFinalize);
 }
 
 

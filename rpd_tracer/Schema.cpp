@@ -4,9 +4,11 @@
 #include "Schema.h"
 
 #include <sqlite3.h>
+#include "Utility.h"
 #include <stdio.h>
 #include <string.h>
 
+#include "Utility.h"
 #include "tableSchema.h"
 #include "utilitySchema.h"
 
@@ -15,7 +17,7 @@ namespace rpdtracer {
 void ensureSchema(const char *basefile)
 {
     sqlite3 *db = nullptr;
-    int ret = sqlite3_open(basefile, &db);
+    int ret = rpdSqliteOpen(basefile, &db);
     if (ret != SQLITE_OK) {
         fprintf(stderr, "rpd_tracer: cannot open database %s: %s\n", basefile, sqlite3_errmsg(db));
         return;

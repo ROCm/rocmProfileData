@@ -217,6 +217,7 @@ tags
 *.rpd-wal
 *.json
 *.o
+*.d
 
 # data / output files
 *.csv
