@@ -78,7 +78,7 @@ void CopyApiTable::flushRows()
     int ret = 0;
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_copyapi select * from temp_rocpd_copyapi", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_copyapi: %d\n", ret);
+    rpdLog("rocpd_copyapi: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_copyapi", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }

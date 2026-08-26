@@ -3,13 +3,19 @@
  **************************************************************************/
 #pragma once
 
+#include <cstdarg>
+#include <time.h>
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 #include <cxxabi.h>
+#include <cstdlib>
+#include <cstring>
+#include <map>
 #include <string>
 #include <cstddef>
 #include <cstdint>
 #include <sqlite3.h>
+#include "rlog/client.h"
 
 namespace rpdtracer {
 
@@ -43,6 +49,35 @@ static timestamp_t clocktime_ns() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ((timestamp_t)ts.tv_sec * 1000000000) + ts.tv_nsec;
+}
+
+std::map<std::string, std::string>& configMap();
+void setConfig(const char *property, const char *value);
+const char* getConfig(const char *envvar, const char *property, const char *defaultValue);
+
+static inline bool rpdQuiet()
+{
+    static bool quiet = (atoi(getConfig("RPDT_QUIET", "quiet", "0")) != 0);
+    return quiet;
+}
+
+__attribute__((format(printf, 1, 2)))
+static inline void rpdLog(const char *fmt, ...)
+{
+    if (rpdQuiet())
+        return;
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
+static inline int rpdSqliteOpen(const char *basefile, sqlite3 **db)
+{
+    if (strcmp(basefile, ":memory:") == 0)
+        return sqlite3_open_v2("file:rpdmemdb?vfs=memdb", db,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI, NULL);
+    return sqlite3_open(basefile, db);
 }
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);

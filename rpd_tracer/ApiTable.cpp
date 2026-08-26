@@ -3,8 +3,6 @@
 #include "Table.h"
 
 #include <thread>
-#include <deque>
-#include <map>
 #include <array>
 #include <mutex>
 
@@ -26,13 +24,9 @@ public:
     static const int BATCHSIZE = 4096;           // rows per transaction
     std::array<ApiTable::row, BUFFERSIZE> rows; // Circular buffer
 
-    std::map<std::pair<sqlite3_int64, sqlite3_int64>, std::deque<ApiTable::row>> roctxStacks;
-
     sqlite3_stmt *apiInsert;
     sqlite3_stmt *apiInsertNoId;
     bool directWrite;
-
-    sqlite3_int64 roctxResumeTime;
 
     ApiTable *p;
 };
@@ -54,7 +48,6 @@ ApiTable::ApiTable(const char *basefile, bool directWrite)
         ret = sqlite3_prepare_v2(m_connection, "insert into rocpd_api(pid, tid, start, end, domain_id, category_id, apiName_id, args_id) values (?,?,?,?,?,?)", -1, &d->apiInsertNoId, NULL);
     }
 
-    d->roctxResumeTime = 0;
 }
 
 
@@ -92,114 +85,6 @@ void ApiTable::insert(const ApiTable::row &row)
     }
 }
 
-static sqlite3_int64 roctx_id_hack = sqlite3_int64(1) << 31;
-
-void ApiTable::insertRoctx(ApiTable::row &row)
-{
-    std::unique_lock<std::mutex> lock(m_mutex);
-    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
-        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
-        const timestamp_t start = clocktime_ns();
-        m_wait.notify_one();
-        m_wait.wait(lock);
-        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
-        const timestamp_t end = clocktime_ns();
-        lock.unlock();
-        createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::ApiTable::insert");
-        lock.lock();
-    }
-    row.api_id = ++roctx_id_hack;
-    d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = row;
-
-    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE) {
-        lock.unlock();
-        m_wait.notify_one();
-    }
-}
-
-void ApiTable::pushRoctx(const ApiTable::row &row)
-{
-    std::unique_lock<std::mutex> lock(m_mutex);
-    auto key = std::pair<sqlite3_int64, sqlite3_int64>(row.pid, row.tid);
-    auto &stack = d->roctxStacks[key];
-    stack.push_front(row);
-}
-
-void ApiTable::popRoctx(const ApiTable::row &row)
-{
-    std::unique_lock<std::mutex> lock(m_mutex);
-    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
-        //const timestamp_t start = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
-        const timestamp_t start = clocktime_ns();
-        m_wait.notify_one();
-        m_wait.wait(lock);
-        //const timestamp_t end = util::HsaTimer::clocktime_ns(util::HsaTimer::TIME_ID_CLOCK_MONOTONIC);
-	//FIXME
-        const timestamp_t end = clocktime_ns();
-        lock.unlock();
-        createOverheadRecord(start, end, "BLOCKING", "rpd_tracer::ApiTable::insert");
-        lock.lock();
-    }
-    auto key = std::pair<sqlite3_int64, sqlite3_int64>(row.pid, row.tid);
-    auto &stack = d->roctxStacks[key];
-    if (stack.empty() == false) {
-        ApiTable::row &r = stack.front();
-        r.end = row.end;
-        r.api_id = ++roctx_id_hack;
-        d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = r;
-        stack.pop_front();
-    }
-    else {  // Pop without a push.  This is due to suspend/resume.  Fudge the start.
-        ApiTable::row &r = const_cast<ApiTable::row&>(row);
-        r.start = d->roctxResumeTime;
-        r.api_id = ++roctx_id_hack;
-        d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = r;
-    }
-
-    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE) {
-        lock.unlock();
-        m_wait.notify_one();
-    }
-}
-
-void ApiTable::suspendRoctx(sqlite3_int64 atTime)
-{
-    std::unique_lock<std::mutex> lock(m_mutex);
-    if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
-        m_wait.notify_one();
-        m_wait.wait(lock);
-    }
-
-    // Profiling is suspended, we won't get pops for anything pushed.  So end them all now.
-    auto it = d->roctxStacks.begin();
-    while (it != d->roctxStacks.end()) {
-        auto &stack = it->second;
-        while (stack.empty() == false) {
-            // Make sure there is room
-            if (m_head - m_tail >= ApiTablePrivate::BUFFERSIZE) {
-                m_wait.notify_one();
-                m_wait.wait(lock);
-            }
-            ApiTable::row &r = stack.front();
-            r.end = atTime;
-            r.api_id = ++roctx_id_hack;
-            d->rows[(++m_head) % ApiTablePrivate::BUFFERSIZE] = r;
-            stack.pop_front();
-        }
-        ++it;
-    }
-
-    if (workerRunning() == false && (m_head - m_tail) >= ApiTablePrivate::BATCHSIZE)
-        m_wait.notify_one();
-}
-
-void ApiTable::resumeRoctx(sqlite3_int64 atTime)
-{
-    d->roctxResumeTime = atTime;
-}
 
 
 void ApiTable::flushRows()
@@ -210,7 +95,7 @@ void ApiTable::flushRows()
     int ret = 0;
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_api select * from temp_rocpd_api", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_api: %d\n", ret);
+    rpdLog("rocpd_api: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_api", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 }

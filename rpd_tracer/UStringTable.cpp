@@ -108,7 +108,7 @@ void UStringTable::flushRows()
 
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_ustring select * from temp_rocpd_ustring", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_ustring: %d\n", ret);
+    rpdLog("rocpd_ustring: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_ustring", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
 

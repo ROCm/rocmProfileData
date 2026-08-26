@@ -20,6 +20,7 @@ public:
     bool done;
     bool workerRunning;
     bool flushRequested;
+    int flushTarget;
 
     BufferedTable *p;
 };
@@ -33,6 +34,7 @@ BufferedTable::BufferedTable(const char *basefile, int bufferSize, int batchsize
     d->done = false;
     d->workerRunning = true;
     d->flushRequested = false;
+    d->flushTarget = 0;
     d->worker = new std::thread(&BufferedTablePrivate::work, d);
 }
 
@@ -47,6 +49,7 @@ void BufferedTable::flush()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
 
+    d->flushTarget = m_head;
     d->flushRequested = true;
     m_wait.notify_one();
     while (d->flushRequested)
@@ -88,7 +91,7 @@ void BufferedTablePrivate::work()
             lock.lock();
         }
         if (flushRequested) {
-            while (p->m_head > p->m_tail) {
+            while (p->m_tail < flushTarget) {
                 lock.unlock();
                 p->writeRows();
                 lock.lock();

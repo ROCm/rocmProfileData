@@ -24,6 +24,7 @@ public:
     void startTracing() override;
     void stopTracing() override;
     void flush() override;
+    void reset() override;
 
 private:
     RocprofDataSourcePrivate *d;

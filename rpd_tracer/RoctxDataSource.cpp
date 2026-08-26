@@ -34,8 +34,10 @@ public:
     sqlite3_int64 markCategoryId{0};
     sqlite3_int64 apiNameId{0};
 
-    std::atomic<sqlite3_int64> idCounter{sqlite3_int64(1) << 31};
     std::atomic<sqlite3_int64> resumeTime{0};
+
+    bool idsCached{false};
+    void cacheIds();
 };
 
 }    // namespace rpdtracer
@@ -81,18 +83,16 @@ static void registerThreadStack()
 }
 
 
-// ---- lazy init for string IDs ----
-
-static std::once_flag s_cacheOnce;
-
-static void cacheStringIds()
+void RoctxDataSourcePrivate::cacheIds()
 {
-    RoctxDataSourcePrivate *d = RoctxDataSource::instance().priv();
+    if (idsCached)
+        return;
     Logger &logger = Logger::singleton();
-    d->domainId = logger.stringTable().getOrCreate("roctx");
-    d->rangeCategoryId = logger.stringTable().getOrCreate("range");
-    d->markCategoryId = logger.stringTable().getOrCreate("mark");
-    d->apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    domainId = logger.stringTable().getOrCreate("roctx");
+    rangeCategoryId = logger.stringTable().getOrCreate("range");
+    markCategoryId = logger.stringTable().getOrCreate("mark");
+    apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    idsCached = true;
 }
 
 // ---- roctx shim functions ----
@@ -105,7 +105,7 @@ void roctxMarkA(const char *message)
     RoctxDataSourcePrivate *d = RoctxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     Logger &logger = Logger::singleton();
 
@@ -118,7 +118,7 @@ void roctxMarkA(const char *message)
     row.category_id = d->markCategoryId;
     row.apiName_id = d->apiNameId;
     row.args_id = logger.ustringTable().create(message);
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
 }
@@ -128,7 +128,7 @@ int roctxRangePushA(const char *message)
     RoctxDataSourcePrivate *d = RoctxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return -1;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     registerThreadStack();
 
@@ -168,7 +168,7 @@ int roctxRangePop()
         row.start = resumeTime;
 
     row.end = clocktime_ns();
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
     return static_cast<int>(t_roctxStack.size());
@@ -199,6 +199,11 @@ void RoctxDataSource::flush()
 {
 }
 
+void RoctxDataSource::reset()
+{
+    d->idsCached = false;
+}
+
 void RoctxDataSource::end()
 {
     d->active.store(false, std::memory_order_relaxed);
@@ -214,7 +219,7 @@ void RoctxDataSource::end()
             ApiTable::row row = stack.front();
             stack.pop_front();
             row.end = now;
-            row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+            row.api_id = Logger::singleton().nextAnnotationId();
             logger.apiTable().insert(row);
         }
     }

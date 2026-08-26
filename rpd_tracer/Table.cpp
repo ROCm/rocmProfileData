@@ -24,7 +24,7 @@ static int wal_check_callback(void *data, int ncols, char **values, char **names
 Table::Table(const char *basefile)
 : m_connection(NULL)
 {
-    sqlite3_open(basefile, &m_connection);
+    rpdSqliteOpen(basefile, &m_connection);
     sqlite3_busy_handler(m_connection, &busy_handler, NULL);
 
     bool walEnabled = false;
