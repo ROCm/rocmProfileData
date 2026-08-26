@@ -78,13 +78,23 @@ static std::map<std::pair<int,int>, std::deque<ApiTable::row>*> s_stacks;
 
 static void registerThreadStack()
 {
-    static thread_local bool registered = false;
-    if (!registered) {
-        std::lock_guard<std::mutex> lock(s_stacksMutex);
-        auto key = std::pair<int,int>(GetPid(), GetTid());
-        s_stacks[key] = &t_rlogStack;
-        registered = true;
-    }
+    // Registers this thread's stack and removes it when the thread exits,
+    // so the drain never dereferences a destroyed thread_local
+    struct StackRegistrator {
+        std::pair<int,int> key;
+        StackRegistrator() {
+            key = std::pair<int,int>(GetPid(), GetTid());
+            std::lock_guard<std::mutex> lock(s_stacksMutex);
+            s_stacks[key] = &t_rlogStack;
+        }
+        ~StackRegistrator() {
+            std::lock_guard<std::mutex> lock(s_stacksMutex);
+            auto it = s_stacks.find(key);
+            if (it != s_stacks.end() && it->second == &t_rlogStack)
+                s_stacks.erase(it);
+        }
+    };
+    static thread_local StackRegistrator registrator;
 }
 
 
