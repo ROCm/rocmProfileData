@@ -54,7 +54,13 @@ void RtlDataSource::on_api_event(const trace_db::ApiEventRecord& event, void* us
 {
     Logger &logger = Logger::singleton();
 
-    static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
+    uint64_t gen = logger.storageGeneration();
+    static sqlite3_int64 domain_id = 0;
+    static uint64_t domain_gen = UINT64_MAX;
+    if (gen != domain_gen) {
+        domain_id = logger.stringTable().getOrCreate("hip");
+        domain_gen = gen;
+    }
 
     sqlite3_int64 name_id = logger.stringTable().getOrCreate(event.name);
 
@@ -127,7 +133,13 @@ void RtlDataSource::on_kernel_event(const trace_db::KernelEventRecord& event, vo
     sqlite3_int64 name_id = logger.stringTable().getOrCreate(event.name);
     sqlite3_int64 desc_id = logger.stringTable().getOrCreate(event.name);
 
-    static sqlite3_int64 kernel_type_id = logger.stringTable().getOrCreate("KernelExecution");
+    uint64_t gen = logger.storageGeneration();
+    static sqlite3_int64 kernel_type_id = 0;
+    static uint64_t kernel_type_gen = UINT64_MAX;
+    if (gen != kernel_type_gen) {
+        kernel_type_id = logger.stringTable().getOrCreate("KernelExecution");
+        kernel_type_gen = gen;
+    }
 
     OpTable::row row;
     row.gpuId = event.device_id;
