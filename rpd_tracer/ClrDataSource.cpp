@@ -113,20 +113,15 @@ void ClrDataSource::processRecord(const hipApiRecordExt* r)
     if (!m_apiList.contains(r->api_name))
         return;
 
+    cacheIds();
     Logger &logger = Logger::singleton();
-    static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
-    static sqlite3_int64 dispatch_type_id = logger.stringTable().getOrCreate("KernelExecution");
-    static sqlite3_int64 copy_type_id = logger.stringTable().getOrCreate("Memcpy");
-    static sqlite3_int64 barrier_type_id = logger.stringTable().getOrCreate("Barrier");
-    static sqlite3_int64 sdma_id = logger.stringTable().getOrCreate("SDMA");
-    static sqlite3_int64 fill_id = logger.stringTable().getOrCreate("Fill");
 
     ApiTable::row row;
     row.pid = GetPid();
     row.tid = static_cast<int>(static_cast<sqlite3_int64>(r->thread_id)); // FIXME need OS tid
     row.start = static_cast<sqlite3_int64>(r->start_ns);
     row.end = static_cast<sqlite3_int64>(r->end_ns);
-    row.domain_id = domain_id;
+    row.domain_id = m_domainId;
     row.category_id = EMPTY_STRING_ID;
     row.apiName_id = logger.stringTable().getOrCreate(r->api_name);
     row.args_id = EMPTY_STRING_ID;
@@ -155,7 +150,7 @@ void ClrDataSource::processRecord(const hipApiRecordExt* r)
             oprow.api_id = row.api_id;
 
             if (gpu->op == HIP_OP_DISPATCH_EXT) {
-                oprow.opType_id = dispatch_type_id;
+                oprow.opType_id = m_dispatchTypeId;
                 oprow.description_id = (gpu->kernel_name && !gpu->is_graph)
                     ? logger.stringTable().getOrCreate(gpu->kernel_name)
                     : EMPTY_STRING_ID;
@@ -172,11 +167,11 @@ void ClrDataSource::processRecord(const hipApiRecordExt* r)
                 krow.workgroupZ = static_cast<int>(gpu->block_z);
                 logger.kernelApiTable().insert(krow);
             } else if (gpu->op == HIP_OP_COPY_EXT) {
-                oprow.opType_id = copy_type_id;
+                oprow.opType_id = m_copyTypeId;
                 if (hipCopyKindIsSDMAExt((HipCopyKindExt)gpu->copy_kind))
-                    oprow.description_id = sdma_id;
+                    oprow.description_id = m_sdmaId;
                 else if (gpu->copy_kind == HIP_COPY_KIND_FILL_EXT)
-                    oprow.description_id = fill_id;
+                    oprow.description_id = m_fillId;
                 else
                     oprow.description_id = EMPTY_STRING_ID;
 
@@ -189,7 +184,7 @@ void ClrDataSource::processRecord(const hipApiRecordExt* r)
                 crow.kind = static_cast<int>(gpu->copy_kind);
                 logger.copyApiTable().insert(crow);
             } else {
-                oprow.opType_id = barrier_type_id;
+                oprow.opType_id = m_barrierTypeId;
                 oprow.description_id = EMPTY_STRING_ID;
             }
 
@@ -208,6 +203,25 @@ void ClrDataSource::processRecord(const hipApiRecordExt* r)
     }
 }
 
+
+void ClrDataSource::cacheIds()
+{
+    if (m_idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    m_domainId = logger.stringTable().getOrCreate("hip");
+    m_dispatchTypeId = logger.stringTable().getOrCreate("KernelExecution");
+    m_copyTypeId = logger.stringTable().getOrCreate("Memcpy");
+    m_barrierTypeId = logger.stringTable().getOrCreate("Barrier");
+    m_sdmaId = logger.stringTable().getOrCreate("SDMA");
+    m_fillId = logger.stringTable().getOrCreate("Fill");
+    m_idsCached = true;
+}
+
+void ClrDataSource::reset()
+{
+    m_idsCached = false;
+}
 
 void ClrDataSource::flush()
 {

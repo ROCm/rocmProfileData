@@ -5,6 +5,7 @@
 
 #include "DataSource.h"
 
+#include <sqlite3.h>
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -23,6 +24,7 @@ public:
     void startTracing() override;
     void stopTracing() override;
     void flush() override;
+    void reset() override;
 
 private:
     static void chunkCallback(const hipApiRecordExt* records, uint32_t count,
@@ -56,6 +58,15 @@ private:
     std::vector<Range> m_ranges;
     std::atomic<uint64_t> m_correlationId {0};
     size_t m_processedCount {0};
+
+    bool m_idsCached {false};
+    sqlite3_int64 m_domainId {0};
+    sqlite3_int64 m_dispatchTypeId {0};
+    sqlite3_int64 m_copyTypeId {0};
+    sqlite3_int64 m_barrierTypeId {0};
+    sqlite3_int64 m_sdmaId {0};
+    sqlite3_int64 m_fillId {0};
+    void cacheIds();
 };
 
 }    // namespace rpdtracer
