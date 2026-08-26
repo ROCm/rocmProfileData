@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <list>
+#include <vector>
+#include <mutex>
 #include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
