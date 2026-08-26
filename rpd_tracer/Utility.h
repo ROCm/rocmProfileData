@@ -3,10 +3,12 @@
  **************************************************************************/
 #pragma once
 
+#include <time.h>
 #include <unistd.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 #include <cxxabi.h>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <string>
 #include <cstddef>
@@ -69,6 +71,14 @@ static inline const char* getConfig(const char *envvar, const char *property, co
     if (val != nullptr)
         return val;
     return rlog::getProperty("rpd_tracer", property, defaultValue);
+}
+
+static inline int rpdSqliteOpen(const char *basefile, sqlite3 **db)
+{
+    if (strcmp(basefile, ":memory:") == 0)
+        return sqlite3_open_v2("file:rpdmemdb?vfs=memdb", db,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI, NULL);
+    return sqlite3_open(basefile, db);
 }
 
 void createOverheadRecord(uint64_t start, uint64_t end, const std::string &name, const std::string &args);

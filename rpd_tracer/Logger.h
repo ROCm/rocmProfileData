@@ -52,6 +52,7 @@ public:
     bool writeStackFrames() { return m_writeStackFrames; };
 
     void resetStorage();
+    sqlite3 *getConnection();
 
 private:
     int m_activeCount {0};
