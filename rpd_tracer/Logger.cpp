@@ -135,6 +135,27 @@ void Logger::init()
         "RocmSmiDataSourceFactory"
         };
 
+    // RPDT_DATASOURCES: comma-separated list of DataSource names to prioritize.
+    // Each is moved to the front of the factory list (or added if not present),
+    // preserving the order given so the first entry ends up first.
+    const char *dsenv = getenv("RPDT_DATASOURCES");
+    if (dsenv != nullptr) {
+        std::vector<std::string> extra;
+        std::string dslist(dsenv);
+        size_t pos = 0, end;
+        do {
+            end = dslist.find(',', pos);
+            std::string name = dslist.substr(pos, end == std::string::npos ? end : end - pos);
+            if (!name.empty())
+                extra.push_back(name + "Factory");
+            pos = end + 1;
+        } while (end != std::string::npos);
+        for (auto it = extra.rbegin(); it != extra.rend(); ++it) {
+            factories.remove(*it);
+            factories.push_front(*it);
+        }
+    }
+
     std::list<std::string> rocmFactories = {
         "RocprofDataSourceFactory",
         "ClrDataSourceFactory",
