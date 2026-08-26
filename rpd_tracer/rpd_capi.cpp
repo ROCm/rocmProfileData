@@ -23,6 +23,7 @@
 
 #include <vector>
 #include <mutex>
+#include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
 
@@ -66,6 +67,10 @@ static void rpdTracerInit()
     Logger::rpdInit();
 
     static auto real_cxa_atexit = (int(*)(void(*)(void*), void*, void*))dlsym(RTLD_NEXT, "__cxa_atexit");
+    if (real_cxa_atexit == nullptr) {
+        fprintf(stderr, "rpd_tracer: dlsym(__cxa_atexit) failed, skipping atexit interception\n");
+        return;
+    }
     real_cxa_atexit(ourAtexitHandler, nullptr, nullptr);
 }
 
