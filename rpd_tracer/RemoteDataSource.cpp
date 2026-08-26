@@ -117,6 +117,11 @@ static void deserializeStackFrameTable(ByteBuffer &buf, int rowCount,
 {
     deserializeAndWrite<StackFrameTable::row>(buf, rowCount, idOffset, nodeId, backend);
 }
+static void deserializeCounterTable(ByteBuffer &buf, int rowCount,
+    sqlite3_int64 idOffset, int nodeId, WriterBackend *backend)
+{
+    deserializeAndWrite<CounterTable::row>(buf, rowCount, idOffset, nodeId, backend);
+}
 
 
 /**************************************************************************
@@ -163,6 +168,8 @@ void RemoteDataSource::registerChannel(const char *tag, bool directWrite,
         ch->backend = MonitorTable::createWriterBackend(m_basefile.c_str(), directWrite);
     else if (std::string(tag) == "StackFrameTable")
         ch->backend = StackFrameTable::createWriterBackend(m_basefile.c_str(), directWrite);
+    else if (std::string(tag) == "CounterTable")
+        ch->backend = CounterTable::createWriterBackend(m_basefile.c_str(), directWrite);
 
     m_channels[tag] = ch;
 }
@@ -227,6 +234,7 @@ void RemoteDataSource::init()
     registerChannel("OpTable", m_directWrite, deserializeOpTable);
     registerChannel("MonitorTable", m_directWrite, deserializeMonitorTable);
     registerChannel("StackFrameTable", m_directWrite, deserializeStackFrameTable);
+    registerChannel("CounterTable", m_directWrite, deserializeCounterTable);
 
     // Start writer threads
     for (auto &pair : m_channels) {

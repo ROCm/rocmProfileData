@@ -13,7 +13,7 @@
  *     a recv thread per connection.
  *   - Recv threads: read batch messages, enqueue raw bytes to the
  *     matching WriterChannel.
- *   - Writer threads (8, one per table type): dequeue batches,
+ *   - Writer threads (9, one per table type): dequeue batches,
  *     deserialize rows, write to SQLite via SqliteWriterBackend.
  *     Each has its own connection + temp tables, so INSERT VALUES
  *     is thread-local with zero contention. Only the periodic
