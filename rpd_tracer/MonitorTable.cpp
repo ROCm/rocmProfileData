@@ -78,7 +78,7 @@ void MonitorTable::insert(const MonitorTable::row &row)
 
 #if 0
     static sqlite3_int64 prev = clocktime_ns();
-    fprintf(stderr, "      %lld   delta %lld\n", row.start, row.start - prev);
+    rpdLog("      %lld   delta %lld\n", row.start, row.start - prev);
     prev = row.start;
 #endif
 

@@ -100,9 +100,9 @@ void OpTable::flushRows()
     int ret = 0;
     ret = sqlite3_exec(m_connection, "begin transaction", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "insert into rocpd_op select * from temp_rocpd_op", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_op: %d\n", ret);
+    rpdLog("rocpd_op: %d\n", ret);
     ret = sqlite3_exec(m_connection, "insert into rocpd_api_ops (api_id, op_id) select api_id, op_id from temp_rocpd_api_ops", NULL, NULL, NULL);
-    fprintf(stderr, "rocpd_api_ops: %d\n", ret);
+    rpdLog("rocpd_api_ops: %d\n", ret);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_op", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "delete from temp_rocpd_api_ops", NULL, NULL, NULL);
     ret = sqlite3_exec(m_connection, "commit", NULL, NULL, NULL);
