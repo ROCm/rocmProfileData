@@ -297,8 +297,23 @@ void RemoteDataSource::end()
 
 void RemoteDataSource::flush()
 {
-    for (auto &pair : m_channels)
-        pair.second->backend->flush();
+    // Enqueue flush items so each backend's sqlite connection is used by
+    // its writer thread only; wait for each to complete.
+    for (auto &pair : m_channels) {
+        WriterChannel *ch = pair.second;
+        uint64_t seq;
+        {
+            std::lock_guard<std::mutex> lock(ch->mutex);
+            BatchItem flushItem;
+            flushItem.rowCount = 0;
+            seq = ++ch->nextFlushSeq;
+            flushItem.flushSeq = seq;
+            ch->queue.push(std::move(flushItem));
+        }
+        ch->cv.notify_one();
+        std::unique_lock<std::mutex> lock(ch->flushMutex);
+        ch->flushCv.wait(lock, [ch, seq]() { return ch->completedFlushSeq >= seq; });
+    }
 }
 
 /**************************************************************************
@@ -321,8 +336,11 @@ void RemoteDataSource::acceptLoop()
             continue;
 
         TcpConnection *conn = m_listener.accept();
-        if (!conn)
-            break;
+        if (!conn) {
+            // Transient accept failure (e.g. EMFILE); poll keeps this loop gated
+            rpdLog("RemoteDataSource: accept failed: %s\n", strerror(errno));
+            continue;
+        }
 
         // Read handshake
         char tag[32];
@@ -463,9 +481,14 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
             channel->queue.pop();
         }
 
-        // rowCount == 0 is a flush signal enqueued by recvLoop
+        // rowCount == 0 is a flush signal (enqueued by recvLoop or flush())
         if (item.rowCount == 0) {
             channel->backend->flush();
+            if (item.flushSeq != 0) {
+                channel->completedFlushSeq = item.flushSeq;
+                std::lock_guard<std::mutex> lock(channel->flushMutex);
+                channel->flushCv.notify_all();
+            }
             continue;
         }
 
@@ -485,8 +508,14 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
         if (item.rowCount > 0)
             channel->deserializeAndWrite(item.data, item.rowCount,
                                          item.idOffset, item.nodeId, channel->backend);
-        else
+        else {
             channel->backend->flush();
+            if (item.flushSeq != 0) {
+                channel->completedFlushSeq = item.flushSeq;
+                std::lock_guard<std::mutex> flock(channel->flushMutex);
+                channel->flushCv.notify_all();
+            }
+        }
         channel->queue.pop();
     }
 

@@ -30,6 +30,7 @@
 #include "ByteBuffer.h"
 #include "TcpConnection.h"
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <queue>
@@ -58,6 +59,7 @@ private:
         sqlite3_int64 idOffset;
         int nodeId;
         int rowCount;
+        uint64_t flushSeq{0};
     };
 
     using DeserializeAndWriteFn = void (*)(ByteBuffer &buf, int rowCount,
@@ -72,6 +74,10 @@ private:
         std::condition_variable cv;
         std::thread *worker{nullptr};
         bool done{false};
+        std::mutex flushMutex;
+        std::condition_variable flushCv;
+        uint64_t nextFlushSeq{0};
+        uint64_t completedFlushSeq{0};
     };
 
     void registerChannel(const char *tag, bool directWrite, DeserializeAndWriteFn fn);
@@ -90,7 +96,7 @@ private:
     int m_port{0};
     std::string m_basefile;
     bool m_directWrite{false};
-    bool m_running{false};
+    std::atomic<bool> m_running{false};
 };
 
 }  // namespace rpdtracer
