@@ -21,9 +21,11 @@
 # THE SOFTWARE.
 ################################################################################
 OUTPUT_FILE=$(rlog-config get rpd_tracer:filename 2>/dev/null || echo "trace.rpd")
+CLOCKSYNC_PORT=$(rlog-config get rpd_tracer:clocksync_port 2>/dev/null || echo "29123")
+LOGAGG_PORT=$(rlog-config get rpd_tracer:logagg_port 2>/dev/null || echo "29223")
+EXIT_DELAY=$(rlog-config get rpd_tracer:exit_delay 2>/dev/null || echo "30")
 RANK=""
 MASTER=""
-EXIT_DELAY=30
 LOAD_ONLY=0
 
 while [ $# -gt 0 ]; do
@@ -45,11 +47,13 @@ if [ "$LOAD_ONLY" = "1" ]; then
   export RPDT_DELAYINIT=1
 fi
 
-if [ -n "$RANK" ]; then
+if [ -n "$RANK" ] && [ -n "$MASTER" ]; then
   export RPDT_CLOCKSYNC_RANK=${RANK}
-  if [ -n "$MASTER" ]; then
-    export RPDT_CLOCKSYNC_MASTER=${MASTER}
-  fi
+  export RPDT_CLOCKSYNC_MASTER=${MASTER}
+  export RPDT_NODE_ID=${RANK}
+  export RPDT_LOGAGG_HOST=${MASTER}
+  export RPDT_CLOCKSYNC_PORT=${CLOCKSYNC_PORT}
+  export RPDT_LOGAGG_PORT=${LOGAGG_PORT}
   DELAY_ARG=""
   if [ "$RANK" = "0" ]; then
     DELAY_ARG="--exit-delay ${EXIT_DELAY}"
