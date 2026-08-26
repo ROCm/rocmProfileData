@@ -47,11 +47,17 @@ if [ "$LOAD_ONLY" = "1" ]; then
   export RPDT_DELAYINIT=1
 fi
 
-if [ -n "$RANK" ] && [ -n "$MASTER" ]; then
+if [ -n "$RANK" ]; then
+  if [ "$RANK" != "0" ] && [ -z "$MASTER" ]; then
+    echo "runTracer.sh: --master is required for --rank ${RANK}" >&2
+    exit 1
+  fi
   export RPDT_CLOCKSYNC_RANK=${RANK}
-  export RPDT_CLOCKSYNC_MASTER=${MASTER}
+  if [ -n "$MASTER" ]; then
+    export RPDT_CLOCKSYNC_MASTER=${MASTER}
+    export RPDT_LOGAGG_HOST=${MASTER}
+  fi
   export RPDT_NODE_ID=${RANK}
-  export RPDT_LOGAGG_HOST=${MASTER}
   export RPDT_CLOCKSYNC_PORT=${CLOCKSYNC_PORT}
   export RPDT_LOGAGG_PORT=${LOGAGG_PORT}
   DELAY_ARG=""
