@@ -79,7 +79,6 @@ namespace
                     crow.size = *(reinterpret_cast<const size_t*>(arg_value_addr));
                 }
                 else if (strcmp("kind", arg_name) == 0) {
-                    crow.kindStr = std::string(arg_value_str);
                     crow.kind = *(reinterpret_cast<const hipMemcpyKind*>(arg_value_addr));
                 }
                 else if (strcmp("stream", arg_name) == 0) {
@@ -283,6 +282,12 @@ public:
     //std::atomic<uint64_t> apiDataHead{0}, apiDataTail{0};	// wrap detection
 
     bool logArgs { true };
+
+    bool idsCached {false};
+    sqlite3_int64 kernelExecId {0};
+    sqlite3_int64 memcpyId {0};
+    sqlite3_int64 domainId {0};
+    void cacheIds();
 };
 
 
@@ -302,12 +307,8 @@ RocprofDataSource::RocprofDataSource()
     s->instances[d->id] = this;
     d->apiData.reserve(d->apiDataSize);
 
-    // Backdoor to suppress args logging
-    char *val = getenv("RPDT_ROCPROF_NOARGS");
-    if (val != NULL) {
-        int noargs = atoi(val);
-        d->logArgs = (noargs == 0);
-    }
+    // Suppress args logging
+    d->logArgs = (atoi(getConfig("RPDT_ROCPROF_NOARGS", "rocprof_noargs", "0")) == 0);
 }
 
 RocprofDataSource::~RocprofDataSource()
@@ -352,10 +353,27 @@ void RocprofDataSource::flush()
     rocprofiler_flush_buffer(s->client_buffers[d->id]);
 }
 
+void RocprofDataSourcePrivate::cacheIds()
+{
+    if (idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    kernelExecId = logger.stringTable().getOrCreate("KernelExecution");
+    memcpyId = logger.stringTable().getOrCreate("Memcpy");
+    domainId = logger.stringTable().getOrCreate("hip");
+    idsCached = true;
+}
+
+void RocprofDataSource::reset()
+{
+    d->idsCached = false;
+}
+
 
 void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t record, rocprofiler_user_data_t* user_data, void* callback_data)
 {
     RocprofDataSource &instance = **(reinterpret_cast<RocprofDataSource**>(callback_data));
+    instance.d->cacheIds();
 
     if (record.kind == ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API) {
         if (record.phase == ROCPROFILER_CALLBACK_PHASE_ENTER) {
@@ -486,7 +504,6 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             // completion callback - runtime thread
             auto &dispatch = *(static_cast<rocprofiler_callback_tracing_kernel_dispatch_data_t*>(record.payload));
             auto &info = dispatch.dispatch_info;
-            static sqlite3_int64 name_id = logger.stringTable().getOrCreate("KernelExecution");
 
             OpTable::row row;
             row.gpuId = s->agents.at(info.agent_id.handle).logical_node_type_id;
@@ -496,7 +513,7 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             row.start = dispatch.start_timestamp;
             row.end = dispatch.end_timestamp;
             row.description_id = logger.stringTable().getOrCreate(s->kernel_names.at(info.kernel_id));
-            row.opType_id = name_id;
+            row.opType_id = instance.d->kernelExecId;
             row.api_id = record.correlation_id.internal;
 
             logger.opTable().insert(row);
@@ -526,7 +543,6 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
 
             logger.copyApiTable().insert(crow);
 
-            static sqlite3_int64 name_id = logger.stringTable().getOrCreate("Memcpy");
             OpTable::row row;
             //row.gpuId = mapDeviceId(record->device_id);
             row.gpuId = 0;	// FIXME intercept hsa to figure out node?
@@ -536,7 +552,7 @@ void RocprofDataSource::api_callback(rocprofiler_callback_tracing_record_t recor
             row.start = copy.start_timestamp;
             row.end = copy.end_timestamp;
             row.description_id = logger.stringTable().getOrCreate(crow.kindStr);
-            row.opType_id = name_id;
+            row.opType_id = instance.d->memcpyId;
             row.api_id = record.correlation_id.internal;
             logger.opTable().insert(row);
 
@@ -556,6 +572,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 {
     assert(drop_count == 0 && "drop count should be zero for lossless policy");
     RocprofDataSource &instance = **(reinterpret_cast<RocprofDataSource**>(user_data));
+    instance.d->cacheIds();
 
     Logger &logger = Logger::singleton();
 
@@ -570,18 +587,16 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
 
                 auto* record = static_cast<rocprofiler_buffer_tracing_kernel_dispatch_record_t*>(header->payload);
                 auto& dispatch = record->dispatch_info;
-                // FIXME: op name hack
-                static sqlite3_int64 name_id = logger.stringTable().getOrCreate("KernelExecution");
                 sqlite3_int64 desc_id = logger.stringTable().getOrCreate(s->kernel_names.at(record->dispatch_info.kernel_id));
 
-                OpTable::row row; 
+                OpTable::row row;
                 row.gpuId = s->agents.at(dispatch.agent_id.handle).logical_node_type_id;
                 row.queueId = dispatch.queue_id.handle;
                 row.sequenceId = 0;
                 row.start = record->start_timestamp;
                 row.end = record->end_timestamp;
                 row.description_id = desc_id;
-                row.opType_id = name_id;
+                row.opType_id = instance.d->kernelExecId;
                 row.api_id = record->correlation_id.internal;
 
                 logger.opTable().insert(row);
@@ -645,7 +660,6 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
             }
             else if (header->kind == ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API_EXT) {
                 auto &hipapi = *(static_cast<rocprofiler_buffer_tracing_hip_api_ext_record_t*>(header->payload));
-                static sqlite3_int64 domain_id = logger.stringTable().getOrCreate("hip");
 
                 // extract args as json
                 nlohmann::json json;
@@ -663,7 +677,7 @@ void RocprofDataSource::buffer_callback(rocprofiler_context_id_t context, rocpro
                 row.tid = hipapi.thread_id;
                 row.start = hipapi.start_timestamp;
                 row.end = hipapi.end_timestamp;
-                row.domain_id = domain_id;
+                row.domain_id = instance.d->domainId;
                 row.category_id = EMPTY_STRING_ID;
                 row.apiName_id = name_id;
                 if (instance.d->logArgs)

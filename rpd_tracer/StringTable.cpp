@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <array>
 #include <mutex>
+#include <shared_mutex>
 
 #include "rpd_tracer.h"
 #include "Utility.h"
@@ -31,7 +32,7 @@ public:
 
     void insert(StringTable::row&);
 
-    std::mutex cacheMutex;
+    std::shared_mutex cacheMutex;
 
     StringTable *p;
 };
@@ -64,19 +65,22 @@ StringTable::~StringTable()
 
 sqlite3_int64 StringTable::getOrCreate(const std::string &key)
 {
-    std::lock_guard<std::mutex> guard(d->cacheMutex);
-    auto it = d->cache.find(key);
-    if (it == d->cache.end()) {
-        // new string, create a row
-        StringTable::row row;
-        row.string_id = 0;
-        row.string = key;
-        d->insert(row);		// string_id gets updated with id
-        // update cache
-        d->cache.insert({row.string, row.string_id});
-        return row.string_id;
+    {
+        std::shared_lock<std::shared_mutex> guard(d->cacheMutex);
+        auto it = d->cache.find(key);
+        if (it != d->cache.end())
+            return it->second;
     }
-    return it->second;
+    std::unique_lock<std::shared_mutex> guard(d->cacheMutex);
+    auto it = d->cache.find(key);
+    if (it != d->cache.end())
+        return it->second;
+    StringTable::row row;
+    row.string_id = 0;
+    row.string = key;
+    d->insert(row);
+    d->cache.insert({row.string, row.string_id});
+    return row.string_id;
 }
 
 void StringTablePrivate::insert(StringTable::row &row)

@@ -34,8 +34,14 @@ public:
     sqlite3_int64 markCategoryId{0};
     sqlite3_int64 apiNameId{0};
 
-    std::atomic<sqlite3_int64> idCounter{sqlite3_int64(1) << 33};
+    // Timestamp of the most recent startTracing().  Set on the first start
+    // too, so it is the trace start for a never-suspended run.  Used as the
+    // left bound for ranges that were pushed before we were recording -- we
+    // know they began before this, but not when.
     std::atomic<sqlite3_int64> resumeTime{0};
+
+    bool idsCached{false};
+    void cacheIds();
 };
 
 }    // namespace rpdtracer
@@ -80,19 +86,35 @@ static void registerThreadStack()
     }
 }
 
-
-// ---- lazy init for string IDs ----
-
-static std::once_flag s_cacheOnce;
-
-static void cacheStringIds()
+static void drainStacks()
 {
-    NvtxDataSourcePrivate *d = NvtxDataSource::instance().priv();
+    timestamp_t now = clocktime_ns();
     Logger &logger = Logger::singleton();
-    d->domainId = logger.stringTable().getOrCreate("nvtx");
-    d->rangeCategoryId = logger.stringTable().getOrCreate("range");
-    d->markCategoryId = logger.stringTable().getOrCreate("mark");
-    d->apiNameId = logger.stringTable().getOrCreate("UserMarker");
+
+    std::lock_guard<std::mutex> lock(s_stacksMutex);
+    for (auto &entry : s_stacks) {
+        auto &stack = *entry.second;
+        while (!stack.empty()) {
+            ApiTable::row row = stack.front();
+            stack.pop_front();
+            row.end = now;
+            row.api_id = Logger::singleton().nextAnnotationId();
+            logger.apiTable().insert(row);
+        }
+    }
+}
+
+
+void NvtxDataSourcePrivate::cacheIds()
+{
+    if (idsCached)
+        return;
+    Logger &logger = Logger::singleton();
+    domainId = logger.stringTable().getOrCreate("nvtx");
+    rangeCategoryId = logger.stringTable().getOrCreate("range");
+    markCategoryId = logger.stringTable().getOrCreate("mark");
+    apiNameId = logger.stringTable().getOrCreate("UserMarker");
+    idsCached = true;
 }
 
 // ---- nvtx shim functions ----
@@ -105,7 +127,7 @@ void nvtxMarkA(const char *message)
     NvtxDataSourcePrivate *d = NvtxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     Logger &logger = Logger::singleton();
 
@@ -118,7 +140,7 @@ void nvtxMarkA(const char *message)
     row.category_id = d->markCategoryId;
     row.apiName_id = d->apiNameId;
     row.args_id = logger.ustringTable().create(message);
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
 }
@@ -128,7 +150,7 @@ int nvtxRangePushA(const char *message)
     NvtxDataSourcePrivate *d = NvtxDataSource::instance().priv();
     if (!d->active.load(std::memory_order_relaxed))
         return -1;
-    std::call_once(s_cacheOnce, cacheStringIds);
+    d->cacheIds();
 
     registerThreadStack();
 
@@ -155,20 +177,38 @@ int nvtxRangePop()
     if (!d->active.load(std::memory_order_relaxed))
         return -1;
 
-    if (t_nvtxStack.empty())
-        return -1;
-
+    d->cacheIds();
     Logger &logger = Logger::singleton();
+
+    // A pop with nothing on our stack means the app opened a range we never
+    // saw -- either it was pushed while tracing was suspended (pushes are
+    // squelched at the source, so no depth is tracked), or the app is
+    // unbalanced.  Either way the pop is evidence that an enclosing frame
+    // existed.  Dropping it would silently re-parent every descendant to
+    // depth 0, since viewers derive nesting from start/end containment.
+    // Emit a placeholder instead, clamped to resumeTime: we know the range
+    // began before we started recording, but not when.
+    if (t_nvtxStack.empty()) {
+        ApiTable::row row;
+        row.pid = GetPid();
+        row.tid = GetTid();
+        row.start = d->resumeTime.load(std::memory_order_relaxed);
+        row.end = clocktime_ns();
+        row.domain_id = d->domainId;
+        row.category_id = d->rangeCategoryId;
+        row.apiName_id = d->apiNameId;
+        row.args_id = logger.ustringTable().create("<pre-existing>");
+        row.api_id = Logger::singleton().nextAnnotationId();
+
+        logger.apiTable().insert(row);
+        return -1;
+    }
 
     ApiTable::row row = t_nvtxStack.front();
     t_nvtxStack.pop_front();
 
-    sqlite3_int64 resumeTime = d->resumeTime.load(std::memory_order_relaxed);
-    if (row.start < resumeTime)
-        row.start = resumeTime;
-
     row.end = clocktime_ns();
-    row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
+    row.api_id = Logger::singleton().nextAnnotationId();
 
     logger.apiTable().insert(row);
     return static_cast<int>(t_nvtxStack.size());
@@ -190,32 +230,31 @@ void NvtxDataSource::startTracing()
     d->active.store(true, std::memory_order_release);
 }
 
+// Ranges do not span a stop/start.  stopTracing() closes every open range at
+// the stop timestamp, so a push/pop pair straddling a pause is recorded as a
+// range ending at the stop.  The matching pop after the restart finds an
+// empty stack and is recorded as a "<pre-existing>" range starting at the
+// resume, preserving the nesting of anything opened after it.
 void NvtxDataSource::stopTracing()
 {
     d->active.store(false, std::memory_order_relaxed);
+
+    // Drain in-flight ranges so their string ids (valid only in the
+    // current storage) cannot outlive a resetStorage()
+    drainStacks();
 }
 
 void NvtxDataSource::flush()
 {
 }
 
+void NvtxDataSource::reset()
+{
+    d->idsCached = false;
+}
+
 void NvtxDataSource::end()
 {
     d->active.store(false, std::memory_order_relaxed);
-
-    // Final shutdown: drain all in-flight ranges
-    timestamp_t now = clocktime_ns();
-    Logger &logger = Logger::singleton();
-
-    std::lock_guard<std::mutex> lock(s_stacksMutex);
-    for (auto &entry : s_stacks) {
-        auto &stack = *entry.second;
-        while (!stack.empty()) {
-            ApiTable::row row = stack.front();
-            stack.pop_front();
-            row.end = now;
-            row.api_id = d->idCounter.fetch_add(1, std::memory_order_relaxed);
-            logger.apiTable().insert(row);
-        }
-    }
+    drainStacks();
 }

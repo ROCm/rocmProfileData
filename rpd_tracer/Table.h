@@ -127,12 +127,6 @@ public:
     };
 
     void insert(const row&);
-    // TODO: remove once Logger::createOverheadRecord and Logger::rpd_rangePush/rpd_rangePop are migrated
-    void insertRoctx(row&);
-    void pushRoctx(const row&);
-    void popRoctx(const row&);
-    void suspendRoctx(sqlite3_int64 atTime);
-    void resumeRoctx(sqlite3_int64 atTime);
 
 private:
     ApiTablePrivate *d;
@@ -196,7 +190,6 @@ public:
         int dstDevice {0};
         int srcDevice {0};
         int kind {0};
-        std::string kindStr;
         bool sync {false};
         bool pinned {false};
         sqlite3_int64 api_id {0};   // Baseclass ApiTable primary key (correlation id)

@@ -12,14 +12,6 @@ namespace rpdtracer {
 #include <cpptrace/cpptrace.hpp>
 #include <sstream>
 
-// FIXME: can we avoid shutdown corruption?
-// Other rocm libraries crashing on unload
-// libsqlite unloading before we are done using it
-// Current workaround: register an onexit function when first activity is delivered back
-//                     this let's us unload first, or close to.
-// New workaround: register 4 times, only finalize once.  see register_once
-
-static std::once_flag registerDoubleAgain_once;
 
 int rpdtracer::unwind(rpdtracer::Logger &logger, const char *api, const sqlite_int64 api_id) {
 
@@ -74,8 +66,6 @@ int rpdtracer::unwind(rpdtracer::Logger &logger, const char *api, const sqlite_i
 
         n++;
     }
-
-    std::call_once(registerDoubleAgain_once, atexit, rpdtracer::Logger::rpdFinalize);
 
     return 0;
 }
