@@ -34,8 +34,6 @@ public:
     sqlite3_int64 markCategoryId{0};
     sqlite3_int64 apiNameId{0};
 
-    std::atomic<sqlite3_int64> resumeTime{0};
-
     bool idsCached{false};
     void cacheIds();
 };
@@ -181,10 +179,6 @@ int roctxRangePop()
     ApiTable::row row = t_roctxStack.front();
     t_roctxStack.pop_front();
 
-    sqlite3_int64 resumeTime = d->resumeTime.load(std::memory_order_relaxed);
-    if (row.start < resumeTime)
-        row.start = resumeTime;
-
     row.end = clocktime_ns();
     row.api_id = Logger::singleton().nextAnnotationId();
 
@@ -204,10 +198,13 @@ void RoctxDataSource::init()
 
 void RoctxDataSource::startTracing()
 {
-    d->resumeTime.store(clocktime_ns(), std::memory_order_relaxed);
     d->active.store(true, std::memory_order_release);
 }
 
+// Ranges do not span a stop/start.  stopTracing() closes every open range at
+// the stop timestamp, so a push/pop pair straddling a pause is recorded as a
+// range ending at the stop -- the pop after the restart finds an empty stack
+// and is dropped.  This is the same behaviour as RlogDataSource.
 void RoctxDataSource::stopTracing()
 {
     d->active.store(false, std::memory_order_relaxed);
