@@ -34,6 +34,12 @@ public:
     sqlite3_int64 markCategoryId{0};
     sqlite3_int64 apiNameId{0};
 
+    // Timestamp of the most recent startTracing().  Set on the first start
+    // too, so it is the trace start for a never-suspended run.  Used as the
+    // left bound for ranges that were pushed before we were recording -- we
+    // know they began before this, but not when.
+    std::atomic<sqlite3_int64> resumeTime{0};
+
     bool idsCached{false};
     void cacheIds();
 };
@@ -171,10 +177,32 @@ int nvtxRangePop()
     if (!d->active.load(std::memory_order_relaxed))
         return -1;
 
-    if (t_nvtxStack.empty())
-        return -1;
-
+    d->cacheIds();
     Logger &logger = Logger::singleton();
+
+    // A pop with nothing on our stack means the app opened a range we never
+    // saw -- either it was pushed while tracing was suspended (pushes are
+    // squelched at the source, so no depth is tracked), or the app is
+    // unbalanced.  Either way the pop is evidence that an enclosing frame
+    // existed.  Dropping it would silently re-parent every descendant to
+    // depth 0, since viewers derive nesting from start/end containment.
+    // Emit a placeholder instead, clamped to resumeTime: we know the range
+    // began before we started recording, but not when.
+    if (t_nvtxStack.empty()) {
+        ApiTable::row row;
+        row.pid = GetPid();
+        row.tid = GetTid();
+        row.start = d->resumeTime.load(std::memory_order_relaxed);
+        row.end = clocktime_ns();
+        row.domain_id = d->domainId;
+        row.category_id = d->rangeCategoryId;
+        row.apiName_id = d->apiNameId;
+        row.args_id = logger.ustringTable().create("<pre-existing>");
+        row.api_id = Logger::singleton().nextAnnotationId();
+
+        logger.apiTable().insert(row);
+        return -1;
+    }
 
     ApiTable::row row = t_nvtxStack.front();
     t_nvtxStack.pop_front();
@@ -198,13 +226,15 @@ void NvtxDataSource::init()
 
 void NvtxDataSource::startTracing()
 {
+    d->resumeTime.store(clocktime_ns(), std::memory_order_relaxed);
     d->active.store(true, std::memory_order_release);
 }
 
 // Ranges do not span a stop/start.  stopTracing() closes every open range at
 // the stop timestamp, so a push/pop pair straddling a pause is recorded as a
-// range ending at the stop -- the pop after the restart finds an empty stack
-// and is dropped.  This is the same behaviour as RlogDataSource.
+// range ending at the stop.  The matching pop after the restart finds an
+// empty stack and is recorded as a "<pre-existing>" range starting at the
+// resume, preserving the nesting of anything opened after it.
 void NvtxDataSource::stopTracing()
 {
     d->active.store(false, std::memory_order_relaxed);
