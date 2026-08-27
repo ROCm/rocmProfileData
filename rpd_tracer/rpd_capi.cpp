@@ -25,6 +25,7 @@
 #include <sqlite3.h>
 #include <vector>
 #include <mutex>
+#include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
 
@@ -103,6 +104,10 @@ static void rpdTracerInit()
 
     real_cxa_atexit = (real_cxa_atexit_t)dlsym(RTLD_NEXT, "__cxa_atexit");
     real_atexit_fn = (real_atexit_t)dlsym(RTLD_NEXT, "atexit");
+    if (real_cxa_atexit == nullptr) {
+        fprintf(stderr, "rpd_tracer: dlsym(__cxa_atexit) failed, skipping atexit interception\n");
+        return;
+    }
     real_cxa_atexit(ourAtexitHandler, nullptr, nullptr);
 }
 
@@ -118,7 +123,9 @@ static void ourAtexitHandler(void*)
 
 extern "C" int atexit(void (*fn)())
 {
-    if (real_atexit_fn == nullptr || s_inInterceptor)
+    // Both lookups must have succeeded: real_atexit_fn to forward the user's
+    // handler, real_cxa_atexit to re-register ours behind it.
+    if (real_atexit_fn == nullptr || real_cxa_atexit == nullptr || s_inInterceptor)
         return 0;
     s_inInterceptor = true;
     real_atexit_fn(fn);
