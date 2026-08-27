@@ -72,18 +72,27 @@ private:
         std::queue<BatchItem> queue;
         std::mutex mutex;
         std::condition_variable cv;
+        // 'worker' and 'done' describe writer liveness.  Both are written
+        // under 'mutex' so flush() can safely decide whether the channel can
+        // still service a flush request.
         std::thread *worker{nullptr};
         bool done{false};
         std::mutex flushMutex;
         std::condition_variable flushCv;
         uint64_t nextFlushSeq{0};
+        // Written and read only under 'flushMutex'.
         uint64_t completedFlushSeq{0};
     };
+
+    // Upper bound on how long flush() will block waiting for a writer thread.
+    // A lost wakeup then degrades to a slow flush instead of a hung process.
+    static const int FLUSH_WAIT_TIMEOUT_MS = 5000;
 
     void registerChannel(const char *tag, bool directWrite, DeserializeAndWriteFn fn);
     void acceptLoop();
     void recvLoop(TcpConnection *conn, WriterChannel *channel);
     static void writerLoop(WriterChannel *channel);
+    static void signalFlushComplete(WriterChannel *channel, uint64_t flushSeq);
 
     TcpConnection m_listener;
     std::thread *m_acceptThread{nullptr};

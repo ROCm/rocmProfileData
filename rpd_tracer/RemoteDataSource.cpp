@@ -6,6 +6,7 @@
 #include "Utility.h"
 
 #include <fmt/format.h>
+#include <chrono>
 #include <cstring>
 #include <vector>
 #include <poll.h>
@@ -280,11 +281,15 @@ void RemoteDataSource::end()
         }
     }
     for (auto &pair : m_channels) {
-        if (pair.second->worker) {
-            if (pair.second->worker->joinable())
-                pair.second->worker->join();
-            delete pair.second->worker;
-            pair.second->worker = nullptr;
+        WriterChannel *ch = pair.second;
+        if (ch->worker) {
+            if (ch->worker->joinable())
+                ch->worker->join();
+            delete ch->worker;
+            // Cleared under the channel mutex: flush() reads it to decide
+            // whether the channel can still service a flush request.
+            std::lock_guard<std::mutex> lock(ch->mutex);
+            ch->worker = nullptr;
         }
     }
 
@@ -295,15 +300,47 @@ void RemoteDataSource::end()
     }
 }
 
+// Publish completion of a flush request and wake any waiter in flush().
+// completedFlushSeq is updated under flushMutex so the waiter cannot miss it.
+// flushSeq == 0 marks an unsolicited flush (enqueued by recvLoop) that nobody
+// is waiting on.
+void RemoteDataSource::signalFlushComplete(WriterChannel *channel, uint64_t flushSeq)
+{
+    if (flushSeq == 0)
+        return;
+    {
+        std::lock_guard<std::mutex> lock(channel->flushMutex);
+        if (flushSeq > channel->completedFlushSeq)
+            channel->completedFlushSeq = flushSeq;
+    }
+    channel->flushCv.notify_all();
+}
+
 void RemoteDataSource::flush()
 {
     // Enqueue flush items so each backend's sqlite connection is used by
     // its writer thread only; wait for each to complete.
+    //
+    // A channel whose writer thread has already been stopped cannot service
+    // the request, so it is skipped rather than waited on.  end() drains the
+    // queue and performs a final flush before joining, so there is nothing
+    // left to flush on a stopped channel.  Without this, any flush() after
+    // end() -- e.g. rpdflush() from a user atexit handler, which runs after
+    // ourAtexitHandler has already called rpdFinalize() -- would block
+    // forever on a predicate nobody can satisfy.
+    //
+    // The wait is bounded so that a missed notification degrades to a slow
+    // flush rather than hanging the traced application.
     for (auto &pair : m_channels) {
         WriterChannel *ch = pair.second;
         uint64_t seq;
         {
             std::lock_guard<std::mutex> lock(ch->mutex);
+            // 'done' is set under this mutex by end() before the worker is
+            // joined, so observing !done here guarantees the worker is still
+            // running and will dequeue (or drain) this item.
+            if (ch->worker == nullptr || ch->done)
+                continue;
             BatchItem flushItem;
             flushItem.rowCount = 0;
             seq = ++ch->nextFlushSeq;
@@ -312,7 +349,10 @@ void RemoteDataSource::flush()
         }
         ch->cv.notify_one();
         std::unique_lock<std::mutex> lock(ch->flushMutex);
-        ch->flushCv.wait(lock, [ch, seq]() { return ch->completedFlushSeq >= seq; });
+        if (!ch->flushCv.wait_for(lock, std::chrono::milliseconds(FLUSH_WAIT_TIMEOUT_MS),
+                                  [ch, seq]() { return ch->completedFlushSeq >= seq; }))
+            rpdLog("RemoteDataSource: flush for '%s' did not complete within %d ms\n",
+                   pair.first.c_str(), FLUSH_WAIT_TIMEOUT_MS);
     }
 }
 
@@ -484,11 +524,7 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
         // rowCount == 0 is a flush signal (enqueued by recvLoop or flush())
         if (item.rowCount == 0) {
             channel->backend->flush();
-            if (item.flushSeq != 0) {
-                channel->completedFlushSeq = item.flushSeq;
-                std::lock_guard<std::mutex> lock(channel->flushMutex);
-                channel->flushCv.notify_all();
-            }
+            signalFlushComplete(channel, item.flushSeq);
             continue;
         }
 
@@ -510,11 +546,7 @@ void RemoteDataSource::writerLoop(WriterChannel *channel)
                                          item.idOffset, item.nodeId, channel->backend);
         else {
             channel->backend->flush();
-            if (item.flushSeq != 0) {
-                channel->completedFlushSeq = item.flushSeq;
-                std::lock_guard<std::mutex> flock(channel->flushMutex);
-                channel->flushCv.notify_all();
-            }
+            signalFlushComplete(channel, item.flushSeq);
         }
         channel->queue.pop();
     }
