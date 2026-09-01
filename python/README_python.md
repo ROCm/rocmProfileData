@@ -14,10 +14,10 @@ from rlog import RlogClient
 
 client = RlogClient()
 
-# Guard expensive logging with the cached flag
-if client.is_logging:
+if client.is_logging:          # guard: build no arg strings when idle
     client.range_push("my_api", "x=1")
-    # ... work ...
+# ... work happens regardless ...
+if client.is_logging:          # sample again; never reuse the value above
     client.range_pop()
 ```
 
@@ -43,6 +43,11 @@ A cached `bool` that tracks whether any logging tool is attached. Updated
 automatically via a hub callback. Use this to guard logging calls and avoid
 dispatch overhead when no tool is listening (same pattern as the C++ guard
 benchmark).
+
+Unlike the C++ client, Python cannot make an idle range free: budget roughly
+150 ns per range (guarded raw calls or the decorator) and ~430 ns for the
+context manager, paid whether or not a tool is attached. Instrument work
+measured in microseconds, not inner loops. See `../OPTIMIZATIONS.md`.
 
 ### mark
 
@@ -73,6 +78,30 @@ client.range_pop()
 
 Push and pop a named range. Ranges can be nested. `domain` and `category`
 default the same way as `mark`.
+
+Guard both calls with `is_logging`, sampling it separately each time. Do not
+cache the push-time value and reuse it at pop: if tracing resumes mid-range the
+pop must still be delivered, or every range opened after the resume is reported
+at the wrong nesting depth.
+
+### range / range_decorator
+
+```python
+with client.range("my_api", lambda: f"x={expensive()}"):
+    ...                                    # work
+
+@client.range_decorator(args=lambda n: f"n={n}")
+def my_api(n):
+    ...                                    # apiname defaults to the func name
+```
+
+Scope helpers that push, pop and guard correctly, including the two-sample rule
+above. `args` may be a plain string, or a callable that is only invoked while
+logging is active — use the callable form whenever building the string costs
+anything, since a plain argument is evaluated before the range is entered.
+
+Prefer the decorator: its arguments are the wrapped function's own, so nothing
+extra is computed. The context manager allocates an object on every entry.
 
 ### is_active
 

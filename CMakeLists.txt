@@ -24,7 +24,7 @@ target_sources(rlog_hub PRIVATE
 
 target_link_libraries(rlog_hub PRIVATE ${SQLite3_LIBRARIES})
 
-set_target_properties(rlog_hub PROPERTIES PUBLIC_HEADER "include/rlog/client.h;include/rlog/Logger.h;src/Hub.h")
+set_target_properties(rlog_hub PROPERTIES PUBLIC_HEADER "include/rlog/client.h;include/rlog/Logger.h;include/rlog/Range.h;src/Hub.h")
 
 add_executable(rlog_config src/rlog-config.cpp)
 set_target_properties(rlog_config PROPERTIES OUTPUT_NAME "rlog-config")
