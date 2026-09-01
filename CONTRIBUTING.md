@@ -21,7 +21,9 @@ Tests that require ROCTx or NVTX libraries skip automatically if those libraries
 ## Submitting changes
 
 - Open a GitHub issue before starting significant work, so we can discuss the approach.
-- Fork the repository and submit a pull request against `main`.
+- Submit a pull request against the `rlog` branch of `ROCm/rocmProfileData`. rlog lives
+  on its own branch there and is consumed as a submodule by the main project, so the
+  PR base must be changed from the repository default.
 - Keep commits focused; one logical change per PR where practical.
 - Match the style of surrounding code. The project uses C++14.
 
