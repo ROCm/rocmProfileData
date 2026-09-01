@@ -44,10 +44,11 @@ automatically via a hub callback. Use this to guard logging calls and avoid
 dispatch overhead when no tool is listening (same pattern as the C++ guard
 benchmark).
 
-Unlike the C++ client, Python cannot make an idle range free: budget roughly
-150 ns per range (guarded raw calls or the decorator) and ~430 ns for the
-context manager, paid whether or not a tool is attached. Instrument work
-measured in microseconds, not inner loops. See `../OPTIMIZATIONS.md`.
+Unlike the C++ client, Python cannot make an idle range free. With no tool
+attached, guarded raw calls cost ~31 ns per range, the decorator ~190 ns, and
+the context manager ~420 ns — paid whether or not a tool is attached. Guard
+hot paths with raw calls; use the helpers for work measured in microseconds,
+not inner loops. Run `bench_range.py` to measure on your own interpreter.
 
 ### mark
 
@@ -102,6 +103,16 @@ anything, since a plain argument is evaluated before the range is entered.
 
 Prefer the decorator: its arguments are the wrapped function's own, so nothing
 extra is computed. The context manager allocates an object on every entry.
+
+Deferring matters as much here as in C++. Measured with no tool attached, a
+guarded range costs ~31 ns with a literal or a deferred callable, but ~750 ns
+when an f-string is built at the call site — the string is evaluated before the
+guard is ever tested.
+
+The scope helpers add a floor that deferring cannot remove: ~190 ns for the
+decorator (its `*args/**kw` wrapper) and ~420 ns for the context manager (an
+allocation plus two method calls), even with no tool attached. That is the cost
+of the syntax, not of rlog. See `bench_range.py`.
 
 ### is_active
 
