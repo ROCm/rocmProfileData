@@ -24,7 +24,7 @@ target_sources(rlog_hub PRIVATE
 
 target_link_libraries(rlog_hub PRIVATE ${SQLite3_LIBRARIES})
 
-set_target_properties(rlog_hub PROPERTIES PUBLIC_HEADER "include/rlog/client.h;include/rlog/Logger.h;src/Hub.h")
+set_target_properties(rlog_hub PROPERTIES PUBLIC_HEADER "include/rlog/client.h;include/rlog/Logger.h;include/rlog/Range.h;src/Hub.h")
 
 add_executable(rlog_config src/rlog-config.cpp)
 set_target_properties(rlog_config PROPERTIES OUTPUT_NAME "rlog-config")
@@ -116,6 +116,13 @@ add_executable(bench_guard benchmarks/bench_guard.cpp src/rlog.cpp)
 target_include_directories(bench_guard PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(bench_guard PRIVATE dl)
+
+# bench_range: rlog::Range with eager vs deferred (lambda) expensive arguments
+add_executable(bench_range benchmarks/bench_range.cpp src/rlog.cpp)
+target_include_directories(bench_range PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(bench_range PRIVATE dl rlog_hub)
 
 # bench_roctx: same as bench_external but dispatches via roctx; rlog disabled
 add_executable(bench_roctx benchmarks/bench_roctx.cpp src/rlog.cpp)

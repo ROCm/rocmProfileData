@@ -85,3 +85,77 @@ class RlogClient:
         if result is None:
             return default_value
         return result.decode("utf-8")
+
+    # -- scope helpers --------------------------------------------------
+    # See OPTIMIZATIONS.md. Prefer the decorator to the context manager:
+    # a decorator's arguments are the wrapped function's own arguments,
+    # already evaluated by the caller, so there is nothing to defer. A
+    # context manager evaluates its arguments before __enter__, which
+    # reintroduces the eager-argument cost.
+    #
+    # Both sample is_logging twice, independently, and deliberately do NOT
+    # latch the push decision. If tracing resumes mid-range the pop is
+    # still delivered; that orphan pop is the only evidence the range
+    # existed and is what lets the tool keep descendants correctly nested.
+
+    def range(self, apiname, args=None, domain=None, category=None):
+        """Context manager for a range.
+
+        `args` may be a str, or a zero-argument callable that is only
+        invoked while logging is active. Use the callable form whenever
+        producing the string costs anything.
+        """
+        return _RangeScope(self, apiname, args, domain, category)
+
+    def range_decorator(self, apiname=None, args=None, domain=None, category=None):
+        """Decorator that wraps a function in a range.
+
+        `apiname` defaults to the function's qualified name. `args` may be
+        a str, or a callable receiving the same arguments as the wrapped
+        function, invoked only while logging is active.
+        """
+        import functools
+
+        def decorate(fn):
+            name = apiname if apiname is not None else fn.__qualname__
+
+            @functools.wraps(fn)
+            def wrapper(*a, **kw):
+                if self.is_logging:
+                    text = args(*a, **kw) if callable(args) else (args or "")
+                    self.range_push(name, text, domain=domain, category=category)
+                try:
+                    return fn(*a, **kw)
+                finally:
+                    # Sampled again on purpose - do not latch.
+                    if self.is_logging:
+                        self.range_pop()
+
+            return wrapper
+
+        return decorate
+
+
+class _RangeScope:
+    __slots__ = ("_c", "_apiname", "_args", "_domain", "_category")
+
+    def __init__(self, client, apiname, args, domain, category):
+        self._c = client
+        self._apiname = apiname
+        self._args = args
+        self._domain = domain
+        self._category = category
+
+    def __enter__(self):
+        if self._c.is_logging:
+            args = self._args
+            text = args() if callable(args) else (args or "")
+            self._c.range_push(self._apiname, text,
+                               domain=self._domain, category=self._category)
+        return self
+
+    def __exit__(self, *exc):
+        # Sampled again on purpose - do not latch. See OPTIMIZATIONS.md.
+        if self._c.is_logging:
+            self._c.range_pop()
+        return False
