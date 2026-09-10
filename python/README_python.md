@@ -14,10 +14,10 @@ from rlog import RlogClient
 
 client = RlogClient()
 
-# Guard expensive logging with the cached flag
-if client.is_logging:
+if client.is_logging:          # guard: build no arg strings when idle
     client.range_push("my_api", "x=1")
-    # ... work ...
+# ... work happens regardless ...
+if client.is_logging:          # sample again; never reuse the value above
     client.range_pop()
 ```
 
@@ -43,6 +43,12 @@ A cached `bool` that tracks whether any logging tool is attached. Updated
 automatically via a hub callback. Use this to guard logging calls and avoid
 dispatch overhead when no tool is listening (same pattern as the C++ guard
 benchmark).
+
+Unlike the C++ client, Python cannot make an idle range free. With no tool
+attached, guarded raw calls cost ~31 ns per range, the decorator ~190 ns, and
+the context manager ~420 ns — paid whether or not a tool is attached. Guard
+hot paths with raw calls; use the helpers for work measured in microseconds,
+not inner loops. Run `bench_range.py` to measure on your own interpreter.
 
 ### mark
 
@@ -73,6 +79,40 @@ client.range_pop()
 
 Push and pop a named range. Ranges can be nested. `domain` and `category`
 default the same way as `mark`.
+
+Guard both calls with `is_logging`, sampling it separately each time. Do not
+cache the push-time value and reuse it at pop: if tracing resumes mid-range the
+pop must still be delivered, or every range opened after the resume is reported
+at the wrong nesting depth.
+
+### range / range_decorator
+
+```python
+with client.range("my_api", lambda: f"x={expensive()}"):
+    ...                                    # work
+
+@client.range_decorator(args=lambda n: f"n={n}")
+def my_api(n):
+    ...                                    # apiname defaults to the func name
+```
+
+Scope helpers that push, pop and guard correctly, including the two-sample rule
+above. `args` may be a plain string, or a callable that is only invoked while
+logging is active — use the callable form whenever building the string costs
+anything, since a plain argument is evaluated before the range is entered.
+
+Prefer the decorator: its arguments are the wrapped function's own, so nothing
+extra is computed. The context manager allocates an object on every entry.
+
+Deferring matters as much here as in C++. Measured with no tool attached, a
+guarded range costs ~31 ns with a literal or a deferred callable, but ~750 ns
+when an f-string is built at the call site — the string is evaluated before the
+guard is ever tested.
+
+The scope helpers add a floor that deferring cannot remove: ~190 ns for the
+decorator (its `*args/**kw` wrapper) and ~420 ns for the context manager (an
+allocation plus two method calls), even with no tool attached. That is the cost
+of the syntax, not of rlog. See `bench_range.py`.
 
 ### is_active
 

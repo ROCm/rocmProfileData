@@ -4,8 +4,10 @@ Standalone executables for measuring `rangePush`/`rangePop` throughput.
 Build them from the `build/` directory:
 
 ```
-cmake .. && make bench_loopback bench_external bench_roctx bench_guard
+cmake .. && make bench_loopback bench_external bench_roctx bench_guard bench_range
 ```
+
+A Python equivalent lives in `../python/bench_range.py`.
 
 ---
 
@@ -116,3 +118,47 @@ Libraries that unconditionally call roctx pay that cost in production whether a
 profiler is running or not.  With rlog and a guard, the production overhead is
 ~23x lower, and drops to zero if the call sites are omitted entirely when
 `isLogging` is false.
+
+Note that every call site here passes string literals, which cost nothing to
+pass.  Real call sites rarely do — see `bench_range`.
+
+---
+
+## bench_range
+
+Measures `rlog::Range` when the range arguments are **expensive to build**.
+This is the case `bench_guard` does not cover: a guard only protects the calls
+it wraps, not the arguments those calls are given.
+
+Every variant formats the same five-field string.  The only difference is when
+the formatting happens.  Passing the string eagerly evaluates it at the call
+site, *before* the constructor is entered, so the guard inside the constructor
+is already too late.  Passing a lambda defers it until after the guard passes.
+
+```
+./bench_range
+range: logging = false (baseline)
+
+no tool attached:
+  empty loop                        5.5 ms  (      5 ns/range)
+  Range, literal args              16.2 ms  (     16 ns/range)
+  Range, eager fmt args           520.6 ms  (    521 ns/range)
+  Range, deferred lambda           17.0 ms  (     17 ns/range)
+
+no-op Logger attached (logging = true):
+  Range, literal args              74.3 ms  (     74 ns/range)
+  Range, eager fmt args           604.9 ms  (    605 ns/range)
+  Range, deferred lambda          607.7 ms  (    608 ns/range)
+```
+
+Two results matter:
+
+**With no tool attached, eager arguments cost ~521 ns per range** — about 30x
+the guarded literal case, and paid on every call in production.  The deferred
+lambda costs ~17 ns, indistinguishable from passing a literal.  The formatting
+simply never runs.
+
+**With a tool attached both cost the same** (~605 ns): the work has to be done
+either way, and the lambda adds nothing.  There is no tradeoff to weigh — the
+deferred form is never slower, so expensive range arguments should always be
+passed as a callable.

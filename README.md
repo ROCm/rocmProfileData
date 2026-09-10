@@ -145,11 +145,13 @@ The callback should update a flag that guards annotation work, avoiding
 overhead when no tool is listening.
 
 ```cpp
+#include <atomic>
+
 namespace rlog {
-    bool isLogging = false;
+    std::atomic<bool> isLogging{false};
 
     void onActiveChanged() {
-        isLogging = rlog::isActive();
+        isLogging.store(rlog::isActive(), std::memory_order_relaxed);
     }
 
     class Client {
@@ -165,6 +167,12 @@ namespace rlog {
     Client client;
 } // namespace rlog
 ```
+
+The flag must be `std::atomic<bool>`: it is written from the callback thread and
+read from application threads. `memory_order_relaxed` is sufficient — the flag is
+advisory, and a range that straddles a transition is handled by the tool, not by
+ordering. A plain `bool` is a data race and permits the compiler to hoist the read
+out of a loop.
 
 `setDefaultDomain` and `setDefaultCategory` set fallback values used by the
 two- and one-argument overloads of `mark` and `rangePush`. They must be called
@@ -203,6 +211,39 @@ rlog::rangePush("io", "readFile", filename);
 
 // Omit domain and category: uses both defaults
 rlog::rangePush("readFile", filename);
+```
+
+### Scoped ranges
+
+`<rlog/Range.h>` provides a scope object that pushes on construction and pops
+on destruction, so the pop cannot be missed on an early return or an exception:
+
+```cpp
+#include <rlog/Range.h>
+
+void readFile(const char *name, int size) {
+    rlog::Range r(rlog::isLogging, "readFile", "static");   // cheap args
+    // ... work ...
+}                                                            // pops here
+```
+
+Arguments that cost anything to build must be passed as a lambda, not a string.
+A plain argument is evaluated at the call site *before* the constructor runs, so
+the guard cannot suppress it:
+
+```cpp
+rlog::Range r(rlog::isLogging, "readFile",
+              [&]{ return rlog::fmt("name=%s size=%d", name, size); });
+```
+
+The lambda is only invoked while logging. It may run any code and must return
+`std::string` or `const char*`; `rlog::fmt` is merely a printf-style
+convenience:
+
+```cpp
+[&]{ return std::to_string(size); }                          // std::string
+[&]{ std::ostringstream o; o << size; return o.str(); }      // stream
+[&]{ return describeRequest(req); }                          // any function
 ```
 
 ### Reading properties
