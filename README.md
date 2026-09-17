@@ -38,15 +38,26 @@ apt-get install sqlite3 libsqlite3-dev
 
 Additional packages required
 ```
-apt-get install libfmt-dev
+apt-get install libfmt-dev xxd
 ```
 
-There are many tools in the RPD repo.  A baseline set can be built and installed via make:
+There are many tools in the RPD repo.  A baseline set can be built and installed via CMake:
 ```
-make; make install
+cmake -B build -S .
+cmake --build build -j$(nproc)
+cmake --install build
 ```
+(`make; make install` is also available as a thin convenience wrapper around the same CMake build.)
+
 This will install python modules that are used to manipulate trace files.
 It will also build and install the native tracer, rpd_tracer.
+
+ROCm is located automatically, whether it's installed the traditional way at `/opt/rocm`, via `ROCM_PATH`/`ROCM_HOME`, or inside a python virtual environment (e.g. TheRock/rocm-sdk wheel installs).
+
+Useful CMake options:
+- `-DRPD_ENABLE_CPPTRACE=ON` - enable HIP-call stack frame capture via the (heavyweight, opt-in) `cpptrace` submodule. Requires `git submodule update --init cpptrace` first.
+- `-DRPD_ENABLE_ROCM_TRACE_LITE=ON` - enable the `RtlDataSource` via the (heavyweight, opt-in) `rocm-trace-lite` submodule. Requires `git submodule update --init rocm-trace-lite` first.
+- `-DRPD_BUILD_TRACER=OFF`, `-DRPD_BUILD_REMOTE=OFF`, `-DRPD_BUILD_PYTHON=OFF`, `-DRPD_BUILD_VIEWER=OFF` - disable individual components.
 
 ## Quickstart
 

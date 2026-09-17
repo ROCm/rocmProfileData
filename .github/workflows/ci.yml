@@ -12,11 +12,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+        # rlog is a mandatory build dependency (self-referencing submodule,
+        # "rlog" branch of this same repo) so it must be checked out.
+        # cpptrace and rocm-trace-lite are optional, heavyweight submodules
+        # only needed when building with -DRPD_ENABLE_CPPTRACE=ON /
+        # -DRPD_ENABLE_ROCM_TRACE_LITE=ON, so they are intentionally not
+        # checked out here.
+
+      - name: Init rlog submodule
+        run: git submodule update --init rlog
 
       - name: Install dependencies
         run: sudo apt-get install -y sqlite3 libsqlite3-dev libfmt-dev nlohmann-json3-dev libzstd-dev xxd
 
+      - name: Configure
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
       - name: Build
-        run: make
+        run: cmake --build build -j"$(nproc)"
