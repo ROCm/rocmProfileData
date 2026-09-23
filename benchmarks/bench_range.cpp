@@ -23,7 +23,7 @@
 #include <rlog/client.h>
 #include <rlog/Logger.h>
 #include <rlog/Range.h>
-#include "Hub.h"
+#include <rlog/Hub.h>
 
 #include <atomic>
 #include <chrono>

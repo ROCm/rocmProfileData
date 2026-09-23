@@ -6,7 +6,7 @@
 #include <mutex>
 #include <cassert>
 
-#include "Hub.h"
+#include "rlog/Hub.h"
 #include "PropertyDb.h"
 
 using namespace rlog;
