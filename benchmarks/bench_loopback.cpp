@@ -7,7 +7,7 @@
 
 #include <rlog/client.h>
 #include <rlog/Logger.h>
-#include "Hub.h"
+#include <rlog/Hub.h>
 
 #include <chrono>
 #include <cstdio>
