@@ -307,16 +307,15 @@ def _create_app():
 
     @server.route("/tracedata")
     def serve_trace_json():
-        from rocpd.util.chrometracing import generateJson
-
-        trace_args = argparse.Namespace()
-        trace_args.input_rpd = db.rpd_path
-        trace_args.format = "object"
-        trace_args.start = "0%"
-        trace_args.end = "100%"
+        import sqlite3
+        from rocpd.tracing import generate_rpd_json
 
         mem = io.StringIO()
-        generateJson(mem, trace_args)
+        connection = sqlite3.connect(f"file:{db.rpd_path}?mode=ro", uri=True)
+        try:
+            generate_rpd_json(connection, mem, trace_format="object")
+        finally:
+            connection.close()
         data = mem.getvalue().encode("utf-8")
 
         headers = {"Content-Disposition": "attachment; filename=trace.json"}

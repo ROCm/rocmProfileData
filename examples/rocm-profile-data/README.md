@@ -59,7 +59,9 @@ apt-get install libfmt-dev sqlite3 libsqlite3-dev
 
 git clone https://github.com/ROCm/rocmProfileData.git
 cd rocmProfileData
-make; make install
+cmake -B build -S .
+cmake --build build -j$(nproc)
+cmake --install build
 cd ..
 ```
 
