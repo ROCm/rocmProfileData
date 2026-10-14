@@ -8,6 +8,7 @@
 #include <sqlite3.h>
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -57,6 +58,10 @@ private:
     ApiStringList m_apiList;
     std::vector<Range> m_ranges;
     std::atomic<uint64_t> m_correlationId {0};
+    // Guards m_processedCount and serializes slab consumption between
+    // chunkCallback (records freed immediately after it returns) and
+    // flush() (iterates the still-undelivered slabs).
+    std::mutex m_flushMutex;
     size_t m_processedCount {0};
 
     bool m_idsCached {false};
