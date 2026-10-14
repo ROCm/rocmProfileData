@@ -144,7 +144,7 @@ endif()
 # top of file).
 # ---------------------------------------------------------------------------
 if(ROCM_ROOT_DIR)
-  find_package(hip CONFIG QUIET)
+  rocm_find_package(hip CONFIG QUIET)
 
   target_compile_definitions(rpd_tracer_objs PUBLIC __HIP_PLATFORM_AMD__)
   target_include_directories(rpd_tracer_objs PUBLIC
@@ -164,7 +164,7 @@ if(ROCM_ROOT_DIR)
 
   # rocprofiler-sdk (skip on ROCm 6.x — see historical Makefile comment: disabled
   # there for performance reasons; only actually wired up for ROCm != 6.x).
-  find_package(rocprofiler-sdk CONFIG QUIET)
+  rocm_find_package(rocprofiler-sdk CONFIG QUIET)
   set(_rocm_version "")
   if(EXISTS "${ROCM_ROOT_DIR}/.info/version")
     file(READ "${ROCM_ROOT_DIR}/.info/version" _rocm_version)
@@ -173,7 +173,9 @@ if(ROCM_ROOT_DIR)
   string(REGEX MATCH "^[0-9]+" _rocm_major_version "${_rocm_version}")
   if(rocprofiler-sdk_FOUND AND NOT _rocm_major_version STREQUAL "6")
     message(STATUS "rpd_tracer: building with rocprofiler-sdk")
-    find_package(nlohmann_json CONFIG REQUIRED)
+    # rocm_find_package: rocm-sdk wheels ship nlohmann_json under
+    # <root>/share/cmake only; plain find_package misses it on bare venvs.
+    rocm_find_package(nlohmann_json CONFIG REQUIRED)
     target_sources(rpd_tracer_objs PRIVATE RocprofDataSource.cpp)
     target_link_libraries(rpd_tracer_objs PUBLIC
       rocprofiler-sdk::rocprofiler-sdk-shared-library
@@ -213,7 +215,7 @@ if(ROCM_ROOT_DIR)
         "RPD_ENABLE_ROCM_TRACE_LITE is ON but the rocm-trace-lite submodule is not present.\n"
         "Run: git submodule update --init rocm-trace-lite")
     endif()
-    find_package(hsa-runtime64 CONFIG REQUIRED)
+    rocm_find_package(hsa-runtime64 CONFIG REQUIRED)
     message(STATUS "rpd_tracer: building with rocm-trace-lite (RtlDataSource)")
     target_sources(rpd_tracer_objs PRIVATE
       RtlDataSource.cpp
@@ -297,6 +299,16 @@ endif()
 # Install
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
+
+# See RPD_INSTALL_RPATH in the top-level CMakeLists.txt.  Set per-target
+# (rather than global CMAKE_INSTALL_RPATH_USE_LINK_PATH) so exactly the
+# ROCm lib dir is baked -- not build-tree dirs like the rlog output dir,
+# nor the rocm_sysdeps dir.
+if(RPD_INSTALL_RPATH)
+  set_target_properties(rpd_tracer rpd_embedded PROPERTIES
+    INSTALL_RPATH "${ROCM_ROOT_DIR}/lib"
+  )
+endif()
 
 install(TARGETS rpd_tracer rpd_embedded
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
