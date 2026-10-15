@@ -17,9 +17,36 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Locates a ROCm install, whether it's the traditional /opt/rocm, an
 # explicit ROCM_PATH/ROCM_HOME, or a python-venv based install (e.g.
-# TheRock's rocm-sdk wheels).  Sets ROCM_ROOT_DIR and augments
-# CMAKE_PREFIX_PATH accordingly.
+# TheRock's rocm-sdk wheels).  Sets ROCM_ROOT_DIR, ROCM_ROOT_HAS_SYSDEPS
+# and defines the rocm_find_package() macro.
 include(FindROCmRoot)
+
+# rocm-sdk/TheRock python-venv ROCm installs are not registered with
+# ldconfig, and venv activation deliberately does not export
+# LD_LIBRARY_PATH (it would poison every other wheel bundling native
+# libs).  An installed librpd_tracer.so therefore cannot resolve its ROCm
+# DT_NEEDED entries (libamdhip64.so.7 etc.) when LD_PRELOAD'd: the load
+# fails with "cannot open shared object file" even though the build-tree
+# copy works (CMake puts the ROCm lib dir in the build-tree RPATH but
+# strips external dirs at install time by default).  For wheel layouts,
+# bake ROCM_ROOT_DIR/lib into the installed RUNPATH of the tracer
+# libraries -- the same mechanism rocm-sdk/torch's own artifacts use
+# (libtorch_hip.so carries $ORIGIN:/.../_rocm_sdk_devel/lib in its
+# RUNPATH).
+#
+# Traditional /opt/rocm installs resolve through ldconfig and get the
+# pre-existing byte-identical behavior (option defaults OFF).
+# CMake emits DT_RUNPATH, which ld.so consults *after* LD_LIBRARY_PATH,
+# so a user tracing processes built against a different ROCm install of
+# the same SONAME generation can still export LD_LIBRARY_PATH to win.
+if(ROCM_ROOT_HAS_SYSDEPS)
+  set(_rpd_install_rpath_default ON)
+else()
+  set(_rpd_install_rpath_default OFF)
+endif()
+option(RPD_INSTALL_RPATH
+  "Embed ${ROCM_ROOT_DIR}/lib into installed tracer RUNPATH (auto-enabled for python-venv ROCm installs)"
+  ${_rpd_install_rpath_default})
 
 find_package(Python3 COMPONENTS Interpreter)
 
@@ -101,4 +128,5 @@ message(STATUS "  RPD_BUILD_VIEWER            = ${RPD_BUILD_VIEWER}")
 message(STATUS "  RPD_ENABLE_CPPTRACE         = ${RPD_ENABLE_CPPTRACE}")
 message(STATUS "  RPD_ENABLE_ROCM_TRACE_LITE  = ${RPD_ENABLE_ROCM_TRACE_LITE}")
 message(STATUS "  ROCM_ROOT_DIR               = ${ROCM_ROOT_DIR}")
+message(STATUS "  RPD_INSTALL_RPATH           = ${RPD_INSTALL_RPATH}")
 message(STATUS "")

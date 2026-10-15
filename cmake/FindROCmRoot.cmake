@@ -70,15 +70,60 @@ else()
 endif()
 
 if(ROCM_ROOT_DIR)
-  set(CMAKE_PREFIX_PATH "${ROCM_ROOT_DIR};${ROCM_ROOT_DIR}/lib/cmake;${CMAKE_PREFIX_PATH}")
-  # rocm-sdk (TheRock) devel wheels keep third-party sysdeps (sqlite3, zstd,
-  # fmt, etc) under lib/rocm_sysdeps rather than the top level lib/include.
+  # lib/rocm_sysdeps exists only in rocm-sdk/TheRock wheel layouts; use it
+  # to tell a python-venv install apart from a traditional (ldconfig-
+  # visible) one.  ROCM_ROOT_HAS_SYSDEPS is consumed by the top-level
+  # RPD_INSTALL_RPATH option.
   if(EXISTS "${ROCM_ROOT_DIR}/lib/rocm_sysdeps")
-    list(APPEND CMAKE_PREFIX_PATH "${ROCM_ROOT_DIR}/lib/rocm_sysdeps")
-    list(APPEND CMAKE_INCLUDE_PATH "${ROCM_ROOT_DIR}/lib/rocm_sysdeps/include")
-    list(APPEND CMAKE_LIBRARY_PATH "${ROCM_ROOT_DIR}/lib/rocm_sysdeps/lib")
+    set(ROCM_ROOT_HAS_SYSDEPS TRUE)
+  else()
+    set(ROCM_ROOT_HAS_SYSDEPS FALSE)
   endif()
-  message(STATUS "ROCm root: ${ROCM_ROOT_DIR}")
+  message(STATUS "ROCm root: ${ROCM_ROOT_DIR} (rocm_sysdeps: ${ROCM_ROOT_HAS_SYSDEPS})")
 else()
   message(STATUS "ROCm root: not found (searched ROCM_PATH/ROCM_HOME, python venv, /opt/rocm)")
 endif()
+
+#[[
+rocm_find_package(<args...>) like find_package(<args...>), but with
+CMAKE_PREFIX_PATH/CMAKE_INCLUDE_PATH/CMAKE_LIBRARY_PATH temporarily
+augmented with the ROCm install's own cmake config dirs and (for
+rocm-sdk/TheRock devel wheels) its vendored third-party "sysdeps" tree
+(lib/rocm_sysdeps sqlite3, zstd, zlib, bz2, numa, libelf, liblzma, etc).
+
+This augmentation is scoped to the single find_package() call made here,
+NOT set globally, on purpose: rocm-sdk devel wheels vendor their own
+private copies of common system libraries under lib/rocm_sysdeps for
+ROCm's internal use (e.g. MIOpen's sqlite3 cache), and those must never
+be allowed to silently satisfy an unrelated find_package(Foo) elsewhere
+in the project (or its subdirectories, e.g. rlog) that actually wants the
+system's Foo. Only call rocm_find_package() for packages that are
+genuinely part of the ROCm SDK itself (hip, rocprofiler-sdk,
+hsa-runtime64, nlohmann_json, ...); use plain find_package() for
+everything else.
+#]]
+macro(rocm_find_package)
+  if(ROCM_ROOT_DIR)
+    set(_rocm_fp_saved_prefix_path "${CMAKE_PREFIX_PATH}")
+    set(_rocm_fp_saved_include_path "${CMAKE_INCLUDE_PATH}")
+    set(_rocm_fp_saved_library_path "${CMAKE_LIBRARY_PATH}")
+
+    list(APPEND CMAKE_PREFIX_PATH "${ROCM_ROOT_DIR}" "${ROCM_ROOT_DIR}/lib/cmake")
+    if(EXISTS "${ROCM_ROOT_DIR}/lib/rocm_sysdeps")
+      list(APPEND CMAKE_PREFIX_PATH "${ROCM_ROOT_DIR}/lib/rocm_sysdeps")
+      list(APPEND CMAKE_INCLUDE_PATH "${ROCM_ROOT_DIR}/lib/rocm_sysdeps/include")
+      list(APPEND CMAKE_LIBRARY_PATH "${ROCM_ROOT_DIR}/lib/rocm_sysdeps/lib")
+    endif()
+
+    find_package(${ARGV})
+
+    set(CMAKE_PREFIX_PATH "${_rocm_fp_saved_prefix_path}")
+    set(CMAKE_INCLUDE_PATH "${_rocm_fp_saved_include_path}")
+    set(CMAKE_LIBRARY_PATH "${_rocm_fp_saved_library_path}")
+    unset(_rocm_fp_saved_prefix_path)
+    unset(_rocm_fp_saved_include_path)
+    unset(_rocm_fp_saved_library_path)
+  else()
+    find_package(${ARGV})
+  endif()
+endmacro()
