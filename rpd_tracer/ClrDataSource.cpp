@@ -6,6 +6,9 @@
 #include <hip/hip_runtime.h>
 #include <fmt/format.h>
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "Logger.h"
 #include "LocalStringCache.h"
 #include "UStringCache.h"
@@ -72,14 +75,31 @@ void ClrDataSource::chunkCallback(const hipApiRecordExt* records, uint32_t count
 {
     const timestamp_t begin_time = clocktime_ns();
     ClrDataSource* self = static_cast<ClrDataSource*>(user_data);
-    for (uint32_t i = 0; i < count; ++i)
-        self->processRecord(&records[i]);
-    // chunk_id is the slab index, not records[0].chunk_id — use the last
-    // record's chunk_id so flush() correctly skips all freed slabs.
-    self->m_processedCount = records[count - 1].chunk_id + 1;
+
+    size_t processed = 0;
+    {
+        // Serialize against flush().  The profiler frees this slab
+        // immediately after the callback returns, so m_processedCount must
+        // be updated before returning (under the lock) to guarantee
+        // flush() never iterates a slab that is being (or has been)
+        // delivered here.  Records below the high-water mark were already
+        // consumed by flush() and must not be processed again.
+        std::lock_guard<std::mutex> guard(self->m_flushMutex);
+        for (uint32_t i = 0; i < count; ++i) {
+            if (records[i].chunk_id >= self->m_processedCount)
+                self->processRecord(&records[i]);
+        }
+        if (count > 0) {
+            size_t new_mark = static_cast<size_t>(records[count - 1].chunk_id) + 1;
+            if (new_mark > self->m_processedCount)
+                self->m_processedCount = new_mark;
+        }
+        processed = self->m_processedCount;
+    }
+
     const timestamp_t end_time = clocktime_ns();
     char buff[128];
-    std::snprintf(buff, sizeof(buff), "count=%u | total=%zu", count, self->m_processedCount);
+    std::snprintf(buff, sizeof(buff), "count=%u | total=%zu", count, processed);
     Logger::singleton().createOverheadRecord(begin_time, end_time, "ClrDataSource::chunkCallback", buff);
 }
 
@@ -236,27 +256,42 @@ void ClrDataSource::flush()
 {
     const timestamp_t cb_begin_time = clocktime_ns();
 
-    const hipApiRecordExt* const* chunks;
-    size_t chunk_count, chunk_size, total_count;
-    (void)hipProfilerGetRecordsExt(&chunks, &chunk_count, &chunk_size, &total_count);
+    size_t incremental_count = 0;
+    {
+        // Serialize against chunkCallback: slabs delivered there are freed
+        // as soon as the callback returns, so only slabs still below the
+        // delivered high-water mark may be iterated here.  The high-water
+        // mark is only advanced under the same lock, so any slab we touch
+        // here is guaranteed not to be concurrently delivered/freed.
+        std::lock_guard<std::mutex> guard(m_flushMutex);
 
-    size_t start_chunk = (chunk_size > 0) ? m_processedCount / chunk_size : 0;
-    size_t start_index = (chunk_size > 0) ? m_processedCount % chunk_size : 0;
+        const hipApiRecordExt* const* chunks;
+        size_t chunk_count, chunk_size, total_count;
+        (void)hipProfilerGetRecordsExt(&chunks, &chunk_count, &chunk_size, &total_count);
 
-    for (size_t c = start_chunk; c < chunk_count; ++c) {
-        size_t n = (total_count - c * chunk_size < chunk_size)
-                   ? total_count - c * chunk_size : chunk_size;
-        for (size_t i = (c == start_chunk ? start_index : 0); i < n; ++i)
-            processRecord(&chunks[c][i]);
+        size_t start_chunk = (chunk_size > 0) ? m_processedCount / chunk_size : 0;
+        size_t start_index = (chunk_size > 0) ? m_processedCount % chunk_size : 0;
+
+        for (size_t c = start_chunk; c < chunk_count; ++c) {
+            size_t base = c * chunk_size;
+            size_t n = (total_count > base)
+                       ? ((total_count - base < chunk_size) ? total_count - base : chunk_size)
+                       : 0;
+            for (size_t i = (c == start_chunk ? start_index : 0); i < n; ++i)
+                processRecord(&chunks[c][i]);
+            if (base + n > m_processedCount)
+                m_processedCount = base + n;
+        }
+
+        incremental_count = (total_count > m_processedCount) ? total_count - m_processedCount : 0;
+        if (total_count > m_processedCount)
+            m_processedCount = total_count;
     }
-
-    size_t incremental_count = total_count - m_processedCount;
-    m_processedCount = total_count;
 
     const timestamp_t cb_end_time = clocktime_ns();
     Logger &logger = Logger::singleton();
     char buff[4096];
-    std::snprintf(buff, 4096, "count=%lu | total=%lu", incremental_count, total_count);
+    std::snprintf(buff, 4096, "count=%lu | total=%lu", incremental_count, (unsigned long)m_processedCount);
     logger.createOverheadRecord(cb_begin_time, cb_end_time, "ClrDataSource::flush", buff);
 }
 
