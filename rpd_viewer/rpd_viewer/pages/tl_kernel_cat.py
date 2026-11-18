@@ -31,32 +31,12 @@ def _categorize_kernel(name):
     return "Other"
 
 
-TOP_SQL = """
-SELECT C.string as Name, count(C.string) as TotalCalls,
-    sum(A.end - A.start) / 1000 as TotalDuration_us,
-    (sum(A.end - A.start) / count(C.string)) / 1000 as Ave_us,
-    sum(A.end - A.start) * 100.0 / (SELECT sum(A.end - A.start) FROM rocpd_op A) as Percentage
-FROM (
-    SELECT opType_id as name_id, start, end FROM rocpd_op
-        WHERE description_id IN (SELECT id FROM rocpd_string WHERE string = '')
-    UNION
-    SELECT description_id, start, end FROM rocpd_op
-        WHERE description_id NOT IN (SELECT id FROM rocpd_string WHERE string = '')
-) A
-JOIN rocpd_string C ON C.id = A.name_id
-GROUP BY Name ORDER BY TotalDuration_us DESC
-"""
-
-
 def layout():
     if not db.rpd_path:
         return html.Div("No RPD file loaded.")
 
     try:
-        if db.table_exists("top"):
-            df = db.query_df("SELECT * FROM top")
-        else:
-            df = db.query_df(TOP_SQL)
+        df = db.kernel_summary()
 
         name_col = "Name"
         dur_col = next(c for c in df.columns if c.lower().startswith("totalduration"))
