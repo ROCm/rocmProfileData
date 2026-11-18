@@ -94,6 +94,27 @@ def query_df(sql, params=None):
     return df
 
 
+def kernel_summary():
+    # Older traces can have a top view that collapses simultaneous operations.
+    if not column_exists("rocpd_op", "opType_id") or not table_exists("rocpd_string"):
+        return query_df("SELECT * FROM top")
+    return query_df("""
+SELECT C.string as Name, count(C.string) as TotalCalls,
+    sum(A.end - A.start) / 1000 as TotalDuration_us,
+    (sum(A.end - A.start) / count(C.string)) / 1000.0 as Ave_us,
+    sum(A.end - A.start) * 100.0 / (SELECT sum(A.end - A.start) FROM rocpd_op A) as Percentage
+FROM (
+    SELECT opType_id as name_id, start, end FROM rocpd_op
+        WHERE description_id IN (SELECT id FROM rocpd_string WHERE string = '')
+    UNION ALL
+    SELECT description_id, start, end FROM rocpd_op
+        WHERE description_id NOT IN (SELECT id FROM rocpd_string WHERE string = '')
+) A
+JOIN rocpd_string C ON C.id = A.name_id
+GROUP BY Name ORDER BY TotalDuration_us DESC
+""")
+
+
 def query_df_indexed(sql, params=None):
     """Run a query against a fresh connection with the indexed temp tables
     (tmp_api, tmp_api_ops) available. Each call gets its own connection so

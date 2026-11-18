@@ -19,7 +19,7 @@ SELECT C.string as Name, count(*) as Calls,
 FROM (
     SELECT opType_id as name_id, start, end FROM rocpd_op
         WHERE description_id IN (SELECT id FROM rocpd_string WHERE string = '') AND {_BARRIER_FILTER}
-    UNION
+    UNION ALL
     SELECT description_id, start, end FROM rocpd_op
         WHERE description_id NOT IN (SELECT id FROM rocpd_string WHERE string = '') AND {_BARRIER_FILTER}
 ) A
